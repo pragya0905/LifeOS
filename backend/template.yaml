@@ -274,6 +274,67 @@ Resources:
             Auth:
               Authorizer: CognitoAuthorizer
 
+  ########################
+  # Lambda — Journal CRUD
+  ########################
+  CreateJournalEntryFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-create-journal-entry-${Environment}"
+      CodeUri: src/functions/createJournalEntry/
+      Handler: index.handler
+      Environment:
+        Variables:
+          JOURNAL_TABLE_NAME: !Ref JournalEntriesTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref JournalEntriesTable
+      Events:
+        CreateJournalEntry:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /journal
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  ListJournalEntriesFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-list-journal-entries-${Environment}"
+      CodeUri: src/functions/listJournalEntries/
+      Handler: index.handler
+      Environment:
+        Variables:
+          JOURNAL_TABLE_NAME: !Ref JournalEntriesTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref JournalEntriesTable
+      Events:
+        ListJournalEntries:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /journal
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
 Outputs:
   UserPoolId:
     Value: !Ref LifeOsUserPool

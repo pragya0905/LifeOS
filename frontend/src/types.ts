@@ -13,3 +13,14 @@ export interface Task {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface JournalEntry {
+  userId: string;
+  entryId: string;
+  date: string;
+  text: string;
+  voiceInput: boolean;
+  aiExtracted?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}

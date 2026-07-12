@@ -7,6 +7,7 @@ import ConfirmSignUp from "./pages/ConfirmSignUp";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Tasks from "./pages/Tasks";
+import Journal from "./pages/Journal";
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
           >
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/tasks" element={<Tasks />} />
+            <Route path="/journal" element={<Journal />} />
           </Route>
         </Routes>
       </BrowserRouter>
