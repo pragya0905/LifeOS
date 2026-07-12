@@ -15,20 +15,22 @@ export interface Task {
   updatedAt: string;
 }
 
+export type HabitExtractionValue = "done" | "missed" | "unclear";
+
 export interface JournalEntry {
   userId: string;
   entryId: string;
   date: string;
   text: string;
   voiceInput: boolean;
-  aiExtracted?: Record<string, unknown>;
+  aiExtracted?: Record<"water" | "exercise" | "medicine", HabitExtractionValue>;
   createdAt: string;
   updatedAt: string;
 }
 
 export type HabitType = "water" | "exercise" | "medicine";
 export type HabitStatus = "done" | "missed" | "skipped";
-export type HabitSource = "manual" | "ai";
+export type HabitSource = "manual" | "ai-journal";
 
 export interface HabitLog {
   userId: string;

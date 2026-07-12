@@ -9,8 +9,8 @@ Parameters:
     AllowedValues: [dev, prod]
   AllowedOrigins:
     Type: CommaDelimitedList
-    Default: "http://localhost:5173"
-    Description: CORS origins allowed to call the HTTP API (add the deployed frontend URL later)
+    Default: "http://localhost:5173,http://localhost:5174"
+    Description: CORS origins allowed to call the HTTP API (add the deployed frontend URL later). 5174 covers Vite's auto-fallback port when 5173 is already in use by another local project.
 
 Globals:
   Function:
@@ -290,12 +290,19 @@ Resources:
       FunctionName: !Sub "lifeos-create-journal-entry-${Environment}"
       CodeUri: src/functions/createJournalEntry/
       Handler: index.handler
+      Timeout: 30
       Environment:
         Variables:
           JOURNAL_TABLE_NAME: !Ref JournalEntriesTable
+          HABITS_TABLE_NAME: !Ref HabitLogsTable
+          ANTHROPIC_API_KEY_PARAM: !Sub "/lifeos/${Environment}/anthropic-api-key"
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref JournalEntriesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref HabitLogsTable
+        - SSMParameterReadPolicy:
+            ParameterName: !Sub "lifeos/${Environment}/anthropic-api-key"
       Events:
         CreateJournalEntry:
           Type: HttpApi

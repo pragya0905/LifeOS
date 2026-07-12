@@ -13,6 +13,20 @@ function joinText(base: string, addition: string): string {
   return base.endsWith(" ") || base.endsWith("\n") ? base + addition : `${base} ${addition}`;
 }
 
+const HABIT_LABEL: Record<string, string> = {
+  water: "water",
+  exercise: "exercise",
+  medicine: "medicine",
+};
+
+function formatDetection(aiExtracted: JournalEntry["aiExtracted"]): string | null {
+  if (!aiExtracted) return null;
+  const parts = Object.entries(aiExtracted)
+    .filter(([, value]) => value !== "unclear")
+    .map(([habit, value]) => `${HABIT_LABEL[habit] ?? habit} ${value === "done" ? "✓" : "— missed"}`);
+  return parts.length > 0 ? `Detected: ${parts.join(", ")}` : null;
+}
+
 export default function Journal() {
   const { request } = useApi();
   const [entries, setEntries] = useState<JournalEntry[]>([]);
@@ -43,21 +57,28 @@ export default function Journal() {
     }
   });
 
-  async function loadEntries() {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await request<{ entries: JournalEntry[] }>("/journal");
-      setEntries(data.entries.slice().sort((a, b) => (a.date < b.date ? 1 : -1)));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load journal entries");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
+    let ignore = false;
+
+    async function loadEntries() {
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await request<{ entries: JournalEntry[] }>("/journal");
+        if (ignore) return;
+        setEntries(data.entries.slice().sort((a, b) => (a.date < b.date ? 1 : -1)));
+      } catch (err) {
+        if (ignore) return;
+        setError(err instanceof Error ? err.message : "Failed to load journal entries");
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    }
+
     loadEntries();
+    return () => {
+      ignore = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -177,6 +198,11 @@ export default function Journal() {
               <p className="whitespace-pre-wrap text-sm text-gray-900 dark:text-gray-100">
                 {entry.text}
               </p>
+              {formatDetection(entry.aiExtracted) && (
+                <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-400">
+                  {formatDetection(entry.aiExtracted)}
+                </p>
+              )}
             </li>
           ))}
         </ul>

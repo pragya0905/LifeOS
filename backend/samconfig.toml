@@ -7,7 +7,7 @@ resolve_s3 = true
 s3_prefix = "lifeos-backend-dev"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
-parameter_overrides = "Environment=\"dev\" AllowedOrigins=\"http://localhost:5173\""
+parameter_overrides = "Environment=\"dev\" AllowedOrigins=\"http://localhost:5173,http://localhost:5174\""
 
 [default.build.parameters]
 cached = true
