@@ -335,6 +335,67 @@ Resources:
             Auth:
               Authorizer: CognitoAuthorizer
 
+  ########################
+  # Lambda — Habits
+  ########################
+  UpdateHabitFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-update-habit-${Environment}"
+      CodeUri: src/functions/updateHabit/
+      Handler: index.handler
+      Environment:
+        Variables:
+          HABITS_TABLE_NAME: !Ref HabitLogsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref HabitLogsTable
+      Events:
+        UpdateHabit:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /habits/{date}/{type}
+            Method: PATCH
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  GetHabitsForDateFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-get-habits-for-date-${Environment}"
+      CodeUri: src/functions/getHabitsForDate/
+      Handler: index.handler
+      Environment:
+        Variables:
+          HABITS_TABLE_NAME: !Ref HabitLogsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref HabitLogsTable
+      Events:
+        GetHabitsForDate:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /habits/{date}
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
 Outputs:
   UserPoolId:
     Value: !Ref LifeOsUserPool

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
+import HabitTracker from "../components/HabitTracker";
 
 interface WhoAmIResponse {
   message: string;
@@ -34,6 +35,10 @@ export default function Dashboard() {
       <h1 className="mb-4 text-2xl font-semibold text-gray-900 dark:text-gray-100">
         Dashboard
       </h1>
+
+      <div className="mb-6">
+        <HabitTracker />
+      </div>
 
       <div className="rounded-md border border-gray-200 p-4 dark:border-gray-700">
         <h2 className="mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">

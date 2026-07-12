@@ -25,3 +25,19 @@ export interface JournalEntry {
   createdAt: string;
   updatedAt: string;
 }
+
+export type HabitType = "water" | "exercise" | "medicine";
+export type HabitStatus = "done" | "missed" | "skipped";
+export type HabitSource = "manual" | "ai";
+
+export interface HabitLog {
+  userId: string;
+  dateHabitType: string;
+  date: string;
+  habitType: HabitType;
+  status: HabitStatus;
+  source: HabitSource;
+  note?: string;
+  createdAt: string;
+  updatedAt: string;
+}
