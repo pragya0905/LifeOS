@@ -1,0 +1,15 @@
+{
+  "name": "lifeos-backend",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "PATH=\"$PWD/node_modules/.bin:$PATH\" sam build",
+    "deploy": "npm run build && sam deploy"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "esbuild": "^0.24.0",
+    "@types/node": "^20.14.0",
+    "@types/aws-lambda": "^8.10.145"
+  }
+}

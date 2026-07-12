@@ -1,0 +1,21 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# SAM
+.aws-sam/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Build output
+dist/
+build/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+*.log

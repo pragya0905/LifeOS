@@ -1,0 +1,14 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "lifeos-backend-dev"
+region = "ap-southeast-2"
+resolve_s3 = true
+s3_prefix = "lifeos-backend-dev"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "Environment=\"dev\" AllowedOrigins=\"http://localhost:5173\""
+
+[default.build.parameters]
+cached = true
+parallel = true
