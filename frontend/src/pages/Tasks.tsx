@@ -27,23 +27,31 @@ export default function Tasks() {
   const [dueDate, setDueDate] = useState("");
   const [priority, setPriority] = useState<TaskPriority>("Medium");
   const [scheduleTime, setScheduleTime] = useState("");
+  const [suggestPriority, setSuggestPriority] = useState(false);
   const [creating, setCreating] = useState(false);
 
-  async function loadTasks() {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await request<{ tasks: Task[] }>("/tasks");
-      setTasks(data.tasks);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load tasks");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
+    let ignore = false;
+
+    async function loadTasks() {
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await request<{ tasks: Task[] }>("/tasks");
+        if (ignore) return;
+        setTasks(data.tasks);
+      } catch (err) {
+        if (ignore) return;
+        setError(err instanceof Error ? err.message : "Failed to load tasks");
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    }
+
     loadTasks();
+    return () => {
+      ignore = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -60,6 +68,7 @@ export default function Tasks() {
           dueDate: dueDate || undefined,
           priority,
           scheduleTime: scheduleTime || undefined,
+          suggestPriority: suggestPriority || undefined,
         }),
       });
       setTasks((prev) => [task, ...prev]);
@@ -67,6 +76,7 @@ export default function Tasks() {
       setDueDate("");
       setScheduleTime("");
       setPriority("Medium");
+      setSuggestPriority(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create task");
     } finally {
@@ -135,8 +145,9 @@ export default function Tasks() {
           </label>
           <select
             value={priority}
+            disabled={suggestPriority}
             onChange={(e) => setPriority(e.target.value as TaskPriority)}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
           >
             {PRIORITIES.map((p) => (
               <option key={p} value={p}>
@@ -145,6 +156,15 @@ export default function Tasks() {
             ))}
           </select>
         </div>
+        <label className="flex items-center gap-1.5 pb-1.5 text-xs font-medium text-gray-600 dark:text-gray-400">
+          <input
+            type="checkbox"
+            checked={suggestPriority}
+            onChange={(e) => setSuggestPriority(e.target.checked)}
+            className="rounded border-gray-300 dark:border-gray-600"
+          />
+          Suggest with AI
+        </label>
         <button
           type="submit"
           disabled={creating}
@@ -187,6 +207,11 @@ export default function Tasks() {
                 >
                   {task.priority}
                 </span>
+                {task.prioritySource === "ai" && (
+                  <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+                    AI
+                  </span>
+                )}
                 <select
                   value={task.priority}
                   onChange={(e) =>
