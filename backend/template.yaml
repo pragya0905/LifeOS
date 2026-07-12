@@ -184,6 +184,96 @@ Resources:
             Auth:
               Authorizer: CognitoAuthorizer
 
+  ########################
+  # Lambda — Tasks CRUD
+  ########################
+  CreateTaskFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-create-task-${Environment}"
+      CodeUri: src/functions/createTask/
+      Handler: index.handler
+      Environment:
+        Variables:
+          TASKS_TABLE_NAME: !Ref TasksTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TasksTable
+      Events:
+        CreateTask:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /tasks
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  ListTasksFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-list-tasks-${Environment}"
+      CodeUri: src/functions/listTasks/
+      Handler: index.handler
+      Environment:
+        Variables:
+          TASKS_TABLE_NAME: !Ref TasksTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TasksTable
+      Events:
+        ListTasks:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /tasks
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  UpdateTaskFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-update-task-${Environment}"
+      CodeUri: src/functions/updateTask/
+      Handler: index.handler
+      Environment:
+        Variables:
+          TASKS_TABLE_NAME: !Ref TasksTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TasksTable
+      Events:
+        UpdateTask:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /tasks/{id}
+            Method: PATCH
+            Auth:
+              Authorizer: CognitoAuthorizer
+
 Outputs:
   UserPoolId:
     Value: !Ref LifeOsUserPool

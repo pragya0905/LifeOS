@@ -7,9 +7,11 @@
     "deploy": "npm run build && sam deploy"
   },
   "devDependencies": {
-    "typescript": "^5.6.0",
-    "esbuild": "^0.24.0",
+    "@aws-sdk/client-dynamodb": "^3.1085.0",
+    "@aws-sdk/lib-dynamodb": "^3.1085.0",
+    "@types/aws-lambda": "^8.10.145",
     "@types/node": "^20.14.0",
-    "@types/aws-lambda": "^8.10.145"
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.0"
   }
 }

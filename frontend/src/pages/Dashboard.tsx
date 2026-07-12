@@ -9,7 +9,7 @@ interface WhoAmIResponse {
 }
 
 export default function Dashboard() {
-  const { user, signOut, getIdToken } = useAuth();
+  const { getIdToken } = useAuth();
   const [whoami, setWhoami] = useState<WhoAmIResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,21 +30,10 @@ export default function Dashboard() {
   }, [getIdToken]);
 
   return (
-    <div className="mx-auto mt-16 w-full max-w-lg px-4">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
-          Dashboard
-        </h1>
-        <button
-          onClick={() => signOut()}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
-        >
-          Log out
-        </button>
-      </div>
-      <p className="mb-4 text-gray-700 dark:text-gray-300">
-        Logged in as <strong>{user?.email}</strong>
-      </p>
+    <div className="mx-auto mt-8 w-full max-w-lg px-4">
+      <h1 className="mb-4 text-2xl font-semibold text-gray-900 dark:text-gray-100">
+        Dashboard
+      </h1>
 
       <div className="rounded-md border border-gray-200 p-4 dark:border-gray-700">
         <h2 className="mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">

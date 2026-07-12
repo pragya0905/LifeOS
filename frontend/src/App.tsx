@@ -1,10 +1,12 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
 import ProtectedRoute from "./auth/ProtectedRoute";
+import Layout from "./components/Layout";
 import SignUp from "./pages/SignUp";
 import ConfirmSignUp from "./pages/ConfirmSignUp";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
+import Tasks from "./pages/Tasks";
 
 export default function App() {
   return (
@@ -16,13 +18,15 @@ export default function App() {
           <Route path="/confirm" element={<ConfirmSignUp />} />
           <Route path="/login" element={<Login />} />
           <Route
-            path="/dashboard"
             element={
               <ProtectedRoute>
-                <Dashboard />
+                <Layout />
               </ProtectedRoute>
             }
-          />
+          >
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/tasks" element={<Tasks />} />
+          </Route>
         </Routes>
       </BrowserRouter>
     </AuthProvider>
