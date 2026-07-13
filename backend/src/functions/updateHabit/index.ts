@@ -3,11 +3,14 @@ import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb } from "../../common/dynamo";
 import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
-import type { HabitStatus, HabitType } from "../../common/types";
+import type { HabitType, HabitUnit } from "../../common/types";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const HABIT_TYPES: HabitType[] = ["water", "exercise", "medicine"];
-const HABIT_STATUSES: HabitStatus[] = ["done", "missed", "skipped"];
+const HABIT_TYPES: HabitType[] = ["water", "exercise"];
+const HABIT_UNIT: Record<HabitType, HabitUnit> = {
+  water: "ml",
+  exercise: "minutes",
+};
 
 export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) => {
   const userId = getUserId(event);
@@ -26,29 +29,35 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     return errorResponse(400, "Invalid JSON body");
   }
 
-  if (!HABIT_STATUSES.includes(body.status as HabitStatus)) {
-    return errorResponse(400, `status must be one of ${HABIT_STATUSES.join(", ")}`);
+  if (typeof body.value !== "number" || !Number.isFinite(body.value) || body.value < 0) {
+    return errorResponse(400, "value must be a non-negative number");
   }
   const note = typeof body.note === "string" ? body.note : undefined;
 
   const now = new Date().toISOString();
+  const status = body.value > 0 ? "done" : "missed";
   const names: Record<string, string> = {
     "#date": "date",
     "#habitType": "habitType",
     "#status": "status",
+    "#value": "value",
+    "#unit": "unit",
     "#source": "source",
   };
   const values: Record<string, unknown> = {
     ":date": date,
     ":habitType": habitType,
-    ":status": body.status,
+    ":status": status,
+    ":value": body.value,
+    ":unit": HABIT_UNIT[habitType as HabitType],
     ":source": "manual",
     ":updatedAt": now,
     ":createdAt": now,
   };
   let setExpr =
-    "#date = :date, #habitType = :habitType, #status = :status, #source = :source, " +
-    "updatedAt = :updatedAt, createdAt = if_not_exists(createdAt, :createdAt)";
+    "#date = :date, #habitType = :habitType, #status = :status, #value = :value, " +
+    "#unit = :unit, #source = :source, updatedAt = :updatedAt, " +
+    "createdAt = if_not_exists(createdAt, :createdAt)";
 
   if (note !== undefined) {
     names["#note"] = "note";

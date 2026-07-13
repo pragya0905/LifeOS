@@ -14,20 +14,24 @@ export interface Task {
   updatedAt: string;
 }
 
-export type HabitExtractionValue = "done" | "missed" | "unclear";
+export interface JournalEntryExtraction {
+  waterMl: number | null;
+  exerciseMinutes: number | null;
+}
 
 export interface JournalEntry {
   userId: string;
   date: string;
   text: string;
   voiceInput: boolean;
-  aiExtracted?: Record<"water" | "exercise" | "medicine", HabitExtractionValue>;
+  aiExtracted?: JournalEntryExtraction;
   createdAt: string;
   updatedAt: string;
 }
 
-export type HabitType = "water" | "exercise" | "medicine";
+export type HabitType = "water" | "exercise";
 export type HabitStatus = "done" | "missed" | "skipped";
+export type HabitUnit = "ml" | "minutes";
 
 export interface HabitLog {
   userId: string;
@@ -35,6 +39,8 @@ export interface HabitLog {
   date: string;
   habitType: HabitType;
   status: HabitStatus;
+  value?: number;
+  unit?: HabitUnit;
   source: "manual" | "ai-journal";
   note?: string;
   createdAt: string;

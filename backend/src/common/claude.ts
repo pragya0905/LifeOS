@@ -4,15 +4,17 @@ import { SSMClient, GetParameterCommand } from "@aws-sdk/client-ssm";
 import { z } from "zod";
 
 const HabitExtractionSchema = z.object({
-  water: z.enum(["done", "missed", "unclear"]),
-  exercise: z.enum(["done", "missed", "unclear"]),
-  medicine: z.enum(["done", "missed", "unclear"]),
+  waterMl: z.number().nullable(),
+  exerciseMinutes: z.number().nullable(),
 });
 
 export type HabitExtraction = z.infer<typeof HabitExtractionSchema>;
 
 const HABIT_SYSTEM_PROMPT =
-  "Extract whether the following habits were mentioned as done, not done, or not mentioned at all: water, exercise, medicine.";
+  "Extract how much water (in milliliters) and how much exercise (in minutes) the person " +
+  "did today, based on their journal entry. If an amount is mentioned in different units " +
+  "(glasses, liters, hours, etc.), convert it to milliliters/minutes — a glass of water is " +
+  "about 250ml. If a habit isn't mentioned at all, return null for that field.";
 
 const TaskPrioritySchema = z.object({
   priority: z.enum(["Low", "Medium", "High"]),

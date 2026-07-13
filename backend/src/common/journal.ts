@@ -1,36 +1,45 @@
 import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb } from "./dynamo";
 import { extractHabitsFromJournal } from "./claude";
-import type { HabitType, JournalEntry } from "./types";
+import type { HabitType, HabitUnit, JournalEntry } from "./types";
 
-const HABIT_TYPES: HabitType[] = ["water", "exercise", "medicine"];
+const HABIT_UNIT: Record<HabitType, HabitUnit> = {
+  water: "ml",
+  exercise: "minutes",
+};
 
 async function writeAiHabitLog(
   userId: string,
   date: string,
   habitType: HabitType,
-  status: "done" | "missed",
+  value: number,
 ): Promise<void> {
   const now = new Date().toISOString();
+  const status = value > 0 ? "done" : "missed";
   try {
     await ddb.send(
       new UpdateCommand({
         TableName: process.env.HABITS_TABLE_NAME,
         Key: { userId, dateHabitType: `${date}#${habitType}` },
         UpdateExpression:
-          "SET #date = :date, #habitType = :habitType, #status = :status, #source = :source, " +
-          "updatedAt = :updatedAt, createdAt = if_not_exists(createdAt, :updatedAt)",
+          "SET #date = :date, #habitType = :habitType, #status = :status, #value = :value, " +
+          "#unit = :unit, #source = :source, updatedAt = :updatedAt, " +
+          "createdAt = if_not_exists(createdAt, :updatedAt)",
         ConditionExpression: "attribute_not_exists(dateHabitType) OR #source = :aiSource",
         ExpressionAttributeNames: {
           "#date": "date",
           "#habitType": "habitType",
           "#status": "status",
+          "#value": "value",
+          "#unit": "unit",
           "#source": "source",
         },
         ExpressionAttributeValues: {
           ":date": date,
           ":habitType": habitType,
           ":status": status,
+          ":value": value,
+          ":unit": HABIT_UNIT[habitType],
           ":source": "ai-journal",
           ":aiSource": "ai-journal",
           ":updatedAt": now,
@@ -44,9 +53,9 @@ async function writeAiHabitLog(
   }
 }
 
-// Best-effort: extracts habit mentions from journal text, persists them onto the
-// entry and into HabitLogsTable (manual entries always win), and never throws —
-// a failure here must never block the journal entry itself from saving.
+// Best-effort: extracts habit quantities mentioned in journal text, persists them onto
+// the entry and into HabitLogsTable (manual entries always win), and never throws — a
+// failure here must never block the journal entry itself from saving.
 export async function applyHabitExtraction(
   userId: string,
   date: string,
@@ -64,10 +73,11 @@ export async function applyHabitExtraction(
       }),
     );
 
-    for (const habitType of HABIT_TYPES) {
-      const value = extraction[habitType];
-      if (value === "unclear") continue;
-      await writeAiHabitLog(userId, date, habitType, value);
+    if (extraction.waterMl !== null) {
+      await writeAiHabitLog(userId, date, "water", extraction.waterMl);
+    }
+    if (extraction.exerciseMinutes !== null) {
+      await writeAiHabitLog(userId, date, "exercise", extraction.exerciseMinutes);
     }
 
     return extraction;

@@ -1,24 +1,11 @@
 import { useEffect, useState } from "react";
 import { useApi } from "../api/useApi";
-import type { HabitLog, HabitStatus, HabitType } from "../types";
+import type { HabitLog, HabitType, HabitUnit } from "../types";
 
-const HABITS: { type: HabitType; label: string }[] = [
-  { type: "water", label: "Water" },
-  { type: "exercise", label: "Exercise" },
-  { type: "medicine", label: "Medicine" },
+const HABITS: { type: HabitType; label: string; unit: HabitUnit }[] = [
+  { type: "water", label: "Water", unit: "ml" },
+  { type: "exercise", label: "Exercise", unit: "minutes" },
 ];
-
-const STATUS_OPTIONS: { status: HabitStatus; label: string }[] = [
-  { status: "done", label: "Done" },
-  { status: "missed", label: "Missed" },
-  { status: "skipped", label: "Skipped" },
-];
-
-const ACTIVE_CLASS: Record<HabitStatus, string> = {
-  done: "bg-green-600 text-white border-green-600",
-  missed: "bg-red-600 text-white border-red-600",
-  skipped: "bg-gray-500 text-white border-gray-500",
-};
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -27,7 +14,8 @@ function today(): string {
 export default function HabitTracker() {
   const { request } = useApi();
   const [date] = useState(today());
-  const [statuses, setStatuses] = useState<Partial<Record<HabitType, HabitStatus>>>({});
+  const [values, setValues] = useState<Partial<Record<HabitType, number>>>({});
+  const [drafts, setDrafts] = useState<Partial<Record<HabitType, string>>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<HabitType | null>(null);
@@ -38,9 +26,14 @@ export default function HabitTracker() {
       setError(null);
       try {
         const data = await request<{ habits: HabitLog[] }>(`/habits/${date}`);
-        const next: Partial<Record<HabitType, HabitStatus>> = {};
-        for (const habit of data.habits) next[habit.habitType] = habit.status;
-        setStatuses(next);
+        const next: Partial<Record<HabitType, number>> = {};
+        for (const habit of data.habits) next[habit.habitType] = habit.value ?? 0;
+        setValues(next);
+        setDrafts(
+          Object.fromEntries(
+            Object.entries(next).map(([type, value]) => [type, String(value)]),
+          ),
+        );
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load habits");
       } finally {
@@ -51,15 +44,22 @@ export default function HabitTracker() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date]);
 
-  async function setHabit(type: HabitType, status: HabitStatus) {
+  async function saveHabit(type: HabitType) {
+    const draft = drafts[type] ?? "";
+    const parsed = Number(draft);
+    if (draft.trim() === "" || !Number.isFinite(parsed) || parsed < 0) {
+      setError("Enter a non-negative number");
+      return;
+    }
     setPending(type);
     setError(null);
     try {
       const updated = await request<HabitLog>(`/habits/${date}/${type}`, {
         method: "PATCH",
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ value: parsed }),
       });
-      setStatuses((prev) => ({ ...prev, [type]: updated.status }));
+      setValues((prev) => ({ ...prev, [type]: updated.value ?? 0 }));
+      setDrafts((prev) => ({ ...prev, [type]: String(updated.value ?? 0) }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update habit");
     } finally {
@@ -77,33 +77,36 @@ export default function HabitTracker() {
         <p className="text-sm text-gray-500">Loading...</p>
       ) : (
         <ul className="flex flex-col gap-3">
-          {HABITS.map(({ type, label }) => {
-            const current = statuses[type];
-            return (
-              <li key={type} className="flex items-center justify-between gap-3">
-                <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                  {label}
-                </span>
-                <div className="flex gap-1.5">
-                  {STATUS_OPTIONS.map(({ status, label: statusLabel }) => (
-                    <button
-                      key={status}
-                      type="button"
-                      disabled={pending === type}
-                      onClick={() => setHabit(type, status)}
-                      className={`rounded-full border px-3 py-1 text-xs font-medium disabled:opacity-50 ${
-                        current === status
-                          ? ACTIVE_CLASS[status]
-                          : "border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
-                      }`}
-                    >
-                      {statusLabel}
-                    </button>
-                  ))}
-                </div>
-              </li>
-            );
-          })}
+          {HABITS.map(({ type, label, unit }) => (
+            <li key={type} className="flex items-center justify-between gap-3">
+              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                {label}
+                {values[type] !== undefined && (
+                  <span className="ml-2 font-normal text-gray-500 dark:text-gray-400">
+                    ({values[type]} {unit})
+                  </span>
+                )}
+              </span>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="number"
+                  min={0}
+                  placeholder={unit}
+                  value={drafts[type] ?? ""}
+                  onChange={(e) => setDrafts((prev) => ({ ...prev, [type]: e.target.value }))}
+                  className="w-20 rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                />
+                <button
+                  type="button"
+                  disabled={pending === type}
+                  onClick={() => saveHabit(type)}
+                  className="rounded-full border border-gray-300 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
+                >
+                  {pending === type ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </li>
+          ))}
         </ul>
       )}
     </div>

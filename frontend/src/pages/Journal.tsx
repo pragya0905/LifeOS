@@ -13,17 +13,11 @@ function joinText(base: string, addition: string): string {
   return base.endsWith(" ") || base.endsWith("\n") ? base + addition : `${base} ${addition}`;
 }
 
-const HABIT_LABEL: Record<string, string> = {
-  water: "water",
-  exercise: "exercise",
-  medicine: "medicine",
-};
-
 function formatDetection(aiExtracted: JournalEntry["aiExtracted"]): string | null {
   if (!aiExtracted) return null;
-  const parts = Object.entries(aiExtracted)
-    .filter(([, value]) => value !== "unclear")
-    .map(([habit, value]) => `${HABIT_LABEL[habit] ?? habit} ${value === "done" ? "✓" : "— missed"}`);
+  const parts: string[] = [];
+  if (aiExtracted.waterMl !== null) parts.push(`water ${aiExtracted.waterMl}ml`);
+  if (aiExtracted.exerciseMinutes !== null) parts.push(`exercise ${aiExtracted.exerciseMinutes}min`);
   return parts.length > 0 ? `Detected: ${parts.join(", ")}` : null;
 }
 
