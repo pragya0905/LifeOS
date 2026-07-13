@@ -407,6 +407,41 @@ Resources:
             Auth:
               Authorizer: CognitoAuthorizer
 
+  ########################
+  # Lambda — Daily Schedule
+  ########################
+  GetScheduleFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-get-schedule-${Environment}"
+      CodeUri: src/functions/getSchedule/
+      Handler: index.handler
+      Environment:
+        Variables:
+          TASKS_TABLE_NAME: !Ref TasksTable
+          HABITS_TABLE_NAME: !Ref HabitLogsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TasksTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref HabitLogsTable
+      Events:
+        GetSchedule:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /schedule/{date}
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
 Outputs:
   UserPoolId:
     Value: !Ref LifeOsUserPool

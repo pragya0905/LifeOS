@@ -41,3 +41,9 @@ export interface HabitLog {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface Schedule {
+  date: string;
+  tasks: Task[];
+  habits: HabitLog[];
+}

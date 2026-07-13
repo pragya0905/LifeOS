@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import HabitTracker from "../components/HabitTracker";
+import TodaySchedule from "../components/TodaySchedule";
 
 interface WhoAmIResponse {
   message: string;
@@ -31,10 +32,14 @@ export default function Dashboard() {
   }, [getIdToken]);
 
   return (
-    <div className="mx-auto mt-8 w-full max-w-lg px-4">
+    <div className="mx-auto mt-8 w-full max-w-2xl px-4">
       <h1 className="mb-4 text-2xl font-semibold text-gray-900 dark:text-gray-100">
         Dashboard
       </h1>
+
+      <div className="mb-6">
+        <TodaySchedule />
+      </div>
 
       <div className="mb-6">
         <HabitTracker />
