@@ -72,3 +72,26 @@ export interface MedicationLog {
   createdAt: string;
   updatedAt: string;
 }
+
+export type LogType =
+  | "food"
+  | "sleep"
+  | "weight"
+  | "bodyFat"
+  | "mood"
+  | "call"
+  | "expense"
+  | "cycle";
+
+export type LogSource = "manual";
+
+export interface LogEntry {
+  userId: string;
+  logId: string;
+  logType: LogType;
+  date: string;
+  data: Record<string, unknown>;
+  source: LogSource;
+  createdAt: string;
+  updatedAt: string;
+}

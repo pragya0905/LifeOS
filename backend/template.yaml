@@ -176,6 +176,26 @@ Resources:
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
 
+  LogEntriesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "LifeOs-LogEntries-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: logId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: logId
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
   ########################
   # API Gateway (HTTP API) + Cognito JWT authorizer
   ########################
@@ -635,6 +655,125 @@ Resources:
               Authorizer: CognitoAuthorizer
 
   ########################
+  # Lambda — Log Entries (unified tracker: food, sleep, weight, body fat, mood, call, expense, cycle)
+  ########################
+  CreateLogEntryFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-create-log-entry-${Environment}"
+      CodeUri: src/functions/createLogEntry/
+      Handler: index.handler
+      Environment:
+        Variables:
+          LOG_ENTRIES_TABLE_NAME: !Ref LogEntriesTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref LogEntriesTable
+      Events:
+        CreateLogEntry:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /logs
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  ListLogEntriesFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-list-log-entries-${Environment}"
+      CodeUri: src/functions/listLogEntries/
+      Handler: index.handler
+      Environment:
+        Variables:
+          LOG_ENTRIES_TABLE_NAME: !Ref LogEntriesTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref LogEntriesTable
+      Events:
+        ListLogEntries:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /logs
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  UpdateLogEntryFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-update-log-entry-${Environment}"
+      CodeUri: src/functions/updateLogEntry/
+      Handler: index.handler
+      Environment:
+        Variables:
+          LOG_ENTRIES_TABLE_NAME: !Ref LogEntriesTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref LogEntriesTable
+      Events:
+        UpdateLogEntry:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /logs/{id}
+            Method: PATCH
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  DeleteLogEntryFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-delete-log-entry-${Environment}"
+      CodeUri: src/functions/deleteLogEntry/
+      Handler: index.handler
+      Environment:
+        Variables:
+          LOG_ENTRIES_TABLE_NAME: !Ref LogEntriesTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref LogEntriesTable
+      Events:
+        DeleteLogEntry:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /logs/{id}
+            Method: DELETE
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  ########################
   # Lambda — Daily Schedule
   ########################
   GetScheduleFunction:
@@ -686,3 +825,5 @@ Outputs:
     Value: !Ref MedicationsTable
   MedicationLogsTableName:
     Value: !Ref MedicationLogsTable
+  LogEntriesTableName:
+    Value: !Ref LogEntriesTable
