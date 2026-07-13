@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import HabitTracker from "../components/HabitTracker";
 import TodaySchedule from "../components/TodaySchedule";
+import PwaSettings from "../components/PwaSettings";
 
 interface WhoAmIResponse {
   message: string;
@@ -43,6 +44,10 @@ export default function Dashboard() {
 
       <div className="mb-6">
         <HabitTracker />
+      </div>
+
+      <div className="mb-6">
+        <PwaSettings />
       </div>
 
       <div className="rounded-md border border-gray-200 p-4 dark:border-gray-700">
