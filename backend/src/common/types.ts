@@ -48,3 +48,24 @@ export interface HabitLog {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface Medication {
+  userId: string;
+  medicationId: string;
+  name: string;
+  startDate: string;
+  durationDays: number;
+  createdAt: string;
+}
+
+export type MedicationLogStatus = "taken" | "missed";
+
+export interface MedicationLog {
+  userId: string;
+  dateMedicationId: string;
+  date: string;
+  medicationId: string;
+  status: MedicationLogStatus;
+  createdAt: string;
+  updatedAt: string;
+}

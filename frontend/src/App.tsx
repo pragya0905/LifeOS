@@ -8,6 +8,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Tasks from "./pages/Tasks";
 import Journal from "./pages/Journal";
+import Medications from "./pages/Medications";
 
 export default function App() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/journal" element={<Journal />} />
+            <Route path="/medications" element={<Medications />} />
           </Route>
         </Routes>
       </BrowserRouter>

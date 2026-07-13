@@ -52,3 +52,25 @@ export interface Schedule {
   tasks: Task[];
   habits: HabitLog[];
 }
+
+export interface Medication {
+  userId: string;
+  medicationId: string;
+  name: string;
+  startDate: string;
+  durationDays: number;
+  endDate: string;
+  createdAt: string;
+}
+
+export type MedicationLogStatus = "taken" | "missed";
+
+export interface MedicationLog {
+  userId: string;
+  dateMedicationId: string;
+  date: string;
+  medicationId: string;
+  status: MedicationLogStatus;
+  createdAt: string;
+  updatedAt: string;
+}

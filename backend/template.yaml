@@ -136,6 +136,46 @@ Resources:
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
 
+  MedicationsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "LifeOs-Medications-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: medicationId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: medicationId
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  MedicationLogsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "LifeOs-MedicationLogs-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: dateMedicationId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: dateMedicationId
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
   ########################
   # API Gateway (HTTP API) + Cognito JWT authorizer
   ########################
@@ -146,7 +186,7 @@ Resources:
       CorsConfiguration:
         AllowOrigins: !Ref AllowedOrigins
         AllowHeaders: ["Content-Type", "Authorization"]
-        AllowMethods: ["GET", "POST", "PATCH", "OPTIONS"]
+        AllowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
       Auth:
         Authorizers:
           CognitoAuthorizer:
@@ -443,6 +483,154 @@ Resources:
               Authorizer: CognitoAuthorizer
 
   ########################
+  # Lambda — Medications
+  ########################
+  CreateMedicationFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-create-medication-${Environment}"
+      CodeUri: src/functions/createMedication/
+      Handler: index.handler
+      Environment:
+        Variables:
+          MEDICATIONS_TABLE_NAME: !Ref MedicationsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MedicationsTable
+      Events:
+        CreateMedication:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /medications
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  ListMedicationsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-list-medications-${Environment}"
+      CodeUri: src/functions/listMedications/
+      Handler: index.handler
+      Environment:
+        Variables:
+          MEDICATIONS_TABLE_NAME: !Ref MedicationsTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref MedicationsTable
+      Events:
+        ListMedications:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /medications
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  DeleteMedicationFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-delete-medication-${Environment}"
+      CodeUri: src/functions/deleteMedication/
+      Handler: index.handler
+      Environment:
+        Variables:
+          MEDICATIONS_TABLE_NAME: !Ref MedicationsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MedicationsTable
+      Events:
+        DeleteMedication:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /medications/{id}
+            Method: DELETE
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  UpdateMedicationLogFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-update-medication-log-${Environment}"
+      CodeUri: src/functions/updateMedicationLog/
+      Handler: index.handler
+      Environment:
+        Variables:
+          MEDICATION_LOGS_TABLE_NAME: !Ref MedicationLogsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MedicationLogsTable
+      Events:
+        UpdateMedicationLog:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /medication-logs/{date}/{medicationId}
+            Method: PATCH
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  GetMedicationLogsForDateFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-get-medication-logs-for-date-${Environment}"
+      CodeUri: src/functions/getMedicationLogsForDate/
+      Handler: index.handler
+      Environment:
+        Variables:
+          MEDICATION_LOGS_TABLE_NAME: !Ref MedicationLogsTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref MedicationLogsTable
+      Events:
+        GetMedicationLogsForDate:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /medication-logs/{date}
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  ########################
   # Lambda — Daily Schedule
   ########################
   GetScheduleFunction:
@@ -490,3 +678,7 @@ Outputs:
     Value: !Ref JournalEntriesTable
   HabitLogsTableName:
     Value: !Ref HabitLogsTable
+  MedicationsTableName:
+    Value: !Ref MedicationsTable
+  MedicationLogsTableName:
+    Value: !Ref MedicationLogsTable
