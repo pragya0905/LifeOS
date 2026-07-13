@@ -237,7 +237,7 @@ Resources:
         Variables:
           TASKS_TABLE_NAME: !Ref TasksTable
       Policies:
-        - DynamoDBCrudPolicy:
+        - DynamoDBReadPolicy:
             TableName: !Ref TasksTable
       Events:
         ListTasks:
@@ -334,7 +334,7 @@ Resources:
         Variables:
           JOURNAL_TABLE_NAME: !Ref JournalEntriesTable
       Policies:
-        - DynamoDBCrudPolicy:
+        - DynamoDBReadPolicy:
             TableName: !Ref JournalEntriesTable
       Events:
         ListJournalEntries:
@@ -395,7 +395,7 @@ Resources:
         Variables:
           HABITS_TABLE_NAME: !Ref HabitLogsTable
       Policies:
-        - DynamoDBCrudPolicy:
+        - DynamoDBReadPolicy:
             TableName: !Ref HabitLogsTable
       Events:
         GetHabitsForDate:
@@ -428,9 +428,9 @@ Resources:
           TASKS_TABLE_NAME: !Ref TasksTable
           HABITS_TABLE_NAME: !Ref HabitLogsTable
       Policies:
-        - DynamoDBCrudPolicy:
+        - DynamoDBReadPolicy:
             TableName: !Ref TasksTable
-        - DynamoDBCrudPolicy:
+        - DynamoDBReadPolicy:
             TableName: !Ref HabitLogsTable
       Events:
         GetSchedule:
