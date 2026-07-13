@@ -14,33 +14,31 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
   if (from !== undefined && !DATE_RE.test(from)) return errorResponse(400, "Invalid from date");
   if (to !== undefined && !DATE_RE.test(to)) return errorResponse(400, "Invalid to date");
 
-  const names: Record<string, string> = {};
   const values: Record<string, unknown> = { ":userId": userId };
-  let filterExpression: string | undefined;
+  let keyCondition = "userId = :userId";
+  let usesDate = true;
 
   if (from && to) {
-    names["#date"] = "date";
     values[":from"] = from;
     values[":to"] = to;
-    filterExpression = "#date BETWEEN :from AND :to";
+    keyCondition += " AND #date BETWEEN :from AND :to";
   } else if (from) {
-    names["#date"] = "date";
     values[":from"] = from;
-    filterExpression = "#date >= :from";
+    keyCondition += " AND #date >= :from";
   } else if (to) {
-    names["#date"] = "date";
     values[":to"] = to;
-    filterExpression = "#date <= :to";
+    keyCondition += " AND #date <= :to";
+  } else {
+    usesDate = false;
   }
 
   const result = await ddb.send(
     new QueryCommand({
       TableName: process.env.JOURNAL_TABLE_NAME,
-      KeyConditionExpression: "userId = :userId",
+      KeyConditionExpression: keyCondition,
       ExpressionAttributeValues: values,
-      ...(filterExpression
-        ? { FilterExpression: filterExpression, ExpressionAttributeNames: names }
-        : {}),
+      ...(usesDate ? { ExpressionAttributeNames: { "#date": "date" } } : {}),
+      ScanIndexForward: false,
     }),
   );
 

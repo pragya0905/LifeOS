@@ -19,7 +19,6 @@ export type HabitExtractionValue = "done" | "missed" | "unclear";
 
 export interface JournalEntry {
   userId: string;
-  entryId: string;
   date: string;
   text: string;
   voiceInput: boolean;

@@ -100,17 +100,16 @@ Resources:
   JournalEntriesTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub "LifeOs-JournalEntries-${Environment}"
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: userId
           AttributeType: S
-        - AttributeName: entryId
+        - AttributeName: date
           AttributeType: S
       KeySchema:
         - AttributeName: userId
           KeyType: HASH
-        - AttributeName: entryId
+        - AttributeName: date
           KeyType: RANGE
       SSESpecification:
         SSEEnabled: true
@@ -343,6 +342,42 @@ Resources:
             ApiId: !Ref HttpApi
             Path: /journal
             Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  UpdateJournalEntryFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-update-journal-entry-${Environment}"
+      CodeUri: src/functions/updateJournalEntry/
+      Handler: index.handler
+      Timeout: 30
+      Environment:
+        Variables:
+          JOURNAL_TABLE_NAME: !Ref JournalEntriesTable
+          HABITS_TABLE_NAME: !Ref HabitLogsTable
+          ANTHROPIC_API_KEY_PARAM: !Sub "/lifeos/${Environment}/anthropic-api-key"
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref JournalEntriesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref HabitLogsTable
+        - SSMParameterReadPolicy:
+            ParameterName: !Sub "lifeos/${Environment}/anthropic-api-key"
+      Events:
+        UpdateJournalEntry:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /journal/{date}
+            Method: PATCH
             Auth:
               Authorizer: CognitoAuthorizer
 

@@ -82,6 +82,18 @@ export default function Journal() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const existingEntry = entries.find((entry) => entry.date === date);
+
+  // Only one entry is allowed per day — whenever the selected date already has
+  // an entry, load it into the form so saving edits it instead of duplicating it.
+  useEffect(() => {
+    setText(existingEntry?.text ?? "");
+    setUsedVoice(false);
+    baseTextRef.current = "";
+    finalTranscriptRef.current = "";
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date, entries]);
+
   function handleToggleVoice() {
     if (listening) {
       stopListening();
@@ -99,13 +111,17 @@ export default function Journal() {
     setSaving(true);
     setError(null);
     try {
-      const entry = await request<JournalEntry>("/journal", {
-        method: "POST",
-        body: JSON.stringify({ date, text: text.trim(), voiceInput: usedVoice }),
+      const entry = await request<JournalEntry>(
+        existingEntry ? `/journal/${date}` : "/journal",
+        {
+          method: existingEntry ? "PATCH" : "POST",
+          body: JSON.stringify({ date, text: text.trim(), voiceInput: usedVoice }),
+        },
+      );
+      setEntries((prev) => {
+        const withoutDate = prev.filter((e) => e.date !== date);
+        return [entry, ...withoutDate].sort((a, b) => (a.date < b.date ? 1 : -1));
       });
-      setEntries((prev) => [entry, ...prev].sort((a, b) => (a.date < b.date ? 1 : -1)));
-      setText("");
-      setUsedVoice(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save entry");
     } finally {
@@ -132,6 +148,11 @@ export default function Journal() {
             onChange={(e) => setDate(e.target.value)}
             className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
           />
+          {existingEntry && (
+            <p className="mt-1 text-xs text-indigo-600 dark:text-indigo-400">
+              Editing the existing entry for this date — only one entry per day is allowed.
+            </p>
+          )}
         </div>
         <div>
           <div className="mb-1 flex items-center justify-between">
@@ -170,7 +191,7 @@ export default function Journal() {
           disabled={saving}
           className="self-start rounded-md bg-indigo-600 px-4 py-1.5 text-sm text-white hover:bg-indigo-500 disabled:opacity-50"
         >
-          {saving ? "Saving..." : "Save entry"}
+          {saving ? "Saving..." : existingEntry ? "Update entry" : "Save entry"}
         </button>
       </form>
 
@@ -184,7 +205,7 @@ export default function Journal() {
         <ul className="flex flex-col gap-3">
           {entries.map((entry) => (
             <li
-              key={entry.entryId}
+              key={entry.date}
               className="rounded-md border border-gray-200 p-3 dark:border-gray-700"
             >
               <p className="mb-1 flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -194,6 +215,11 @@ export default function Journal() {
                     Voice
                   </span>
                 )}
+              </p>
+              <p className="mb-1 text-xs text-gray-400 dark:text-gray-500">
+                Logged {new Date(entry.createdAt).toLocaleString()}
+                {entry.updatedAt !== entry.createdAt &&
+                  ` · edited ${new Date(entry.updatedAt).toLocaleString()}`}
               </p>
               <p className="whitespace-pre-wrap text-sm text-gray-900 dark:text-gray-100">
                 {entry.text}
