@@ -24,6 +24,12 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
   if (!title) return errorResponse(400, "title is required");
 
   const dueDate = typeof body.dueDate === "string" ? body.dueDate : undefined;
+  const dueTime = typeof body.dueTime === "string" ? body.dueTime : undefined;
+  const estimatedHours =
+    typeof body.estimatedHours === "number" && Number.isFinite(body.estimatedHours)
+      ? body.estimatedHours
+      : undefined;
+  const voiceInput = body.voiceInput === true;
   const status = VALID_STATUSES.includes(body.status as TaskStatus)
     ? (body.status as TaskStatus)
     : "todo";
@@ -37,7 +43,7 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
   // manual/default priority above rather than blocking task creation.
   if (body.suggestPriority === true) {
     try {
-      priority = await suggestTaskPriority(title, dueDate);
+      priority = await suggestTaskPriority(title, dueDate, dueTime, estimatedHours);
       prioritySource = "ai";
     } catch (err) {
       console.error("Task priority suggestion failed (falling back to manual):", err);
@@ -50,6 +56,9 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     taskId: randomUUID(),
     title,
     dueDate,
+    dueTime,
+    estimatedHours,
+    voiceInput,
     priority,
     prioritySource,
     status,

@@ -6,6 +6,9 @@ export interface Task {
   taskId: string;
   title: string;
   dueDate?: string;
+  dueTime?: string;
+  estimatedHours?: number;
+  voiceInput?: boolean;
   priority: TaskPriority;
   prioritySource: "manual" | "ai";
   status: TaskStatus;

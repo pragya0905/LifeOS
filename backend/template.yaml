@@ -301,12 +301,16 @@ Resources:
       FunctionName: !Sub "lifeos-update-task-${Environment}"
       CodeUri: src/functions/updateTask/
       Handler: index.handler
+      Timeout: 30
       Environment:
         Variables:
           TASKS_TABLE_NAME: !Ref TasksTable
+          ANTHROPIC_API_KEY_PARAM: !Sub "/lifeos/${Environment}/anthropic-api-key"
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TasksTable
+        - SSMParameterReadPolicy:
+            ParameterName: !Sub "lifeos/${Environment}/anthropic-api-key"
       Events:
         UpdateTask:
           Type: HttpApi
