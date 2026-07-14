@@ -11,6 +11,7 @@ import Journal from "./pages/Journal";
 import Medications from "./pages/Medications";
 import Logs from "./pages/Logs";
 import Cycle from "./pages/Cycle";
+import Routines from "./pages/Routines";
 
 export default function App() {
   return (
@@ -34,6 +35,7 @@ export default function App() {
             <Route path="/medications" element={<Medications />} />
             <Route path="/logs" element={<Logs />} />
             <Route path="/cycle" element={<Cycle />} />
+            <Route path="/routines" element={<Routines />} />
           </Route>
         </Routes>
       </BrowserRouter>

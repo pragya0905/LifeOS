@@ -196,6 +196,46 @@ Resources:
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
 
+  RoutineTemplatesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "LifeOs-RoutineTemplates-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: routineId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: routineId
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  RoutineLogsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "LifeOs-RoutineLogs-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: dateRoutineStep
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: dateRoutineStep
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
   ########################
   # API Gateway (HTTP API) + Cognito JWT authorizer
   ########################
@@ -774,6 +814,154 @@ Resources:
               Authorizer: CognitoAuthorizer
 
   ########################
+  # Lambda — Routines (templated daily checklists: skin care, hair care, daily routine)
+  ########################
+  CreateRoutineTemplateFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-create-routine-template-${Environment}"
+      CodeUri: src/functions/createRoutineTemplate/
+      Handler: index.handler
+      Environment:
+        Variables:
+          ROUTINE_TEMPLATES_TABLE_NAME: !Ref RoutineTemplatesTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RoutineTemplatesTable
+      Events:
+        CreateRoutineTemplate:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /routines
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  ListRoutineTemplatesFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-list-routine-templates-${Environment}"
+      CodeUri: src/functions/listRoutineTemplates/
+      Handler: index.handler
+      Environment:
+        Variables:
+          ROUTINE_TEMPLATES_TABLE_NAME: !Ref RoutineTemplatesTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref RoutineTemplatesTable
+      Events:
+        ListRoutineTemplates:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /routines
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  DeleteRoutineTemplateFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-delete-routine-template-${Environment}"
+      CodeUri: src/functions/deleteRoutineTemplate/
+      Handler: index.handler
+      Environment:
+        Variables:
+          ROUTINE_TEMPLATES_TABLE_NAME: !Ref RoutineTemplatesTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RoutineTemplatesTable
+      Events:
+        DeleteRoutineTemplate:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /routines/{id}
+            Method: DELETE
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  UpdateRoutineStepLogFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-update-routine-step-log-${Environment}"
+      CodeUri: src/functions/updateRoutineStepLog/
+      Handler: index.handler
+      Environment:
+        Variables:
+          ROUTINE_LOGS_TABLE_NAME: !Ref RoutineLogsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RoutineLogsTable
+      Events:
+        UpdateRoutineStepLog:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /routine-logs/{date}/{routineId}/{stepIndex}
+            Method: PATCH
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  GetRoutineLogsForDateFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-get-routine-logs-for-date-${Environment}"
+      CodeUri: src/functions/getRoutineLogsForDate/
+      Handler: index.handler
+      Environment:
+        Variables:
+          ROUTINE_LOGS_TABLE_NAME: !Ref RoutineLogsTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref RoutineLogsTable
+      Events:
+        GetRoutineLogsForDate:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /routine-logs/{date}
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  ########################
   # Lambda — Daily Schedule
   ########################
   GetScheduleFunction:
@@ -827,3 +1015,7 @@ Outputs:
     Value: !Ref MedicationLogsTable
   LogEntriesTableName:
     Value: !Ref LogEntriesTable
+  RoutineTemplatesTableName:
+    Value: !Ref RoutineTemplatesTable
+  RoutineLogsTableName:
+    Value: !Ref RoutineLogsTable

@@ -37,6 +37,9 @@ export default function Layout() {
             <NavLink to="/cycle" className={linkClass}>
               Cycle
             </NavLink>
+            <NavLink to="/routines" className={linkClass}>
+              Routines
+            </NavLink>
           </nav>
           <div className="flex items-center gap-3">
             <span className="text-sm text-gray-500 dark:text-gray-400">{user?.email}</span>

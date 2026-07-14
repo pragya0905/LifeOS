@@ -95,3 +95,27 @@ export interface LogEntry {
   createdAt: string;
   updatedAt: string;
 }
+
+export type RoutineCategory = "skinCare" | "hairCare" | "dailyRoutine" | "custom";
+
+export interface RoutineTemplate {
+  userId: string;
+  routineId: string;
+  category: RoutineCategory;
+  name: string;
+  steps: string[];
+  createdAt: string;
+}
+
+export type RoutineStepStatus = "done" | "skipped";
+
+export interface RoutineStepLog {
+  userId: string;
+  dateRoutineStep: string;
+  date: string;
+  routineId: string;
+  stepIndex: number;
+  status: RoutineStepStatus;
+  createdAt: string;
+  updatedAt: string;
+}
