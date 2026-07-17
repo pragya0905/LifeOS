@@ -12,6 +12,7 @@ import Medications from "./pages/Medications";
 import Logs from "./pages/Logs";
 import Cycle from "./pages/Cycle";
 import Routines from "./pages/Routines";
+import Insights from "./pages/Insights";
 
 export default function App() {
   return (
@@ -36,6 +37,7 @@ export default function App() {
             <Route path="/logs" element={<Logs />} />
             <Route path="/cycle" element={<Cycle />} />
             <Route path="/routines" element={<Routines />} />
+            <Route path="/insights" element={<Insights />} />
           </Route>
         </Routes>
       </BrowserRouter>

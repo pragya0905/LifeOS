@@ -1026,6 +1026,60 @@ Resources:
             Auth:
               Authorizer: CognitoAuthorizer
 
+  ########################
+  # Lambda — AI Insights (on-demand daily/weekly summary)
+  ########################
+  GetInsightsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-get-insights-${Environment}"
+      CodeUri: src/functions/getInsights/
+      Handler: index.handler
+      Timeout: 30
+      Environment:
+        Variables:
+          HABITS_TABLE_NAME: !Ref HabitLogsTable
+          MEDICATION_LOGS_TABLE_NAME: !Ref MedicationLogsTable
+          ROUTINE_LOGS_TABLE_NAME: !Ref RoutineLogsTable
+          LOG_ENTRIES_TABLE_NAME: !Ref LogEntriesTable
+          MEDICATIONS_TABLE_NAME: !Ref MedicationsTable
+          ROUTINE_TEMPLATES_TABLE_NAME: !Ref RoutineTemplatesTable
+          TASKS_TABLE_NAME: !Ref TasksTable
+          ANTHROPIC_API_KEY_PARAM: !Sub "/lifeos/${Environment}/anthropic-api-key"
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref HabitLogsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref MedicationLogsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref RoutineLogsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref LogEntriesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref MedicationsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref RoutineTemplatesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref TasksTable
+        - SSMParameterReadPolicy:
+            ParameterName: !Sub "lifeos/${Environment}/anthropic-api-key"
+      Events:
+        GetInsights:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /insights
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
 Outputs:
   UserPoolId:
     Value: !Ref LifeOsUserPool

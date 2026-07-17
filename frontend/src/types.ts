@@ -134,3 +134,9 @@ export interface RoutineStepLog {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface Insights {
+  summary: string;
+  highlights: string[];
+  suggestions: string[];
+}

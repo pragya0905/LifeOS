@@ -76,6 +76,23 @@ function buildJournalSystemPrompt(
   return lines.join("\n");
 }
 
+const InsightsSchema = z.object({
+  summary: z.string(),
+  highlights: z.array(z.string()),
+  suggestions: z.array(z.string()),
+});
+
+export type Insights = z.infer<typeof InsightsSchema>;
+
+const INSIGHTS_SYSTEM_PROMPT =
+  "You are a warm, encouraging wellness coach reviewing someone's personal tracking data " +
+  "(habits, medications, routines, food, sleep, mood, tasks, etc.) for a given period. Write: " +
+  "a short natural-language summary (2-4 sentences) of the period; 2-4 highlights, each a " +
+  "specific, concrete fact (e.g. 'consistent with water 6 of 7 days', 'skipped exercise 3 " +
+  "days this week'); and 2-3 actionable, specific, kind suggestions for improvement. Be " +
+  "encouraging, never judgmental. If there is very little data, say so honestly in the " +
+  "summary rather than inventing detail.";
+
 const TaskPrioritySchema = z.object({
   priority: z.enum(["Low", "Medium", "High"]),
 });
@@ -122,6 +139,24 @@ export async function extractJournalInfo(
     system: buildJournalSystemPrompt(activeMedicationNames, activeRoutineSteps),
     messages: [{ role: "user", content: text }],
     output_config: { format: zodOutputFormat(JournalExtractionSchema) },
+  });
+
+  if (!response.parsed_output) {
+    throw new Error("Claude did not return parsed structured output");
+  }
+  return response.parsed_output;
+}
+
+export async function generateInsights(period: "day" | "week", context: string): Promise<Insights> {
+  const client = await getClient();
+  const response = await client.messages.parse({
+    model: "claude-haiku-4-5",
+    max_tokens: 1024,
+    system: INSIGHTS_SYSTEM_PROMPT,
+    messages: [
+      { role: "user", content: `${period === "day" ? "Daily" : "Weekly"} review:\n${context}` },
+    ],
+    output_config: { format: zodOutputFormat(InsightsSchema) },
   });
 
   if (!response.parsed_output) {
