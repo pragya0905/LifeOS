@@ -1,6 +1,22 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useApi } from "../api/useApi";
 import type { Medication, MedicationLog, MedicationLogStatus } from "../types";
+import {
+  card,
+  errorText,
+  input,
+  label,
+  mutedText,
+  page,
+  pageTitle,
+  pillButton,
+  pillButtonDone,
+  pillButtonInactive,
+  pillButtonMissed,
+  primaryButton,
+  secondaryButton,
+  sectionLabel,
+} from "../components/ui";
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -105,40 +121,31 @@ export default function Medications() {
   );
 
   return (
-    <div className="mx-auto mt-8 w-full max-w-2xl px-4">
-      <h1 className="mb-4 text-2xl font-semibold text-gray-900 dark:text-gray-100">Medications</h1>
+    <div className={page}>
+      <h1 className={pageTitle}>Medications</h1>
 
-      <form
-        onSubmit={handleAdd}
-        className="mb-8 flex flex-col gap-3 rounded-md border border-gray-200 p-4 dark:border-gray-700"
-      >
+      <form onSubmit={handleAdd} className={`mb-8 flex flex-col gap-3 ${card}`}>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-            Name
-          </label>
+          <label className={label}>Name</label>
           <input
             type="text"
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Amoxicillin"
-            className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            className={`w-full ${input}`}
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-            Duration
-          </label>
+          <label className={label}>Duration</label>
           <div className="flex items-center gap-2">
             {DURATION_PRESETS.map((preset) => (
               <button
                 key={preset}
                 type="button"
                 onClick={() => setDurationDays(preset)}
-                className={`rounded-full border px-3 py-1 text-xs font-medium ${
-                  durationDays === preset
-                    ? "border-indigo-600 bg-indigo-600 text-white"
-                    : "border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
+                className={`${pillButton} px-3 py-1 ${
+                  durationDays === preset ? pillButtonDone : pillButtonInactive
                 }`}
               >
                 {preset} days
@@ -149,41 +156,32 @@ export default function Medications() {
               min={1}
               value={durationDays}
               onChange={(e) => setDurationDays(Number(e.target.value))}
-              className="w-20 rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+              className={`w-20 py-1 ${input}`}
             />
-            <span className="text-xs text-gray-500 dark:text-gray-400">days</span>
+            <span className={mutedText}>days</span>
           </div>
         </div>
-        <button
-          type="submit"
-          disabled={saving}
-          className="self-start rounded-md bg-indigo-600 px-4 py-1.5 text-sm text-white hover:bg-indigo-500 disabled:opacity-50"
-        >
+        <button type="submit" disabled={saving} className={`self-start ${primaryButton}`}>
           {saving ? "Adding..." : "Add medication"}
         </button>
       </form>
 
-      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      {error && <p className={`mb-4 ${errorText}`}>{error}</p>}
 
       {loading ? (
-        <p className="text-sm text-gray-500">Loading...</p>
+        <p className={mutedText}>Loading...</p>
       ) : (
         <>
-          <h2 className="mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">
-            Today ({today()})
-          </h2>
+          <h2 className={`mb-2 ${sectionLabel}`}>Today ({today()})</h2>
           {activeMedications.length === 0 ? (
-            <p className="mb-6 text-sm text-gray-500">No active medications today.</p>
+            <p className={`mb-6 ${mutedText}`}>No active medications today.</p>
           ) : (
             <ul className="mb-6 flex flex-col gap-2">
               {activeMedications.map((medication) => {
                 const status = logStatuses[medication.medicationId];
                 return (
-                  <li
-                    key={medication.medicationId}
-                    className="flex items-center justify-between gap-3 rounded-md border border-gray-200 p-3 dark:border-gray-700"
-                  >
-                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                  <li key={medication.medicationId} className={`flex items-center justify-between gap-3 ${card}`}>
+                    <span className="text-sm font-medium text-ink dark:text-cream">
                       {medication.name}
                     </span>
                     <div className="flex gap-1.5">
@@ -191,10 +189,8 @@ export default function Medications() {
                         type="button"
                         disabled={pending === medication.medicationId}
                         onClick={() => setLogStatus(medication.medicationId, "taken")}
-                        className={`rounded-full border px-3 py-1 text-xs font-medium disabled:opacity-50 ${
-                          status === "taken"
-                            ? "border-green-600 bg-green-600 text-white"
-                            : "border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
+                        className={`${pillButton} px-3 py-1 ${
+                          status === "taken" ? pillButtonDone : pillButtonInactive
                         }`}
                       >
                         Taken
@@ -203,10 +199,8 @@ export default function Medications() {
                         type="button"
                         disabled={pending === medication.medicationId}
                         onClick={() => setLogStatus(medication.medicationId, "missed")}
-                        className={`rounded-full border px-3 py-1 text-xs font-medium disabled:opacity-50 ${
-                          status === "missed"
-                            ? "border-red-600 bg-red-600 text-white"
-                            : "border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
+                        className={`${pillButton} px-3 py-1 ${
+                          status === "missed" ? pillButtonMissed : pillButtonInactive
                         }`}
                       >
                         Missed
@@ -218,23 +212,16 @@ export default function Medications() {
             </ul>
           )}
 
-          <h2 className="mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">
-            All medications
-          </h2>
+          <h2 className={`mb-2 ${sectionLabel}`}>All medications</h2>
           {medications.length === 0 ? (
-            <p className="text-sm text-gray-500">No medications added yet.</p>
+            <p className={mutedText}>No medications added yet.</p>
           ) : (
             <ul className="flex flex-col gap-2">
               {medications.map((medication) => (
-                <li
-                  key={medication.medicationId}
-                  className="flex items-center justify-between gap-3 rounded-md border border-gray-200 p-3 dark:border-gray-700"
-                >
+                <li key={medication.medicationId} className={`flex items-center justify-between gap-3 ${card}`}>
                   <div>
-                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                      {medication.name}
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                    <p className="text-sm font-medium text-ink dark:text-cream">{medication.name}</p>
+                    <p className="text-xs text-ink-muted dark:text-fog-muted">
                       {medication.startDate} → {medication.endDate} ({medication.durationDays} days)
                     </p>
                   </div>
@@ -242,7 +229,7 @@ export default function Medications() {
                     type="button"
                     disabled={pending === medication.medicationId}
                     onClick={() => handleDelete(medication.medicationId)}
-                    className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
+                    className={`${secondaryButton} px-3 py-1.5 text-xs`}
                   >
                     Delete
                   </button>

@@ -2,6 +2,19 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useApi } from "../api/useApi";
 import { useSpeechToText } from "../hooks/useSpeechToText";
 import type { JournalEntry } from "../types";
+import {
+  badge,
+  card,
+  errorText,
+  input,
+  label,
+  mutedText,
+  page,
+  pageTitle,
+  pillButton,
+  pillButtonInactive,
+  primaryButton,
+} from "../components/ui";
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -124,49 +137,42 @@ export default function Journal() {
   }
 
   return (
-    <div className="mx-auto mt-8 w-full max-w-2xl px-4">
-      <h1 className="mb-4 text-2xl font-semibold text-gray-900 dark:text-gray-100">Journal</h1>
+    <div className={page}>
+      <h1 className={pageTitle}>Journal</h1>
 
-      <form
-        onSubmit={handleSave}
-        className="mb-8 flex flex-col gap-3 rounded-md border border-gray-200 p-4 dark:border-gray-700"
-      >
+      <form onSubmit={handleSave} className={`mb-8 flex flex-col gap-3 ${card}`}>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-            Date
-          </label>
+          <label className={label}>Date</label>
           <input
             type="date"
             required
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            className={input}
           />
           {existingEntry && (
-            <p className="mt-1 text-xs text-indigo-600 dark:text-indigo-400">
+            <p className="mt-1 text-xs text-sage">
               Editing the existing entry for this date — only one entry per day is allowed.
             </p>
           )}
         </div>
         <div>
           <div className="mb-1 flex items-center justify-between">
-            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
-              Entry
-            </label>
+            <label className={label}>Entry</label>
             {voiceSupported ? (
               <button
                 type="button"
                 onClick={handleToggleVoice}
-                className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                className={`${pillButton} px-3 py-1 ${
                   listening
-                    ? "border-red-600 bg-red-600 text-white"
-                    : "border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
+                    ? "border-terracotta bg-terracotta text-cream-card"
+                    : pillButtonInactive
                 }`}
               >
                 {listening ? "Stop listening" : "Voice input"}
               </button>
             ) : (
-              <span className="text-xs text-gray-400">Voice input not supported in this browser</span>
+              <span className="text-xs text-fog-muted">Voice input not supported in this browser</span>
             )}
           </div>
           <textarea
@@ -175,53 +181,38 @@ export default function Journal() {
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="How did today go?"
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            className={`w-full ${input}`}
           />
-          {listening && <p className="mt-1 text-xs text-red-600">Listening...</p>}
-          {voiceError && <p className="mt-1 text-xs text-red-600">{voiceError}</p>}
+          {listening && <p className="mt-1 text-xs text-terracotta">Listening...</p>}
+          {voiceError && <p className={`mt-1 text-xs ${errorText}`}>{voiceError}</p>}
         </div>
-        <button
-          type="submit"
-          disabled={saving}
-          className="self-start rounded-md bg-indigo-600 px-4 py-1.5 text-sm text-white hover:bg-indigo-500 disabled:opacity-50"
-        >
+        <button type="submit" disabled={saving} className={`self-start ${primaryButton}`}>
           {saving ? "Saving..." : existingEntry ? "Update entry" : "Save entry"}
         </button>
       </form>
 
-      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      {error && <p className={`mb-4 ${errorText}`}>{error}</p>}
 
       {loading ? (
-        <p className="text-sm text-gray-500">Loading entries...</p>
+        <p className={mutedText}>Loading entries...</p>
       ) : entries.length === 0 ? (
-        <p className="text-sm text-gray-500">No journal entries yet.</p>
+        <p className={mutedText}>No journal entries yet.</p>
       ) : (
         <ul className="flex flex-col gap-3">
           {entries.map((entry) => (
-            <li
-              key={entry.date}
-              className="rounded-md border border-gray-200 p-3 dark:border-gray-700"
-            >
-              <p className="mb-1 flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+            <li key={entry.date} className={card}>
+              <p className="mb-1 flex items-center gap-2 text-xs font-medium text-ink-muted dark:text-fog-muted">
                 {entry.date}
-                {entry.voiceInput && (
-                  <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
-                    Voice
-                  </span>
-                )}
+                {entry.voiceInput && <span className={badge}>Voice</span>}
               </p>
-              <p className="mb-1 text-xs text-gray-400 dark:text-gray-500">
+              <p className="mb-1 text-xs text-fog-muted">
                 Logged {new Date(entry.createdAt).toLocaleString()}
                 {entry.updatedAt !== entry.createdAt &&
                   ` · edited ${new Date(entry.updatedAt).toLocaleString()}`}
               </p>
-              <p className="whitespace-pre-wrap text-sm text-gray-900 dark:text-gray-100">
-                {entry.text}
-              </p>
+              <p className="whitespace-pre-wrap text-sm text-ink dark:text-cream">{entry.text}</p>
               {formatDetection(entry.aiExtracted) && (
-                <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-400">
-                  {formatDetection(entry.aiExtracted)}
-                </p>
+                <p className="mt-1 text-xs text-sage">{formatDetection(entry.aiExtracted)}</p>
               )}
             </li>
           ))}

@@ -2,14 +2,28 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useApi } from "../api/useApi";
 import { useSpeechToText } from "../hooks/useSpeechToText";
 import type { Task, TaskPriority, TaskStatus } from "../types";
+import {
+  badge,
+  card,
+  errorText,
+  input,
+  label,
+  mutedText,
+  page,
+  pageTitle,
+  pillButton,
+  pillButtonInactive,
+  primaryButton,
+  secondaryButton,
+} from "../components/ui";
 
 const PRIORITIES: TaskPriority[] = ["Low", "Medium", "High"];
 const STATUSES: TaskStatus[] = ["todo", "in_progress", "done"];
 
 const PRIORITY_BADGE: Record<TaskPriority, string> = {
-  Low: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
-  Medium: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
-  High: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+  Low: "bg-stone text-ink-muted dark:bg-stone-dark dark:text-fog-muted",
+  Medium: "bg-[#F0E4C8] text-[#8A6A22] dark:bg-[#4A3D1E] dark:text-[#E3C878]",
+  High: "bg-terracotta-soft text-terracotta dark:bg-terracotta-soft-dark dark:text-[#D89478]",
 };
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
@@ -170,27 +184,25 @@ export default function Tasks() {
     setEditingTaskId(null);
   }
 
-  return (
-    <div className="mx-auto mt-8 w-full max-w-2xl px-4">
-      <h1 className="mb-4 text-2xl font-semibold text-gray-900 dark:text-gray-100">Tasks</h1>
+  const selectClass =
+    "rounded-xl border border-stone bg-cream-card px-2 py-1 text-xs text-ink focus:border-sage focus:outline-none dark:border-stone-dark dark:bg-charcoal-card dark:text-cream";
 
-      <form
-        onSubmit={handleCreate}
-        className="mb-8 flex flex-wrap items-end gap-3 rounded-md border border-gray-200 p-4 dark:border-gray-700"
-      >
+  return (
+    <div className={page}>
+      <h1 className={pageTitle}>Tasks</h1>
+
+      <form onSubmit={handleCreate} className={`mb-8 flex flex-wrap items-end gap-3 ${card}`}>
         <div className="min-w-[200px] flex-1">
           <div className="mb-1 flex items-center justify-between">
-            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
-              Title
-            </label>
+            <label className={label}>Title</label>
             {voiceSupported && (
               <button
                 type="button"
                 onClick={handleToggleVoice}
-                className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
+                className={`${pillButton} ${
                   listening
-                    ? "border-red-600 bg-red-600 text-white"
-                    : "border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
+                    ? "border-terracotta bg-terracotta text-cream-card"
+                    : pillButtonInactive
                 }`}
               >
                 {listening ? "Stop" : "Voice input"}
@@ -202,65 +214,55 @@ export default function Tasks() {
             required
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            className={`w-full ${input}`}
           />
-          {voiceError && <p className="mt-1 text-xs text-red-600">{voiceError}</p>}
+          {voiceError && <p className={`mt-1 text-xs ${errorText}`}>{voiceError}</p>}
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-            Due date
-          </label>
+          <label className={label}>Due date</label>
           <input
             type="date"
             value={dueDate}
             onChange={(e) => setDueDate(e.target.value)}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            className={input}
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-            Due time
-          </label>
+          <label className={label}>Due time</label>
           <input
             type="time"
             value={dueTime}
             onChange={(e) => setDueTime(e.target.value)}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            className={input}
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-            Est. hours
-          </label>
+          <label className={label}>Est. hours</label>
           <input
             type="number"
             min={0}
             step="0.5"
             value={estimatedHours}
             onChange={(e) => setEstimatedHours(e.target.value)}
-            className="w-20 rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            className={`w-20 ${input}`}
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-            Schedule time
-          </label>
+          <label className={label}>Schedule time</label>
           <input
             type="time"
             value={scheduleTime}
             onChange={(e) => setScheduleTime(e.target.value)}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            className={input}
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-            Priority
-          </label>
+          <label className={label}>Priority</label>
           <select
             value={priority}
             disabled={suggestPriority}
             onChange={(e) => setPriority(e.target.value as TaskPriority)}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            className={`${input} disabled:opacity-50`}
           >
             {PRIORITIES.map((p) => (
               <option key={p} value={p}>
@@ -269,47 +271,40 @@ export default function Tasks() {
             ))}
           </select>
         </div>
-        <label className="flex items-center gap-1.5 pb-1.5 text-xs font-medium text-gray-600 dark:text-gray-400">
+        <label className={`flex items-center gap-1.5 pb-2 ${label}`}>
           <input
             type="checkbox"
             checked={suggestPriority}
             onChange={(e) => setSuggestPriority(e.target.checked)}
-            className="rounded border-gray-300 dark:border-gray-600"
+            className="rounded border-stone text-sage focus:ring-sage dark:border-stone-dark"
           />
           Suggest with AI
         </label>
-        <button
-          type="submit"
-          disabled={creating}
-          className="rounded-md bg-indigo-600 px-4 py-1.5 text-sm text-white hover:bg-indigo-500 disabled:opacity-50"
-        >
+        <button type="submit" disabled={creating} className={primaryButton}>
           {creating ? "Adding..." : "Add task"}
         </button>
       </form>
 
-      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      {error && <p className={`mb-4 ${errorText}`}>{error}</p>}
 
       {loading ? (
-        <p className="text-sm text-gray-500">Loading tasks...</p>
+        <p className={mutedText}>Loading tasks...</p>
       ) : tasks.length === 0 ? (
-        <p className="text-sm text-gray-500">No tasks yet — add one above.</p>
+        <p className={mutedText}>No tasks yet — add one above.</p>
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-3">
           {tasks.map((task) => (
-            <li
-              key={task.taskId}
-              className="flex flex-col gap-3 rounded-md border border-gray-200 p-3 dark:border-gray-700"
-            >
+            <li key={task.taskId} className={`flex flex-col gap-3 ${card}`}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p
-                    className={`font-medium text-gray-900 dark:text-gray-100 ${
+                    className={`font-medium text-ink dark:text-cream ${
                       task.status === "done" ? "line-through opacity-60" : ""
                     }`}
                   >
                     {task.title}
                   </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                  <p className="text-xs text-ink-muted dark:text-fog-muted">
                     {task.dueDate ?? "No due date"}
                     {task.dueTime ? ` ${task.dueTime}` : ""}
                     {task.estimatedHours !== undefined ? ` · ~${task.estimatedHours}h` : ""}
@@ -323,17 +318,13 @@ export default function Tasks() {
                   >
                     {task.priority}
                   </span>
-                  {task.prioritySource === "ai" && (
-                    <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
-                      AI
-                    </span>
-                  )}
+                  {task.prioritySource === "ai" && <span className={badge}>AI</span>}
                   <select
                     value={task.priority}
                     onChange={(e) =>
                       updateTask(task.taskId, { priority: e.target.value as TaskPriority })
                     }
-                    className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                    className={selectClass}
                   >
                     {PRIORITIES.map((p) => (
                       <option key={p} value={p}>
@@ -346,7 +337,7 @@ export default function Tasks() {
                     onChange={(e) =>
                       updateTask(task.taskId, { status: e.target.value as TaskStatus })
                     }
-                    className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                    className={selectClass}
                   >
                     {STATUSES.map((s) => (
                       <option key={s} value={s}>
@@ -359,7 +350,7 @@ export default function Tasks() {
                     onClick={() =>
                       editingTaskId === task.taskId ? setEditingTaskId(null) : startEdit(task)
                     }
-                    className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
+                    className={`${secondaryButton} px-2 py-1 text-xs`}
                   >
                     {editingTaskId === task.taskId ? "Cancel" : "Edit"}
                   </button>
@@ -367,48 +358,42 @@ export default function Tasks() {
               </div>
 
               {editingTaskId === task.taskId && (
-                <div className="flex flex-wrap items-end gap-3 border-t border-gray-100 pt-3 dark:border-gray-800">
+                <div className="flex flex-wrap items-end gap-3 border-t border-stone/60 pt-3 dark:border-stone-dark/60">
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                      Due date
-                    </label>
+                    <label className={label}>Due date</label>
                     <input
                       type="date"
                       value={editDueDate}
                       onChange={(e) => setEditDueDate(e.target.value)}
-                      className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                      className={input}
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                      Due time
-                    </label>
+                    <label className={label}>Due time</label>
                     <input
                       type="time"
                       value={editDueTime}
                       onChange={(e) => setEditDueTime(e.target.value)}
-                      className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                      className={input}
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                      Est. hours
-                    </label>
+                    <label className={label}>Est. hours</label>
                     <input
                       type="number"
                       min={0}
                       step="0.5"
                       value={editEstimatedHours}
                       onChange={(e) => setEditEstimatedHours(e.target.value)}
-                      className="w-20 rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                      className={`w-20 ${input}`}
                     />
                   </div>
-                  <label className="flex items-center gap-1.5 pb-1.5 text-xs font-medium text-gray-600 dark:text-gray-400">
+                  <label className={`flex items-center gap-1.5 pb-2 ${label}`}>
                     <input
                       type="checkbox"
                       checked={editSuggestPriority}
                       onChange={(e) => setEditSuggestPriority(e.target.checked)}
-                      className="rounded border-gray-300 dark:border-gray-600"
+                      className="rounded border-stone text-sage focus:ring-sage dark:border-stone-dark"
                     />
                     Re-suggest priority with AI
                   </label>
@@ -416,7 +401,7 @@ export default function Tasks() {
                     type="button"
                     disabled={savingEdit}
                     onClick={() => saveEdit(task.taskId)}
-                    className="rounded-md bg-indigo-600 px-4 py-1.5 text-sm text-white hover:bg-indigo-500 disabled:opacity-50"
+                    className={primaryButton}
                   >
                     {savingEdit ? "Saving..." : "Save"}
                   </button>

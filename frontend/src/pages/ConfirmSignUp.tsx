@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { errorText, input, label, mutedText, primaryButton } from "../components/ui";
 
 export default function ConfirmSignUp() {
   const { confirmSignUp, resendConfirmationCode } = useAuth();
@@ -40,58 +41,44 @@ export default function ConfirmSignUp() {
   }
 
   return (
-    <div className="mx-auto mt-16 w-full max-w-sm px-4">
-      <h1 className="mb-2 text-2xl font-semibold text-gray-900 dark:text-gray-100">
+    <div className="mx-auto mt-20 w-full max-w-sm px-4">
+      <h1 className="font-display mb-2 text-3xl font-medium text-ink dark:text-cream">
         Verify your email
       </h1>
-      <p className="mb-6 text-sm text-gray-600 dark:text-gray-400">
-        Enter the 6-digit code we sent to your email address.
-      </p>
+      <p className={`mb-8 ${mutedText}`}>Enter the 6-digit code we sent to your email address.</p>
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Email
-          </label>
+          <label className={label}>Email</label>
           <input
             type="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            className={`w-full ${input}`}
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Verification code
-          </label>
+          <label className={label}>Verification code</label>
           <input
             type="text"
             inputMode="numeric"
             required
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            className={`w-full ${input}`}
           />
         </div>
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        {info && <p className="text-sm text-green-600">{info}</p>}
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-md bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-500 disabled:opacity-50"
-        >
+        {error && <p className={errorText}>{error}</p>}
+        {info && <p className="text-sm text-sage">{info}</p>}
+        <button type="submit" disabled={submitting} className={`w-full ${primaryButton}`}>
           {submitting ? "Verifying..." : "Verify"}
         </button>
-        <button
-          type="button"
-          onClick={handleResend}
-          className="text-sm text-indigo-600 hover:underline"
-        >
+        <button type="button" onClick={handleResend} className="text-sm text-sage hover:underline">
           Resend code
         </button>
       </form>
-      <p className="mt-4 text-sm text-gray-600 dark:text-gray-400">
-        <Link to="/login" className="text-indigo-600 hover:underline">
+      <p className="mt-6 text-sm text-ink-muted dark:text-fog-muted">
+        <Link to="/login" className="text-sage hover:underline">
           Back to login
         </Link>
       </p>

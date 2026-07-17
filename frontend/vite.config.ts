@@ -23,8 +23,8 @@ export default defineConfig({
         description: 'Personal life-tracking app — tasks, journal, and habits.',
         start_url: '/',
         display: 'standalone',
-        background_color: '#ffffff',
-        theme_color: '#4f46e5',
+        background_color: '#f7f3ec',
+        theme_color: '#6b7a5e',
         icons: [
           {
             src: '/icons/icon-192.png',

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useApi } from "../api/useApi";
 import type { HabitLog, HabitType, HabitUnit } from "../types";
+import { card, errorText, input, mutedText, secondaryButton, sectionLabel } from "./ui";
 
 const HABITS: { type: HabitType; label: string; unit: HabitUnit }[] = [
   { type: "water", label: "Water", unit: "ml" },
@@ -68,21 +69,19 @@ export default function HabitTracker() {
   }
 
   return (
-    <div className="rounded-md border border-gray-200 p-4 dark:border-gray-700">
-      <h2 className="mb-3 text-sm font-medium text-gray-500 dark:text-gray-400">
-        Today's habits ({date})
-      </h2>
-      {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
+    <div className={card}>
+      <h2 className={`mb-3 ${sectionLabel}`}>Today's habits ({date})</h2>
+      {error && <p className={`mb-2 ${errorText}`}>{error}</p>}
       {loading ? (
-        <p className="text-sm text-gray-500">Loading...</p>
+        <p className={mutedText}>Loading...</p>
       ) : (
         <ul className="flex flex-col gap-3">
-          {HABITS.map(({ type, label, unit }) => (
+          {HABITS.map(({ type, label: habitLabel, unit }) => (
             <li key={type} className="flex items-center justify-between gap-3">
-              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                {label}
+              <span className="text-sm font-medium text-ink dark:text-cream">
+                {habitLabel}
                 {values[type] !== undefined && (
-                  <span className="ml-2 font-normal text-gray-500 dark:text-gray-400">
+                  <span className="ml-2 font-normal text-ink-muted dark:text-fog-muted">
                     ({values[type]} {unit})
                   </span>
                 )}
@@ -94,13 +93,13 @@ export default function HabitTracker() {
                   placeholder={unit}
                   value={drafts[type] ?? ""}
                   onChange={(e) => setDrafts((prev) => ({ ...prev, [type]: e.target.value }))}
-                  className="w-20 rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                  className={`w-20 py-1 ${input}`}
                 />
                 <button
                   type="button"
                   disabled={pending === type}
                   onClick={() => saveHabit(type)}
-                  className="rounded-full border border-gray-300 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
+                  className={`${secondaryButton} px-3 py-1 text-xs`}
                 >
                   {pending === type ? "Saving..." : "Save"}
                 </button>

@@ -1,6 +1,20 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useApi } from "../api/useApi";
 import type { RoutineCategory, RoutineStepLog, RoutineTemplate } from "../types";
+import {
+  card,
+  errorText,
+  input,
+  label,
+  mutedText,
+  page,
+  pageTitle,
+  pillButton,
+  pillButtonInactive,
+  primaryButton,
+  secondaryButton,
+  sectionLabel,
+} from "../components/ui";
 
 const CATEGORY_LABEL: Record<RoutineCategory, string> = {
   skinCare: "Skin care",
@@ -10,6 +24,9 @@ const CATEGORY_LABEL: Record<RoutineCategory, string> = {
 };
 
 const CATEGORIES = Object.keys(CATEGORY_LABEL) as RoutineCategory[];
+
+const pillButtonDone = "border-sage bg-sage text-cream-card";
+const pillButtonSkipped = "border-fog-muted bg-fog-muted text-cream-card";
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -114,22 +131,17 @@ export default function Routines() {
   }
 
   return (
-    <div className="mx-auto mt-8 w-full max-w-2xl px-4">
-      <h1 className="mb-4 text-2xl font-semibold text-gray-900 dark:text-gray-100">Routines</h1>
+    <div className={page}>
+      <h1 className={pageTitle}>Routines</h1>
 
-      <form
-        onSubmit={handleAdd}
-        className="mb-8 flex flex-col gap-3 rounded-md border border-gray-200 p-4 dark:border-gray-700"
-      >
+      <form onSubmit={handleAdd} className={`mb-8 flex flex-col gap-3 ${card}`}>
         <div className="flex flex-wrap gap-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-              Category
-            </label>
+            <label className={label}>Category</label>
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value as RoutineCategory)}
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+              className={input}
             >
               {CATEGORIES.map((c) => (
                 <option key={c} value={c}>
@@ -139,63 +151,50 @@ export default function Routines() {
             </select>
           </div>
           <div className="min-w-[200px] flex-1">
-            <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-              Name
-            </label>
+            <label className={label}>Name</label>
             <input
               type="text"
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Morning skin care"
-              className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+              className={`w-full ${input}`}
             />
           </div>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-            Steps (one per line)
-          </label>
+          <label className={label}>Steps (one per line)</label>
           <textarea
             required
             rows={4}
             value={stepsText}
             onChange={(e) => setStepsText(e.target.value)}
             placeholder={"Cleanser\nToner\nMoisturizer"}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            className={`w-full ${input}`}
           />
         </div>
-        <button
-          type="submit"
-          disabled={saving}
-          className="self-start rounded-md bg-indigo-600 px-4 py-1.5 text-sm text-white hover:bg-indigo-500 disabled:opacity-50"
-        >
+        <button type="submit" disabled={saving} className={`self-start ${primaryButton}`}>
           {saving ? "Adding..." : "Add routine"}
         </button>
       </form>
 
-      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      {error && <p className={`mb-4 ${errorText}`}>{error}</p>}
 
       {loading ? (
-        <p className="text-sm text-gray-500">Loading...</p>
+        <p className={mutedText}>Loading...</p>
       ) : (
         <>
-          <h2 className="mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">
-            Today's checklist ({today()})
-          </h2>
+          <h2 className={`mb-2 ${sectionLabel}`}>Today's checklist ({today()})</h2>
           {routines.length === 0 ? (
-            <p className="mb-6 text-sm text-gray-500">No routines yet — add one above.</p>
+            <p className={`mb-6 ${mutedText}`}>No routines yet — add one above.</p>
           ) : (
             <ul className="mb-6 flex flex-col gap-3">
               {routines.map((routine) => (
-                <li
-                  key={routine.routineId}
-                  className="rounded-md border border-gray-200 p-3 dark:border-gray-700"
-                >
+                <li key={routine.routineId} className={card}>
                   <div className="mb-2 flex items-center justify-between">
-                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                    <p className="text-sm font-medium text-ink dark:text-cream">
                       {routine.name}{" "}
-                      <span className="font-normal text-gray-500 dark:text-gray-400">
+                      <span className="font-normal text-ink-muted dark:text-fog-muted">
                         ({CATEGORY_LABEL[routine.category]})
                       </span>
                     </p>
@@ -203,7 +202,7 @@ export default function Routines() {
                       type="button"
                       disabled={pending === routine.routineId}
                       onClick={() => handleDelete(routine.routineId)}
-                      className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
+                      className={`${secondaryButton} px-2 py-1 text-xs`}
                     >
                       Delete
                     </button>
@@ -214,16 +213,14 @@ export default function Routines() {
                       const status = stepStatuses[key];
                       return (
                         <li key={key} className="flex items-center justify-between gap-3">
-                          <span className="text-sm text-gray-700 dark:text-gray-300">{step}</span>
+                          <span className="text-sm text-ink-muted dark:text-fog-muted">{step}</span>
                           <div className="flex gap-1.5">
                             <button
                               type="button"
                               disabled={pending === key}
                               onClick={() => setStepStatus(routine.routineId, index, "done")}
-                              className={`rounded-full border px-2.5 py-0.5 text-xs font-medium disabled:opacity-50 ${
-                                status === "done"
-                                  ? "border-green-600 bg-green-600 text-white"
-                                  : "border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
+                              className={`${pillButton} px-2.5 py-0.5 ${
+                                status === "done" ? pillButtonDone : pillButtonInactive
                               }`}
                             >
                               Done
@@ -232,10 +229,8 @@ export default function Routines() {
                               type="button"
                               disabled={pending === key}
                               onClick={() => setStepStatus(routine.routineId, index, "skipped")}
-                              className={`rounded-full border px-2.5 py-0.5 text-xs font-medium disabled:opacity-50 ${
-                                status === "skipped"
-                                  ? "border-gray-500 bg-gray-500 text-white"
-                                  : "border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
+                              className={`${pillButton} px-2.5 py-0.5 ${
+                                status === "skipped" ? pillButtonSkipped : pillButtonInactive
                               }`}
                             >
                               Skipped

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useInstallPrompt } from "../hooks/useInstallPrompt";
+import { card, mutedText, primaryButton, secondaryButton, sectionLabel } from "./ui";
 
 type PermissionState = NotificationPermission | "unsupported";
 
@@ -26,49 +27,44 @@ export default function PwaSettings() {
   }
 
   return (
-    <div className="rounded-md border border-gray-200 p-4 dark:border-gray-700">
-      <h2 className="mb-3 text-sm font-medium text-gray-500 dark:text-gray-400">App</h2>
+    <div className={card}>
+      <h2 className={`mb-3 ${sectionLabel}`}>App</h2>
       <div className="flex flex-col gap-3">
         {!installed && canInstall && (
           <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-700 dark:text-gray-300">Install LifeOs as an app</span>
-            <button
-              onClick={promptInstall}
-              className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500"
-            >
+            <span className="text-sm text-ink dark:text-cream">Install LifeOs as an app</span>
+            <button onClick={promptInstall} className={`${primaryButton} px-3 py-1.5 text-xs`}>
               Install
             </button>
           </div>
         )}
-        {installed && (
-          <p className="text-sm text-gray-500 dark:text-gray-400">Installed as an app</p>
-        )}
+        {installed && <p className={mutedText}>Installed as an app</p>}
 
         {permission === "unsupported" && (
-          <p className="text-sm text-gray-400">Notifications aren't supported in this browser.</p>
+          <p className={mutedText}>Notifications aren't supported in this browser.</p>
         )}
         {permission === "default" && (
           <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-700 dark:text-gray-300">Enable notifications</span>
+            <span className="text-sm text-ink dark:text-cream">Enable notifications</span>
             <button
               onClick={requestPermission}
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+              className={`${secondaryButton} px-3 py-1.5 text-xs`}
             >
               Enable
             </button>
           </div>
         )}
         {permission === "denied" && (
-          <p className="text-sm text-gray-400">
+          <p className={mutedText}>
             Notifications are blocked — enable them in your browser's site settings.
           </p>
         )}
         {permission === "granted" && (
           <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-700 dark:text-gray-300">Notifications enabled</span>
+            <span className="text-sm text-ink dark:text-cream">Notifications enabled</span>
             <button
               onClick={sendTestNotification}
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+              className={`${secondaryButton} px-3 py-1.5 text-xs`}
             >
               Send test
             </button>

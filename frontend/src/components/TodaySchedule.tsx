@@ -2,11 +2,12 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../api/useApi";
 import type { Schedule, TaskPriority } from "../types";
+import { card, errorText, mutedText, sectionLabel } from "./ui";
 
 const PRIORITY_BADGE: Record<TaskPriority, string> = {
-  Low: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
-  Medium: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
-  High: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+  Low: "bg-stone text-ink-muted dark:bg-stone-dark dark:text-fog-muted",
+  Medium: "bg-[#F0E4C8] text-[#8A6A22] dark:bg-[#4A3D1E] dark:text-[#E3C878]",
+  High: "bg-terracotta-soft text-terracotta dark:bg-terracotta-soft-dark dark:text-[#D89478]",
 };
 
 function today(): string {
@@ -45,36 +46,34 @@ export default function TodaySchedule() {
   }, []);
 
   return (
-    <div className="rounded-md border border-gray-200 p-4 dark:border-gray-700">
+    <div className={card}>
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400">
-          Today's schedule ({today()})
-        </h2>
-        <Link to="/tasks" className="text-xs text-indigo-600 hover:underline">
+        <h2 className={sectionLabel}>Today's schedule ({today()})</h2>
+        <Link to="/tasks" className="text-xs text-sage hover:underline">
           Manage tasks
         </Link>
       </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className={errorText}>{error}</p>}
       {loading ? (
-        <p className="text-sm text-gray-500">Loading...</p>
+        <p className={mutedText}>Loading...</p>
       ) : !schedule || schedule.tasks.length === 0 ? (
-        <p className="text-sm text-gray-500">Nothing due today.</p>
+        <p className={mutedText}>Nothing due today.</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {schedule.tasks.map((task) => (
             <li
               key={task.taskId}
-              className="flex items-center justify-between gap-3 rounded-md border border-gray-100 px-3 py-2 dark:border-gray-800"
+              className="flex items-center justify-between gap-3 rounded-xl border border-stone/60 px-3 py-2 dark:border-stone-dark/60"
             >
               <div>
                 <p
-                  className={`text-sm font-medium text-gray-900 dark:text-gray-100 ${
+                  className={`text-sm font-medium text-ink dark:text-cream ${
                     task.status === "done" ? "line-through opacity-60" : ""
                   }`}
                 >
                   {task.title}
                 </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
+                <p className="text-xs text-ink-muted dark:text-fog-muted">
                   {task.scheduleTime ?? "No set time"}
                 </p>
               </div>

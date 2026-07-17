@@ -1,6 +1,18 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useApi } from "../api/useApi";
 import type { LogEntry, LogType } from "../types";
+import {
+  badge,
+  card,
+  errorText,
+  input,
+  label,
+  mutedText,
+  page,
+  pageTitle,
+  primaryButton,
+  secondaryButton,
+} from "../components/ui";
 
 interface FieldConfig {
   key: string;
@@ -112,15 +124,13 @@ function FieldInputs({
     <>
       {fields.map((field) => (
         <div key={field.key}>
-          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-            {field.label}
-          </label>
+          <label className={label}>{field.label}</label>
           {field.type === "select" ? (
             <select
               required={!field.optional}
               value={values[field.key] ?? ""}
               onChange={(e) => onChange(field.key, e.target.value)}
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+              className={input}
             >
               <option value="" disabled>
                 Select...
@@ -137,7 +147,7 @@ function FieldInputs({
               required={!field.optional}
               value={values[field.key] ?? ""}
               onChange={(e) => onChange(field.key, e.target.value)}
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+              className={input}
             />
           )}
         </div>
@@ -251,21 +261,16 @@ export default function Logs() {
   }
 
   return (
-    <div className="mx-auto mt-8 w-full max-w-2xl px-4">
-      <h1 className="mb-4 text-2xl font-semibold text-gray-900 dark:text-gray-100">Quick Log</h1>
+    <div className={page}>
+      <h1 className={pageTitle}>Quick Log</h1>
 
-      <form
-        onSubmit={handleCreate}
-        className="mb-8 flex flex-wrap items-end gap-3 rounded-md border border-gray-200 p-4 dark:border-gray-700"
-      >
+      <form onSubmit={handleCreate} className={`mb-8 flex flex-wrap items-end gap-3 ${card}`}>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-            Type
-          </label>
+          <label className={label}>Type</label>
           <select
             value={logType}
             onChange={(e) => handleTypeChange(e.target.value as LogType)}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            className={input}
           >
             {LOG_TYPES.map((t) => (
               <option key={t} value={t}>
@@ -275,15 +280,13 @@ export default function Logs() {
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-            Date
-          </label>
+          <label className={label}>Date</label>
           <input
             type="date"
             required
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            className={input}
           />
         </div>
         <FieldInputs
@@ -291,37 +294,28 @@ export default function Logs() {
           values={values}
           onChange={(key, value) => setValues((prev) => ({ ...prev, [key]: value }))}
         />
-        <button
-          type="submit"
-          disabled={saving}
-          className="rounded-md bg-indigo-600 px-4 py-1.5 text-sm text-white hover:bg-indigo-500 disabled:opacity-50"
-        >
+        <button type="submit" disabled={saving} className={primaryButton}>
           {saving ? "Saving..." : "Add entry"}
         </button>
       </form>
 
-      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      {error && <p className={`mb-4 ${errorText}`}>{error}</p>}
 
       {loading ? (
-        <p className="text-sm text-gray-500">Loading entries...</p>
+        <p className={mutedText}>Loading entries...</p>
       ) : entries.length === 0 ? (
-        <p className="text-sm text-gray-500">No log entries yet.</p>
+        <p className={mutedText}>No log entries yet.</p>
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-3">
           {entries.map((entry) => (
-            <li
-              key={entry.logId}
-              className="flex flex-col gap-3 rounded-md border border-gray-200 p-3 dark:border-gray-700"
-            >
+            <li key={entry.logId} className={`flex flex-col gap-3 ${card}`}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400">
-                    <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
-                      {LOG_TYPE_CONFIG[entry.logType].label}
-                    </span>
+                  <p className="flex items-center gap-2 text-xs font-medium text-ink-muted dark:text-fog-muted">
+                    <span className={badge}>{LOG_TYPE_CONFIG[entry.logType].label}</span>
                     {entry.date}
                   </p>
-                  <p className="text-sm text-gray-900 dark:text-gray-100">
+                  <p className="text-sm text-ink dark:text-cream">
                     {summarize(entry.logType, entry.data)}
                   </p>
                 </div>
@@ -329,14 +323,14 @@ export default function Logs() {
                   <button
                     type="button"
                     onClick={() => (editingId === entry.logId ? setEditingId(null) : startEdit(entry))}
-                    className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
+                    className={`${secondaryButton} px-2 py-1 text-xs`}
                   >
                     {editingId === entry.logId ? "Cancel" : "Edit"}
                   </button>
                   <button
                     type="button"
                     onClick={() => handleDelete(entry.logId)}
-                    className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
+                    className={`${secondaryButton} px-2 py-1 text-xs`}
                   >
                     Delete
                   </button>
@@ -344,7 +338,7 @@ export default function Logs() {
               </div>
 
               {editingId === entry.logId && (
-                <div className="flex flex-wrap items-end gap-3 border-t border-gray-100 pt-3 dark:border-gray-800">
+                <div className="flex flex-wrap items-end gap-3 border-t border-stone/60 pt-3 dark:border-stone-dark/60">
                   <FieldInputs
                     fields={LOG_TYPE_CONFIG[entry.logType].fields}
                     values={editValues}
@@ -354,7 +348,7 @@ export default function Logs() {
                     type="button"
                     disabled={savingEdit}
                     onClick={() => saveEdit(entry)}
-                    className="rounded-md bg-indigo-600 px-4 py-1.5 text-sm text-white hover:bg-indigo-500 disabled:opacity-50"
+                    className={primaryButton}
                   >
                     {savingEdit ? "Saving..." : "Save"}
                   </button>

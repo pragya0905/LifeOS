@@ -1,6 +1,18 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useApi } from "../api/useApi";
 import type { LogEntry } from "../types";
+import {
+  card,
+  errorText,
+  input,
+  label,
+  mutedText,
+  page,
+  pageTitle,
+  primaryButton,
+  secondaryButton,
+  sectionLabel,
+} from "../components/ui";
 
 type CycleEvent = "period_start" | "period_end" | "symptom";
 
@@ -110,51 +122,41 @@ export default function Cycle() {
   const { avgCycleDays, nextPredicted } = predictNextCycle(entries);
 
   return (
-    <div className="mx-auto mt-8 w-full max-w-2xl px-4">
-      <h1 className="mb-4 text-2xl font-semibold text-gray-900 dark:text-gray-100">
-        Menstrual Cycle
-      </h1>
+    <div className={page}>
+      <h1 className={pageTitle}>Menstrual Cycle</h1>
 
-      <div className="mb-6 rounded-md border border-gray-200 p-4 dark:border-gray-700">
-        <h2 className="mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">Prediction</h2>
+      <div className={`mb-6 ${card}`}>
+        <h2 className={`mb-2 ${sectionLabel}`}>Prediction</h2>
         {avgCycleDays === null ? (
-          <p className="text-sm text-gray-500">
+          <p className={mutedText}>
             Log at least two period start dates to see a cycle-length prediction.
           </p>
         ) : (
-          <p className="text-sm text-gray-900 dark:text-gray-100">
+          <p className="text-sm text-ink dark:text-cream">
             Average cycle length: <span className="font-medium">{avgCycleDays} days</span>
             <br />
-            Next period predicted around:{" "}
-            <span className="font-medium">{nextPredicted}</span>
+            Next period predicted around: <span className="font-medium">{nextPredicted}</span>
           </p>
         )}
       </div>
 
-      <form
-        onSubmit={handleAdd}
-        className="mb-8 flex flex-wrap items-end gap-3 rounded-md border border-gray-200 p-4 dark:border-gray-700"
-      >
+      <form onSubmit={handleAdd} className={`mb-8 flex flex-wrap items-end gap-3 ${card}`}>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-            Date
-          </label>
+          <label className={label}>Date</label>
           <input
             type="date"
             required
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            className={input}
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-            Event
-          </label>
+          <label className={label}>Event</label>
           <select
             value={event}
             onChange={(e) => setEvent(e.target.value as CycleEvent)}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            className={input}
           >
             {(Object.keys(EVENT_LABEL) as CycleEvent[]).map((e) => (
               <option key={e} value={e}>
@@ -164,42 +166,33 @@ export default function Cycle() {
           </select>
         </div>
         <div className="min-w-[160px] flex-1">
-          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-            Note (optional)
-          </label>
+          <label className={label}>Note (optional)</label>
           <input
             type="text"
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="e.g. cramps, headache"
-            className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            className={`w-full ${input}`}
           />
         </div>
-        <button
-          type="submit"
-          disabled={saving}
-          className="rounded-md bg-indigo-600 px-4 py-1.5 text-sm text-white hover:bg-indigo-500 disabled:opacity-50"
-        >
+        <button type="submit" disabled={saving} className={primaryButton}>
           {saving ? "Saving..." : "Add entry"}
         </button>
       </form>
 
-      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      {error && <p className={`mb-4 ${errorText}`}>{error}</p>}
 
       {loading ? (
-        <p className="text-sm text-gray-500">Loading entries...</p>
+        <p className={mutedText}>Loading entries...</p>
       ) : entries.length === 0 ? (
-        <p className="text-sm text-gray-500">No cycle entries yet.</p>
+        <p className={mutedText}>No cycle entries yet.</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {entries.map((entry) => (
-            <li
-              key={entry.logId}
-              className="flex items-center justify-between gap-3 rounded-md border border-gray-200 p-3 dark:border-gray-700"
-            >
+            <li key={entry.logId} className={`flex items-center justify-between gap-3 ${card}`}>
               <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{entry.date}</p>
-                <p className="text-sm text-gray-900 dark:text-gray-100">
+                <p className="text-xs font-medium text-ink-muted dark:text-fog-muted">{entry.date}</p>
+                <p className="text-sm text-ink dark:text-cream">
                   {EVENT_LABEL[entry.data.event as CycleEvent]}
                   {entry.data.note ? ` — ${entry.data.note}` : ""}
                 </p>
@@ -207,7 +200,7 @@ export default function Cycle() {
               <button
                 type="button"
                 onClick={() => handleDelete(entry.logId)}
-                className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
+                className={`${secondaryButton} px-2 py-1 text-xs`}
               >
                 Delete
               </button>
