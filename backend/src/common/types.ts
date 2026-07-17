@@ -21,6 +21,7 @@ export interface Task {
 export interface JournalEntryExtraction {
   waterMl: number | null;
   exerciseMinutes: number | null;
+  meditationMinutes: number | null;
   food: string | null;
   sleep: { bedTime: string; wakeTime: string } | null;
   weightKg: number | null;
@@ -28,7 +29,7 @@ export interface JournalEntryExtraction {
   medicationNamesTaken: string[];
   routineStepsCompleted: string[];
   cycleEvent: "period_start" | "period_end" | "symptom" | null;
-  calls: { personName: string; note: string | null }[];
+  calls: { personName: string; durationMinutes: number | null; note: string | null }[];
   expenses: { category: string; amount: number | null; note: string | null }[];
 }
 
@@ -42,7 +43,7 @@ export interface JournalEntry {
   updatedAt: string;
 }
 
-export type HabitType = "water" | "exercise";
+export type HabitType = "water" | "exercise" | "meditation";
 export type HabitStatus = "done" | "missed" | "skipped";
 export type HabitSource = "manual" | "ai-journal";
 export type HabitUnit = "ml" | "minutes";

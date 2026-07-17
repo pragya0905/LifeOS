@@ -26,6 +26,7 @@ const MoodSchema = z.object({
 
 const CallSchema = z.object({
   personName: z.string().trim().min(1),
+  durationMinutes: z.number().positive().optional(),
   note: z.string().trim().optional(),
 });
 

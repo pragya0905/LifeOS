@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
-import HabitTracker from "../components/HabitTracker";
+import TodayHabits from "../components/TodayHabits";
 import TodaySchedule from "../components/TodaySchedule";
 import PwaSettings from "../components/PwaSettings";
 import { card, errorText, mutedText, page, pageTitle, sectionLabel } from "../components/ui";
@@ -42,7 +42,7 @@ export default function Dashboard() {
       </div>
 
       <div className="mb-6">
-        <HabitTracker />
+        <TodayHabits />
       </div>
 
       <div className="mb-6">

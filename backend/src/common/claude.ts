@@ -6,6 +6,7 @@ import { z } from "zod";
 const JournalExtractionSchema = z.object({
   waterMl: z.number().nullable(),
   exerciseMinutes: z.number().nullable(),
+  meditationMinutes: z.number().nullable(),
   food: z.string().nullable(),
   sleep: z.object({ bedTime: z.string(), wakeTime: z.string() }).nullable(),
   weightKg: z.number().nullable(),
@@ -15,7 +16,13 @@ const JournalExtractionSchema = z.object({
   medicationNamesTaken: z.array(z.string()),
   routineStepsCompleted: z.array(z.string()),
   cycleEvent: z.enum(["period_start", "period_end", "symptom"]).nullable(),
-  calls: z.array(z.object({ personName: z.string(), note: z.string().nullable() })),
+  calls: z.array(
+    z.object({
+      personName: z.string(),
+      durationMinutes: z.number().nullable(),
+      note: z.string().nullable(),
+    }),
+  ),
   expenses: z.array(
     z.object({ category: z.string(), amount: z.number().nullable(), note: z.string().nullable() }),
   ),
@@ -33,13 +40,15 @@ function buildJournalSystemPrompt(
       "empty when a category isn't mentioned at all. Never invent values.",
     "- waterMl: water intake in milliliters (convert other units — a glass is about 250ml).",
     "- exerciseMinutes: exercise duration in minutes (convert other units).",
+    "- meditationMinutes: meditation duration in minutes (convert other units).",
     "- food: a short free-text description of food/meals mentioned, or null.",
     "- sleep: { bedTime, wakeTime } as HH:MM 24-hour times if both are mentioned, else null.",
     "- weightKg: body weight in kilograms (convert lbs if needed).",
     "- moodRating: overall mood as an integer 1 (very bad) to 5 (very good), or null.",
     "- cycleEvent: 'period_start', 'period_end', or 'symptom' if a menstrual cycle event is " +
       "mentioned, else null.",
-    "- calls: list of { personName, note } for each phone call mentioned.",
+    "- calls: list of { personName, durationMinutes, note } for each phone call mentioned " +
+      "(durationMinutes null if not stated).",
     "- expenses: list of { category, amount, note } for each expense/purchase mentioned " +
       "(amount null if not stated).",
   ];
