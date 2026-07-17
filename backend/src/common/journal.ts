@@ -1,7 +1,18 @@
-import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { randomUUID } from "node:crypto";
 import { ddb } from "./dynamo";
-import { extractHabitsFromJournal } from "./claude";
-import type { HabitType, HabitUnit, JournalEntry } from "./types";
+import { extractJournalInfo } from "./claude";
+import { computeEndDate } from "./medications";
+import { LOG_ENTRY_SCHEMAS } from "./logEntrySchemas";
+import type {
+  HabitType,
+  HabitUnit,
+  JournalEntry,
+  LogEntry,
+  LogType,
+  Medication,
+  RoutineTemplate,
+} from "./types";
 
 const HABIT_UNIT: Record<HabitType, HabitUnit> = {
   water: "ml",
@@ -53,16 +64,164 @@ async function writeAiHabitLog(
   }
 }
 
-// Best-effort: extracts habit quantities mentioned in journal text, persists them onto
-// the entry and into HabitLogsTable (manual entries always win), and never throws — a
-// failure here must never block the journal entry itself from saving.
-export async function applyHabitExtraction(
+async function writeAiMedicationLog(
+  userId: string,
+  date: string,
+  medicationId: string,
+): Promise<void> {
+  const now = new Date().toISOString();
+  try {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: process.env.MEDICATION_LOGS_TABLE_NAME,
+        Key: { userId, dateMedicationId: `${date}#${medicationId}` },
+        UpdateExpression:
+          "SET #date = :date, #medicationId = :medicationId, #status = :status, " +
+          "#source = :source, updatedAt = :updatedAt, createdAt = if_not_exists(createdAt, :updatedAt)",
+        ConditionExpression: "attribute_not_exists(dateMedicationId) OR #source = :aiSource",
+        ExpressionAttributeNames: {
+          "#date": "date",
+          "#medicationId": "medicationId",
+          "#status": "status",
+          "#source": "source",
+        },
+        ExpressionAttributeValues: {
+          ":date": date,
+          ":medicationId": medicationId,
+          ":status": "taken",
+          ":source": "ai-journal",
+          ":aiSource": "ai-journal",
+          ":updatedAt": now,
+        },
+      }),
+    );
+  } catch (err) {
+    if (err instanceof Error && err.name === "ConditionalCheckFailedException") return;
+    throw err;
+  }
+}
+
+async function writeAiRoutineStepLog(
+  userId: string,
+  date: string,
+  routineId: string,
+  stepIndex: number,
+): Promise<void> {
+  const now = new Date().toISOString();
+  try {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: process.env.ROUTINE_LOGS_TABLE_NAME,
+        Key: { userId, dateRoutineStep: `${date}#${routineId}#${stepIndex}` },
+        UpdateExpression:
+          "SET #date = :date, #routineId = :routineId, #stepIndex = :stepIndex, #status = :status, " +
+          "#source = :source, updatedAt = :updatedAt, createdAt = if_not_exists(createdAt, :updatedAt)",
+        ConditionExpression: "attribute_not_exists(dateRoutineStep) OR #source = :aiSource",
+        ExpressionAttributeNames: {
+          "#date": "date",
+          "#routineId": "routineId",
+          "#stepIndex": "stepIndex",
+          "#status": "status",
+          "#source": "source",
+        },
+        ExpressionAttributeValues: {
+          ":date": date,
+          ":routineId": routineId,
+          ":stepIndex": stepIndex,
+          ":status": "done",
+          ":source": "ai-journal",
+          ":aiSource": "ai-journal",
+          ":updatedAt": now,
+        },
+      }),
+    );
+  } catch (err) {
+    if (err instanceof Error && err.name === "ConditionalCheckFailedException") return;
+    throw err;
+  }
+}
+
+// Sleep/weight/mood/cycle are naturally one-value-per-day concepts, so AI writes use a
+// deterministic slot id — re-extraction (e.g. editing the journal entry) updates the same
+// item instead of piling up duplicates. Food/call/expense are naturally multi-per-day, so
+// each mention gets its own new entry.
+const SINGULAR_LOG_TYPES: LogType[] = ["sleep", "weight", "mood", "cycle"];
+
+async function writeAiLogEntry(
+  userId: string,
+  date: string,
+  logType: LogType,
+  data: Record<string, unknown>,
+): Promise<void> {
+  const parsed = LOG_ENTRY_SCHEMAS[logType].safeParse(data);
+  if (!parsed.success) {
+    console.error(`Skipping invalid AI-extracted ${logType} entry:`, parsed.error.message);
+    return;
+  }
+  const now = new Date().toISOString();
+  const logId = SINGULAR_LOG_TYPES.includes(logType) ? `ai-${date}-${logType}` : randomUUID();
+  const entry: LogEntry = {
+    userId,
+    logId,
+    logType,
+    date,
+    data: parsed.data as Record<string, unknown>,
+    source: "ai-journal",
+    createdAt: now,
+    updatedAt: now,
+  };
+  await ddb.send(new PutCommand({ TableName: process.env.LOG_ENTRIES_TABLE_NAME, Item: entry }));
+}
+
+async function fetchActiveMedications(userId: string): Promise<Medication[]> {
+  const result = await ddb.send(
+    new QueryCommand({
+      TableName: process.env.MEDICATIONS_TABLE_NAME,
+      KeyConditionExpression: "userId = :userId",
+      ExpressionAttributeValues: { ":userId": userId },
+    }),
+  );
+  const today = new Date().toISOString().slice(0, 10);
+  return ((result.Items ?? []) as Medication[]).filter(
+    (m) => today >= m.startDate && today <= computeEndDate(m.startDate, m.durationDays),
+  );
+}
+
+async function fetchRoutineTemplates(userId: string): Promise<RoutineTemplate[]> {
+  const result = await ddb.send(
+    new QueryCommand({
+      TableName: process.env.ROUTINE_TEMPLATES_TABLE_NAME,
+      KeyConditionExpression: "userId = :userId",
+      ExpressionAttributeValues: { ":userId": userId },
+    }),
+  );
+  return (result.Items ?? []) as RoutineTemplate[];
+}
+
+// Best-effort: extracts everything mentioned in journal text (habits, food, sleep, weight,
+// mood, medications, routine steps, cycle events, calls, expenses) and fans it out to the
+// right tables (manual entries always win), and never throws — a failure here must never
+// block the journal entry itself from saving.
+export async function applyJournalExtraction(
   userId: string,
   date: string,
   text: string,
 ): Promise<JournalEntry["aiExtracted"] | undefined> {
   try {
-    const extraction = await extractHabitsFromJournal(text);
+    const [medications, routines] = await Promise.all([
+      fetchActiveMedications(userId),
+      fetchRoutineTemplates(userId),
+    ]);
+
+    const routineStepRefs = routines.flatMap((r) =>
+      r.steps.map((step, stepIndex) => ({ routineId: r.routineId, stepIndex, text: step })),
+    );
+
+    const extraction = await extractJournalInfo(
+      text,
+      medications.map((m) => m.name),
+      routineStepRefs.map((s) => s.text),
+    );
 
     await ddb.send(
       new UpdateCommand({
@@ -73,16 +232,61 @@ export async function applyHabitExtraction(
       }),
     );
 
+    const writes: Promise<void>[] = [];
+
     if (extraction.waterMl !== null) {
-      await writeAiHabitLog(userId, date, "water", extraction.waterMl);
+      writes.push(writeAiHabitLog(userId, date, "water", extraction.waterMl));
     }
     if (extraction.exerciseMinutes !== null) {
-      await writeAiHabitLog(userId, date, "exercise", extraction.exerciseMinutes);
+      writes.push(writeAiHabitLog(userId, date, "exercise", extraction.exerciseMinutes));
     }
+    if (extraction.food !== null) {
+      writes.push(writeAiLogEntry(userId, date, "food", { description: extraction.food }));
+    }
+    if (extraction.sleep !== null) {
+      writes.push(writeAiLogEntry(userId, date, "sleep", extraction.sleep));
+    }
+    if (extraction.weightKg !== null) {
+      writes.push(writeAiLogEntry(userId, date, "weight", { valueKg: extraction.weightKg }));
+    }
+    if (extraction.moodRating !== null) {
+      writes.push(writeAiLogEntry(userId, date, "mood", { rating: extraction.moodRating }));
+    }
+    if (extraction.cycleEvent !== null) {
+      writes.push(writeAiLogEntry(userId, date, "cycle", { event: extraction.cycleEvent }));
+    }
+    for (const call of extraction.calls) {
+      writes.push(
+        writeAiLogEntry(userId, date, "call", {
+          personName: call.personName,
+          note: call.note ?? undefined,
+        }),
+      );
+    }
+    for (const expense of extraction.expenses) {
+      writes.push(
+        writeAiLogEntry(userId, date, "expense", {
+          category: expense.category,
+          amount: expense.amount ?? undefined,
+          note: expense.note ?? undefined,
+        }),
+      );
+    }
+
+    for (const name of extraction.medicationNamesTaken) {
+      const match = medications.find((m) => m.name.toLowerCase() === name.toLowerCase());
+      if (match) writes.push(writeAiMedicationLog(userId, date, match.medicationId));
+    }
+    for (const stepText of extraction.routineStepsCompleted) {
+      const match = routineStepRefs.find((s) => s.text.toLowerCase() === stepText.toLowerCase());
+      if (match) writes.push(writeAiRoutineStepLog(userId, date, match.routineId, match.stepIndex));
+    }
+
+    await Promise.all(writes);
 
     return extraction;
   } catch (err) {
-    console.error("Habit auto-extraction failed (non-blocking):", err);
+    console.error("Journal auto-extraction failed (non-blocking):", err);
     return undefined;
   }
 }

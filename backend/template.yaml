@@ -402,12 +402,27 @@ Resources:
         Variables:
           JOURNAL_TABLE_NAME: !Ref JournalEntriesTable
           HABITS_TABLE_NAME: !Ref HabitLogsTable
+          MEDICATIONS_TABLE_NAME: !Ref MedicationsTable
+          MEDICATION_LOGS_TABLE_NAME: !Ref MedicationLogsTable
+          ROUTINE_TEMPLATES_TABLE_NAME: !Ref RoutineTemplatesTable
+          ROUTINE_LOGS_TABLE_NAME: !Ref RoutineLogsTable
+          LOG_ENTRIES_TABLE_NAME: !Ref LogEntriesTable
           ANTHROPIC_API_KEY_PARAM: !Sub "/lifeos/${Environment}/anthropic-api-key"
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref JournalEntriesTable
         - DynamoDBCrudPolicy:
             TableName: !Ref HabitLogsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref MedicationsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MedicationLogsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref RoutineTemplatesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RoutineLogsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref LogEntriesTable
         - SSMParameterReadPolicy:
             ParameterName: !Sub "lifeos/${Environment}/anthropic-api-key"
       Events:
@@ -467,12 +482,27 @@ Resources:
         Variables:
           JOURNAL_TABLE_NAME: !Ref JournalEntriesTable
           HABITS_TABLE_NAME: !Ref HabitLogsTable
+          MEDICATIONS_TABLE_NAME: !Ref MedicationsTable
+          MEDICATION_LOGS_TABLE_NAME: !Ref MedicationLogsTable
+          ROUTINE_TEMPLATES_TABLE_NAME: !Ref RoutineTemplatesTable
+          ROUTINE_LOGS_TABLE_NAME: !Ref RoutineLogsTable
+          LOG_ENTRIES_TABLE_NAME: !Ref LogEntriesTable
           ANTHROPIC_API_KEY_PARAM: !Sub "/lifeos/${Environment}/anthropic-api-key"
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref JournalEntriesTable
         - DynamoDBCrudPolicy:
             TableName: !Ref HabitLogsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref MedicationsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MedicationLogsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref RoutineTemplatesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RoutineLogsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref LogEntriesTable
         - SSMParameterReadPolicy:
             ParameterName: !Sub "lifeos/${Environment}/anthropic-api-key"
       Events:

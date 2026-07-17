@@ -21,6 +21,15 @@ export interface Task {
 export interface JournalEntryExtraction {
   waterMl: number | null;
   exerciseMinutes: number | null;
+  food: string | null;
+  sleep: { bedTime: string; wakeTime: string } | null;
+  weightKg: number | null;
+  moodRating: 1 | 2 | 3 | 4 | 5 | null;
+  medicationNamesTaken: string[];
+  routineStepsCompleted: string[];
+  cycleEvent: "period_start" | "period_end" | "symptom" | null;
+  calls: { personName: string; note: string | null }[];
+  expenses: { category: string; amount: number | null; note: string | null }[];
 }
 
 export interface JournalEntry {
@@ -62,6 +71,7 @@ export interface Medication {
 }
 
 export type MedicationLogStatus = "taken" | "missed";
+export type MedicationLogSource = "manual" | "ai-journal";
 
 export interface MedicationLog {
   userId: string;
@@ -69,6 +79,7 @@ export interface MedicationLog {
   date: string;
   medicationId: string;
   status: MedicationLogStatus;
+  source: MedicationLogSource;
   createdAt: string;
   updatedAt: string;
 }
@@ -83,7 +94,7 @@ export type LogType =
   | "expense"
   | "cycle";
 
-export type LogSource = "manual";
+export type LogSource = "manual" | "ai-journal";
 
 export interface LogEntry {
   userId: string;
@@ -108,6 +119,7 @@ export interface RoutineTemplate {
 }
 
 export type RoutineStepStatus = "done" | "skipped";
+export type RoutineStepSource = "manual" | "ai-journal";
 
 export interface RoutineStepLog {
   userId: string;
@@ -116,6 +128,7 @@ export interface RoutineStepLog {
   routineId: string;
   stepIndex: number;
   status: RoutineStepStatus;
+  source: RoutineStepSource;
   createdAt: string;
   updatedAt: string;
 }

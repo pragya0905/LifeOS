@@ -39,20 +39,24 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     new UpdateCommand({
       TableName: process.env.ROUTINE_LOGS_TABLE_NAME,
       Key: { userId, dateRoutineStep },
+      // A manual edit always reasserts human ownership of this field, even over an
+      // existing ai-journal-sourced entry.
       UpdateExpression:
         "SET #date = :date, #routineId = :routineId, #stepIndex = :stepIndex, #status = :status, " +
-        "updatedAt = :updatedAt, createdAt = if_not_exists(createdAt, :updatedAt)",
+        "#source = :source, updatedAt = :updatedAt, createdAt = if_not_exists(createdAt, :updatedAt)",
       ExpressionAttributeNames: {
         "#date": "date",
         "#routineId": "routineId",
         "#stepIndex": "stepIndex",
         "#status": "status",
+        "#source": "source",
       },
       ExpressionAttributeValues: {
         ":date": date,
         ":routineId": routineId,
         ":stepIndex": stepIndex,
         ":status": body.status,
+        ":source": "manual",
         ":updatedAt": now,
       },
       ReturnValues: "ALL_NEW",

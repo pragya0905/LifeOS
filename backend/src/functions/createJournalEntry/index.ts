@@ -3,7 +3,7 @@ import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb } from "../../common/dynamo";
 import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
-import { applyHabitExtraction } from "../../common/journal";
+import { applyJournalExtraction } from "../../common/journal";
 import type { JournalEntry } from "../../common/types";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -49,7 +49,7 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     throw err;
   }
 
-  const extraction = await applyHabitExtraction(userId, date, text);
+  const extraction = await applyJournalExtraction(userId, date, text);
   if (extraction) entry.aiExtracted = extraction;
 
   return jsonResponse(201, entry);
