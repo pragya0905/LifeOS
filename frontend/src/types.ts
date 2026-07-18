@@ -140,3 +140,12 @@ export interface Insights {
   highlights: string[];
   suggestions: string[];
 }
+
+export type GoalMetric = "water" | "exercise" | "meditation";
+
+export interface Goal {
+  userId: string;
+  metric: GoalMetric;
+  targetValue: number;
+  updatedAt: string;
+}

@@ -13,6 +13,7 @@ import Logs from "./pages/Logs";
 import Cycle from "./pages/Cycle";
 import Routines from "./pages/Routines";
 import Insights from "./pages/Insights";
+import Settings from "./pages/Settings";
 
 export default function App() {
   return (
@@ -38,6 +39,7 @@ export default function App() {
             <Route path="/cycle" element={<Cycle />} />
             <Route path="/routines" element={<Routines />} />
             <Route path="/insights" element={<Insights />} />
+            <Route path="/settings" element={<Settings />} />
           </Route>
         </Routes>
       </BrowserRouter>

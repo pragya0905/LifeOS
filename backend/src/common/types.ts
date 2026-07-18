@@ -133,3 +133,12 @@ export interface RoutineStepLog {
   createdAt: string;
   updatedAt: string;
 }
+
+export type GoalMetric = "water" | "exercise" | "meditation";
+
+export interface Goal {
+  userId: string;
+  metric: GoalMetric;
+  targetValue: number;
+  updatedAt: string;
+}

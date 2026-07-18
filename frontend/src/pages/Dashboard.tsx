@@ -1,37 +1,39 @@
 import { useEffect, useState } from "react";
-import { useAuth } from "../auth/AuthContext";
+import { Link } from "react-router-dom";
+import { useApi } from "../api/useApi";
 import TodayHabits from "../components/TodayHabits";
 import TodaySchedule from "../components/TodaySchedule";
-import PwaSettings from "../components/PwaSettings";
+import type { Task } from "../types";
 import { card, errorText, mutedText, page, pageTitle, sectionLabel } from "../components/ui";
 
-interface WhoAmIResponse {
-  message: string;
-  userId: string | null;
-  email: string | null;
-  timestamp: string;
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
 export default function Dashboard() {
-  const { getIdToken } = useAuth();
-  const [whoami, setWhoami] = useState<WhoAmIResponse | null>(null);
+  const { request } = useApi();
+  const [tasks, setTasks] = useState<Task[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function callWhoAmI() {
+    let ignore = false;
+    async function loadTasks() {
       try {
-        const token = await getIdToken();
-        const res = await fetch(`${import.meta.env.VITE_API_URL}/whoami`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error(`API returned ${res.status}`);
-        setWhoami(await res.json());
+        const data = await request<{ tasks: Task[] }>("/tasks");
+        if (!ignore) setTasks(data.tasks);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Request failed");
+        if (!ignore) setError(err instanceof Error ? err.message : "Failed to load tasks");
       }
     }
-    callWhoAmI();
-  }, [getIdToken]);
+    loadTasks();
+    return () => {
+      ignore = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const pending = tasks?.filter((t) => t.status !== "done") ?? [];
+  const overdue = pending.filter((t) => t.dueDate && t.dueDate < today());
 
   return (
     <div className={page}>
@@ -45,19 +47,34 @@ export default function Dashboard() {
         <TodayHabits />
       </div>
 
-      <div className="mb-6">
-        <PwaSettings />
-      </div>
+      <div className="mb-6 flex flex-col gap-6 sm:flex-row">
+        <div className={`flex-1 ${card}`}>
+          <h2 className={`mb-2 ${sectionLabel}`}>Tasks</h2>
+          {error && <p className={errorText}>{error}</p>}
+          {!error && !tasks && <p className={mutedText}>Loading...</p>}
+          {tasks && (
+            <p className="text-sm text-ink dark:text-cream">
+              <span className="font-medium">{pending.length}</span> pending
+              {overdue.length > 0 && (
+                <>
+                  {" "}
+                  · <span className="font-medium text-terracotta">{overdue.length} overdue</span>
+                </>
+              )}
+            </p>
+          )}
+          <Link to="/tasks" className="mt-1 inline-block text-xs text-sage hover:underline">
+            Manage tasks →
+          </Link>
+        </div>
 
-      <div className={card}>
-        <h2 className={`mb-2 ${sectionLabel}`}>Backend authorizer check (GET /whoami)</h2>
-        {error && <p className={errorText}>{error}</p>}
-        {!error && !whoami && <p className={mutedText}>Loading...</p>}
-        {whoami && (
-          <pre className="overflow-x-auto text-xs text-ink-muted dark:text-fog-muted">
-            {JSON.stringify(whoami, null, 2)}
-          </pre>
-        )}
+        <div className={`flex-1 ${card}`}>
+          <h2 className={`mb-2 ${sectionLabel}`}>Insights</h2>
+          <p className={mutedText}>See patterns and suggestions from your recent activity.</p>
+          <Link to="/insights" className="mt-1 inline-block text-xs text-sage hover:underline">
+            View insights →
+          </Link>
+        </div>
       </div>
     </div>
   );

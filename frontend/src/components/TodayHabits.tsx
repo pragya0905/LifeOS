@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../api/useApi";
-import type { HabitLog, JournalEntry, LogEntry } from "../types";
+import type { Goal, GoalMetric, HabitLog, JournalEntry, LogEntry } from "../types";
 import { card, errorText, input, mutedText, primaryButton, sectionLabel } from "./ui";
 
 function today(): string {
@@ -16,6 +16,49 @@ function computeSleepDuration(bedTime: string, wakeTime: string): string | null 
   let minutes = wh * 60 + wm - (bh * 60 + bm);
   if (minutes <= 0) minutes += 24 * 60;
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+// Defined at module scope (not nested inside TodayHabits) so React keeps the same
+// element identity across re-renders — nesting these would remount the <input> on
+// every keystroke and silently drop focus before onBlur can fire.
+function DoneCheck({ done }: { done: boolean }) {
+  return (
+    <input
+      type="checkbox"
+      checked={done}
+      readOnly
+      disabled
+      className="h-4 w-4 rounded border-stone text-sage accent-sage disabled:opacity-100 dark:border-stone-dark"
+    />
+  );
+}
+
+function GoalTarget({
+  value,
+  onChange,
+  onBlur,
+  disabled,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onBlur: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <span className={`flex items-center gap-1 ${mutedText}`}>
+      goal
+      <input
+        type="number"
+        min={1}
+        placeholder="—"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
+        disabled={disabled}
+        className={`w-16 py-0.5 text-xs ${input}`}
+      />
+    </span>
+  );
 }
 
 export default function TodayHabits() {
@@ -40,6 +83,9 @@ export default function TodayHabits() {
 
   const [journaledToday, setJournaledToday] = useState(false);
 
+  const [goalDrafts, setGoalDrafts] = useState<Partial<Record<GoalMetric, string>>>({});
+  const [savingGoal, setSavingGoal] = useState<GoalMetric | null>(null);
+
   useEffect(() => {
     let ignore = false;
 
@@ -47,11 +93,12 @@ export default function TodayHabits() {
       setLoading(true);
       setError(null);
       try {
-        const [habitsData, sleepData, callData, journalData] = await Promise.all([
+        const [habitsData, sleepData, callData, journalData, goalsData] = await Promise.all([
           request<{ habits: HabitLog[] }>(`/habits/${date}`),
           request<{ entries: LogEntry[] }>(`/logs?logType=sleep&from=${date}&to=${date}`),
           request<{ entries: LogEntry[] }>(`/logs?logType=call&from=${date}&to=${date}`),
           request<{ entries: JournalEntry[] }>(`/journal?from=${date}&to=${date}`),
+          request<{ goals: Goal[] }>("/goals"),
         ]);
         if (ignore) return;
 
@@ -61,6 +108,10 @@ export default function TodayHabits() {
           if (habit.habitType === "exercise") setExerciseDraft(value);
           if (habit.habitType === "meditation") setMeditationDraft(value);
         }
+
+        const goalDraftsNext: Partial<Record<GoalMetric, string>> = {};
+        for (const goal of goalsData.goals) goalDraftsNext[goal.metric] = String(goal.targetValue);
+        setGoalDrafts(goalDraftsNext);
 
         const sleep = sleepData.entries[0];
         if (sleep) {
@@ -158,21 +209,30 @@ export default function TodayHabits() {
     }
   }
 
+  async function saveGoal(metric: GoalMetric) {
+    const draft = goalDrafts[metric] ?? "";
+    const parsed = Number(draft);
+    if (draft.trim() === "" || !Number.isFinite(parsed) || parsed <= 0) return;
+    setSavingGoal(metric);
+    try {
+      await request(`/goals/${metric}`, {
+        method: "PATCH",
+        body: JSON.stringify({ targetValue: parsed }),
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save goal");
+    } finally {
+      setSavingGoal(null);
+    }
+  }
+
   const sleepDuration = computeSleepDuration(bedTime, wakeTime);
 
   const rowLabelClass = "px-3 py-3 text-sm font-medium text-ink dark:text-cream";
   const detailCellClass = "px-3 py-3";
 
-  function DoneCheck({ done }: { done: boolean }) {
-    return (
-      <input
-        type="checkbox"
-        checked={done}
-        readOnly
-        disabled
-        className="h-4 w-4 rounded border-stone text-sage accent-sage disabled:opacity-100 dark:border-stone-dark"
-      />
-    );
+  function updateGoalDraft(metric: GoalMetric, value: string) {
+    setGoalDrafts((prev) => ({ ...prev, [metric]: value }));
   }
 
   return (
@@ -209,6 +269,12 @@ export default function TodayHabits() {
                         className={`w-24 py-1 ${input}`}
                       />
                       <span className={mutedText}>ml</span>
+                      <GoalTarget
+                        value={goalDrafts.water ?? ""}
+                        onChange={(v) => updateGoalDraft("water", v)}
+                        onBlur={() => saveGoal("water")}
+                        disabled={savingGoal === "water"}
+                      />
                     </div>
                   </td>
                 </tr>
@@ -280,6 +346,12 @@ export default function TodayHabits() {
                         className={`w-24 py-1 ${input}`}
                       />
                       <span className={mutedText}>minutes</span>
+                      <GoalTarget
+                        value={goalDrafts.exercise ?? ""}
+                        onChange={(v) => updateGoalDraft("exercise", v)}
+                        onBlur={() => saveGoal("exercise")}
+                        disabled={savingGoal === "exercise"}
+                      />
                     </div>
                   </td>
                 </tr>
@@ -299,6 +371,12 @@ export default function TodayHabits() {
                         className={`w-24 py-1 ${input}`}
                       />
                       <span className={mutedText}>minutes</span>
+                      <GoalTarget
+                        value={goalDrafts.meditation ?? ""}
+                        onChange={(v) => updateGoalDraft("meditation", v)}
+                        onBlur={() => saveGoal("meditation")}
+                        disabled={savingGoal === "meditation"}
+                      />
                     </div>
                   </td>
                 </tr>
