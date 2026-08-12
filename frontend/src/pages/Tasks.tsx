@@ -63,24 +63,28 @@ function TaskTimeline({ task }: { task: Task }) {
   const triggerPct = Math.min(Math.max((triggerHoursFromNow / windowHours) * 100, 0), 100);
 
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="relative h-1.5 rounded-full bg-stone dark:bg-stone-dark">
+    <div className="flex flex-col gap-1">
+      <div className="relative h-1.5 overflow-visible rounded-full bg-stone dark:bg-stone-dark">
         <div
-          className="absolute inset-y-0 left-0 rounded-full bg-sage"
+          className="absolute inset-y-0 left-0 rounded-full bg-sage/50"
           style={{ width: `${triggerPct}%` }}
         />
         <div
-          className="absolute top-1/2 h-2.5 w-0.5 -translate-y-1/2 bg-ink-muted dark:bg-fog-muted"
+          className="absolute -top-[3px] h-3 w-0.5 rounded-sm bg-[#C79233]"
           style={{ left: `${triggerPct}%` }}
           title="Priority forced High from here"
         />
         <div
-          className="absolute top-1/2 right-0 h-2.5 w-0.5 -translate-y-1/2 bg-terracotta"
+          className="absolute -top-[3px] right-0 h-3 w-0.5 rounded-sm bg-terracotta"
           title="Due"
         />
       </div>
+      <div className="flex justify-between text-[10px] uppercase tracking-[0.1em] text-fog-muted">
+        <span>Now</span>
+        <span>Due {dueLabel}</span>
+      </div>
       {forced && (
-        <p className="text-xs text-terracotta">
+        <p className="mt-1 rounded-lg border border-[#E3C878]/50 bg-[#F0E4C8]/40 px-2.5 py-1.5 text-xs text-[#8A6A22] dark:border-[#4A3D1E] dark:bg-[#4A3D1E]/40 dark:text-[#E3C878]">
           Forced to High — {task.estimatedHours}h of work no longer fits before {dueLabel}
         </p>
       )}
