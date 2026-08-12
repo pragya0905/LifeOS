@@ -38,6 +38,56 @@ function joinText(base: string, addition: string): string {
   return base.endsWith(" ") ? base + addition : `${base} ${addition}`;
 }
 
+function hoursUntilDue(task: Task, now: Date): number | null {
+  if (!task.dueDate) return null;
+  const due = new Date(`${task.dueDate}T${task.dueTime ?? "23:59"}`);
+  if (Number.isNaN(due.getTime())) return null;
+  return (due.getTime() - now.getTime()) / 3600000;
+}
+
+// Mirrors the deterministic guardrail in backend suggestTaskPriority: once the
+// remaining time no longer exceeds the estimated effort, priority is forced High.
+function TaskTimeline({ task }: { task: Task }) {
+  if (!task.dueDate || task.estimatedHours === undefined) return null;
+  const now = new Date();
+  const remaining = hoursUntilDue(task, now);
+  if (remaining === null) return null;
+
+  const forced = remaining <= task.estimatedHours;
+  const dueLabel = task.dueTime ? `${task.dueDate} ${task.dueTime}` : task.dueDate;
+
+  // Bar spans now (0%) to due (100%); the trigger marker sits at due - estimate,
+  // i.e. where remaining time stops exceeding the estimated effort.
+  const windowHours = Math.max(remaining, 1);
+  const triggerHoursFromNow = remaining - task.estimatedHours;
+  const triggerPct = Math.min(Math.max((triggerHoursFromNow / windowHours) * 100, 0), 100);
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="relative h-1.5 rounded-full bg-stone dark:bg-stone-dark">
+        <div
+          className="absolute inset-y-0 left-0 rounded-full bg-sage"
+          style={{ width: `${triggerPct}%` }}
+        />
+        <div
+          className="absolute top-1/2 h-2.5 w-0.5 -translate-y-1/2 bg-ink-muted dark:bg-fog-muted"
+          style={{ left: `${triggerPct}%` }}
+          title="Priority forced High from here"
+        />
+        <div
+          className="absolute top-1/2 right-0 h-2.5 w-0.5 -translate-y-1/2 bg-terracotta"
+          title="Due"
+        />
+      </div>
+      {forced && (
+        <p className="text-xs text-terracotta">
+          Forced to High — {task.estimatedHours}h of work no longer fits before {dueLabel}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function Tasks() {
   const { request } = useApi();
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -356,6 +406,8 @@ export default function Tasks() {
                   </button>
                 </div>
               </div>
+
+              <TaskTimeline task={task} />
 
               {editingTaskId === task.taskId && (
                 <div className="flex flex-wrap items-end gap-3 border-t border-stone/60 pt-3 dark:border-stone-dark/60">

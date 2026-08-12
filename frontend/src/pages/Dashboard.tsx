@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../api/useApi";
+import ExtractionLedger from "../components/ExtractionLedger";
 import TodayHabits from "../components/TodayHabits";
 import TodaySchedule from "../components/TodaySchedule";
+import TodaySummaryRings from "../components/TodaySummaryRings";
 import type { Task } from "../types";
 import { card, errorText, mutedText, page, pageTitle, sectionLabel } from "../components/ui";
 
@@ -40,11 +42,19 @@ export default function Dashboard() {
       <h1 className={pageTitle}>Dashboard</h1>
 
       <div className="mb-6">
+        <TodaySummaryRings />
+      </div>
+
+      <div className="mb-6">
         <TodaySchedule />
       </div>
 
       <div className="mb-6">
         <TodayHabits />
+      </div>
+
+      <div className="mb-6">
+        <ExtractionLedger />
       </div>
 
       <div className="mb-6 flex flex-col gap-6 sm:flex-row">
