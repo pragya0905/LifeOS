@@ -1,5 +1,5 @@
-const SIZE = 64;
-const STROKE = 6;
+const SIZE = 44;
+const STROKE = 5;
 const RADIUS = (SIZE - STROKE) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
@@ -43,12 +43,16 @@ export default function Ring({
           className="stroke-sage transition-[stroke-dashoffset] duration-500"
         />
       </svg>
-      <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-ink-muted dark:text-fog-muted">
+      <div className="min-w-0">
+        <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-ink-muted dark:text-fog-muted">
           {label}
         </p>
-        <p className="text-lg font-medium text-ink dark:text-cream">{displayValue}</p>
-        {sublabel && <p className="text-xs text-ink-muted dark:text-fog-muted">{sublabel}</p>}
+        <p className="truncate text-base font-semibold tracking-tight text-ink dark:text-cream">
+          {displayValue}
+        </p>
+        {sublabel && (
+          <p className="truncate text-[11px] text-ink-muted dark:text-fog-muted">{sublabel}</p>
+        )}
       </div>
     </div>
   );

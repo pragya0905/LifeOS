@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useApi } from "../api/useApi";
 import type { Goal, HabitLog, LogEntry } from "../types";
 import Ring from "./Ring";
-import { card, mutedText } from "./ui";
+import { mutedText } from "./ui";
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -78,7 +78,7 @@ export default function TodaySummaryRings() {
 
   if (loading) {
     return (
-      <div className={card}>
+      <div className="rounded-2xl border border-stone bg-cream-card p-4 shadow-sm dark:border-stone-dark dark:bg-charcoal-card">
         <p className={mutedText}>Loading...</p>
       </div>
     );
@@ -87,36 +87,47 @@ export default function TodaySummaryRings() {
   const sleepTarget = SLEEP_TARGET_MINUTES;
   const sleepDebt = sleepMinutes !== null ? Math.max(sleepTarget - sleepMinutes, 0) : null;
 
+  const tileClass =
+    "flex items-center gap-3 px-4 py-3 border-stone dark:border-stone-dark sm:border-r last:border-r-0 border-b sm:border-b-0 last:border-b-0";
+
   return (
-    <div className={`${card} flex flex-wrap gap-x-8 gap-y-4`}>
-      <Ring
-        label="Water"
-        value={water}
-        target={goals.water ?? 2000}
-        displayValue={`${(water / 1000).toFixed(1)} L`}
-        sublabel={`/ ${(((goals.water ?? 2000) as number) / 1000).toFixed(1)} L`}
-      />
-      <Ring
-        label="Sleep"
-        value={sleepMinutes ?? 0}
-        target={sleepTarget}
-        displayValue={sleepMinutes !== null ? formatHoursMinutes(sleepMinutes) : "—"}
-        sublabel={sleepDebt ? `debt ${formatHoursMinutes(sleepDebt)}` : undefined}
-      />
-      <Ring
-        label="Exercise"
-        value={exercise}
-        target={goals.exercise ?? 30}
-        displayValue={`${exercise} min`}
-        sublabel={`/ ${goals.exercise ?? 30} min`}
-      />
-      <Ring
-        label="Meditation"
-        value={meditation}
-        target={goals.meditation ?? 10}
-        displayValue={`${meditation} min`}
-        sublabel={`/ ${goals.meditation ?? 10} min`}
-      />
+    <div className="grid grid-cols-2 rounded-2xl border border-stone bg-cream-card shadow-sm dark:border-stone-dark dark:bg-charcoal-card sm:grid-cols-4">
+      <div className={tileClass}>
+        <Ring
+          label="Water"
+          value={water}
+          target={goals.water ?? 2000}
+          displayValue={`${(water / 1000).toFixed(1)} L`}
+          sublabel={`/ ${(((goals.water ?? 2000) as number) / 1000).toFixed(1)} L`}
+        />
+      </div>
+      <div className={tileClass}>
+        <Ring
+          label="Sleep"
+          value={sleepMinutes ?? 0}
+          target={sleepTarget}
+          displayValue={sleepMinutes !== null ? formatHoursMinutes(sleepMinutes) : "—"}
+          sublabel={sleepDebt ? `debt ${formatHoursMinutes(sleepDebt)}` : undefined}
+        />
+      </div>
+      <div className={tileClass}>
+        <Ring
+          label="Exercise"
+          value={exercise}
+          target={goals.exercise ?? 30}
+          displayValue={`${exercise} min`}
+          sublabel={`/ ${goals.exercise ?? 30} min`}
+        />
+      </div>
+      <div className={tileClass}>
+        <Ring
+          label="Meditation"
+          value={meditation}
+          target={goals.meditation ?? 10}
+          displayValue={`${meditation} min`}
+          sublabel={`/ ${goals.meditation ?? 10} min`}
+        />
+      </div>
     </div>
   );
 }
