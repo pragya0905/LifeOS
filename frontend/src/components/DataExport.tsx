@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useApi } from "../api/useApi";
 import type { JournalEntry, LogEntry, Task } from "../types";
-import { card, errorText, mutedText, primaryButton, sectionLabel } from "./ui";
+import { card, errorText, mutedText, primaryButton, secondaryButton, sectionLabel } from "./ui";
 
 function csvEscape(value: string): string {
   return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
@@ -23,24 +23,37 @@ function downloadCsv(filename: string, content: string) {
   URL.revokeObjectURL(url);
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+async function fetchExportData(request: ReturnType<typeof useApi>["request"]) {
+  const [tasksData, journalData, logsData] = await Promise.all([
+    request<{ tasks: Task[] }>("/tasks"),
+    request<{ entries: JournalEntry[] }>("/journal"),
+    request<{ entries: LogEntry[] }>("/logs"),
+  ]);
+  return { tasks: tasksData.tasks, journalEntries: journalData.entries, logs: logsData.entries };
+}
+
 export default function DataExport() {
   const { request } = useApi();
-  const [exporting, setExporting] = useState(false);
+  const [exportingCsv, setExportingCsv] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleExport() {
-    setExporting(true);
+  async function handleExportCsv() {
+    setExportingCsv(true);
     setError(null);
     try {
-      const [tasksData, journalData, logsData] = await Promise.all([
-        request<{ tasks: Task[] }>("/tasks"),
-        request<{ entries: JournalEntry[] }>("/journal"),
-        request<{ entries: LogEntry[] }>("/logs"),
-      ]);
-
+      const { tasks, journalEntries, logs } = await fetchExportData(request);
       const rows: string[][] = [["type", "date", "summary", "details"]];
 
-      for (const task of tasksData.tasks) {
+      for (const task of tasks) {
         rows.push([
           "task",
           task.dueDate ?? "",
@@ -53,7 +66,7 @@ export default function DataExport() {
           }),
         ]);
       }
-      for (const entry of journalData.entries) {
+      for (const entry of journalEntries) {
         rows.push([
           "journal",
           entry.date,
@@ -61,7 +74,7 @@ export default function DataExport() {
           JSON.stringify({ voiceInput: entry.voiceInput, fullText: entry.text }),
         ]);
       }
-      for (const logEntry of logsData.entries) {
+      for (const logEntry of logs) {
         rows.push([logEntry.logType, logEntry.date, "", JSON.stringify(logEntry.data)]);
       }
 
@@ -69,7 +82,72 @@ export default function DataExport() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to export data");
     } finally {
-      setExporting(false);
+      setExportingCsv(false);
+    }
+  }
+
+  async function handleExportPdf() {
+    setExportingPdf(true);
+    setError(null);
+    try {
+      const { tasks, journalEntries, logs } = await fetchExportData(request);
+      const printWindow = window.open("", "_blank");
+      if (!printWindow) {
+        setError("Your browser blocked the print window — allow pop-ups for this site and try again.");
+        return;
+      }
+
+      const taskRows = tasks
+        .map(
+          (t) =>
+            `<tr><td>${escapeHtml(t.title)}</td><td>${t.dueDate ?? ""}${t.dueTime ? ` ${t.dueTime}` : ""}</td><td>${t.priority}</td><td>${t.status}</td></tr>`,
+        )
+        .join("");
+      const journalRows = journalEntries
+        .map(
+          (e) =>
+            `<tr><td>${e.date}</td><td>${escapeHtml(e.text)}</td></tr>`,
+        )
+        .join("");
+      const logRows = logs
+        .map(
+          (l) =>
+            `<tr><td>${l.date}</td><td>${escapeHtml(l.logType)}</td><td>${escapeHtml(JSON.stringify(l.data))}</td></tr>`,
+        )
+        .join("");
+
+      printWindow.document.write(`
+        <!doctype html>
+        <html>
+        <head>
+          <title>LifeOs export — ${new Date().toISOString().slice(0, 10)}</title>
+          <style>
+            body { font-family: system-ui, sans-serif; color: #2a2620; padding: 24px; }
+            h1 { font-size: 20px; }
+            h2 { font-size: 15px; margin-top: 28px; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+            th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #eee; vertical-align: top; }
+            th { color: #746b5c; font-weight: 600; }
+            @media print { h2 { break-before: auto; } tr { break-inside: avoid; } }
+          </style>
+        </head>
+        <body>
+          <h1>LifeOs export — ${new Date().toISOString().slice(0, 10)}</h1>
+          <h2>Tasks (${tasks.length})</h2>
+          <table><tr><th>Title</th><th>Due</th><th>Priority</th><th>Status</th></tr>${taskRows || "<tr><td colspan=4>None</td></tr>"}</table>
+          <h2>Journal entries (${journalEntries.length})</h2>
+          <table><tr><th>Date</th><th>Entry</th></tr>${journalRows || "<tr><td colspan=2>None</td></tr>"}</table>
+          <h2>Logs (${logs.length})</h2>
+          <table><tr><th>Date</th><th>Type</th><th>Details</th></tr>${logRows || "<tr><td colspan=3>None</td></tr>"}</table>
+          <script>window.onload = () => window.print();</script>
+        </body>
+        </html>
+      `);
+      printWindow.document.close();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to export data");
+    } finally {
+      setExportingPdf(false);
     }
   }
 
@@ -78,18 +156,27 @@ export default function DataExport() {
       <h2 className={`mb-2 ${sectionLabel}`}>Export data</h2>
       <p className={`mb-3 ${mutedText}`}>
         Download your tasks, journal entries, and logs (sleep, weight, mood, cycle, food, calls,
-        expenses) as a single CSV file — useful for backups or sharing with a healthcare
-        provider.
+        expenses) — useful for backups or sharing with a healthcare provider.
       </p>
       {error && <p className={`mb-2 ${errorText}`}>{error}</p>}
-      <button
-        type="button"
-        onClick={handleExport}
-        disabled={exporting}
-        className={`${primaryButton} px-3 py-1.5 text-xs`}
-      >
-        {exporting ? "Preparing..." : "Export as CSV"}
-      </button>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={handleExportCsv}
+          disabled={exportingCsv}
+          className={`${primaryButton} px-3 py-1.5 text-xs`}
+        >
+          {exportingCsv ? "Preparing..." : "Export as CSV"}
+        </button>
+        <button
+          type="button"
+          onClick={handleExportPdf}
+          disabled={exportingPdf}
+          className={`${secondaryButton} px-3 py-1.5 text-xs`}
+        >
+          {exportingPdf ? "Preparing..." : "Export as PDF"}
+        </button>
+      </div>
     </div>
   );
 }
