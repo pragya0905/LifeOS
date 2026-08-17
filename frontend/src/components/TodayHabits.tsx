@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../api/useApi";
 import type { Goal, GoalMetric, HabitLog, JournalEntry, LogEntry } from "../types";
-import { card, errorText, input, mutedText, primaryButton, sectionLabel } from "./ui";
+import { badge, card, errorText, input, mutedText, primaryButton, sectionLabel } from "./ui";
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -29,13 +29,14 @@ function computeSleepDuration(bedTime: string, wakeTime: string): string | null 
 // Defined at module scope (not nested inside TodayHabits) so React keeps the same
 // element identity across re-renders — nesting these would remount the <input> on
 // every keystroke and silently drop focus before onBlur can fire.
-function DoneCheck({ done }: { done: boolean }) {
+function DoneCheck({ done, label }: { done: boolean; label: string }) {
   return (
     <input
       type="checkbox"
       checked={done}
       readOnly
       disabled
+      aria-label={`${label}: ${done ? "done" : "not done"} today`}
       className="h-4 w-4 rounded border-stone text-sage accent-sage disabled:opacity-100 dark:border-stone-dark"
     />
   );
@@ -46,11 +47,13 @@ function GoalTarget({
   onChange,
   onBlur,
   disabled,
+  habitLabel,
 }: {
   value: string;
   onChange: (value: string) => void;
   onBlur: () => void;
   disabled: boolean;
+  habitLabel: string;
 }) {
   return (
     <span className={`flex items-center gap-1 ${mutedText}`}>
@@ -63,6 +66,7 @@ function GoalTarget({
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
         disabled={disabled}
+        aria-label={`${habitLabel} daily goal`}
         className={`w-20 py-0.5 text-xs ${input}`}
       />
     </span>
@@ -84,6 +88,12 @@ export default function TodayHabits() {
   const [waterDraft, setWaterDraft] = useState("");
   const [exerciseDraft, setExerciseDraft] = useState("");
   const [meditationDraft, setMeditationDraft] = useState("");
+  // Tracks whether each habit's current value came from journal AI extraction (vs a manual
+  // save), so the UI can show where a number actually came from — the same "manual always
+  // wins" precedence guarantee the backend enforces.
+  const [habitSource, setHabitSource] = useState<
+    Partial<Record<"water" | "exercise" | "meditation", "manual" | "ai-journal">>
+  >({});
 
   const [sleepLogId, setSleepLogId] = useState<string | null>(null);
   const [bedTime, setBedTime] = useState("");
@@ -114,12 +124,21 @@ export default function TodayHabits() {
         ]);
         if (ignore) return;
 
+        const sourceNext: typeof habitSource = {};
         for (const habit of habitsData.habits) {
           const value = String(habit.value ?? "");
           if (habit.habitType === "water") setWaterDraft(value);
           if (habit.habitType === "exercise") setExerciseDraft(value);
           if (habit.habitType === "meditation") setMeditationDraft(value);
+          if (
+            habit.habitType === "water" ||
+            habit.habitType === "exercise" ||
+            habit.habitType === "meditation"
+          ) {
+            sourceNext[habit.habitType] = habit.source;
+          }
         }
+        setHabitSource(sourceNext);
 
         const goalDraftsNext: Partial<Record<GoalMetric, string>> = {};
         for (const goal of goalsData.goals) goalDraftsNext[goal.metric] = String(goal.targetValue);
@@ -229,6 +248,13 @@ export default function TodayHabits() {
       }
 
       await Promise.all(tasks);
+      setHabitSource((prev) => {
+        const next = { ...prev };
+        if (water !== null) next.water = "manual";
+        if (exercise !== null) next.exercise = "manual";
+        if (meditation !== null) next.meditation = "manual";
+        return next;
+      });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
@@ -285,7 +311,7 @@ export default function TodayHabits() {
                 <tr className="border-b border-stone/40 dark:border-stone-dark/40">
                   <td className={rowLabelClass}>Water</td>
                   <td className={detailCellClass}>
-                    <DoneCheck done={Number(waterDraft) > 0} />
+                    <DoneCheck done={Number(waterDraft) > 0} label="Water" />
                   </td>
                   <td className={detailCellClass}>
                     <div className="flex flex-col gap-1">
@@ -296,14 +322,21 @@ export default function TodayHabits() {
                           placeholder="0"
                           value={waterDraft}
                           onChange={(e) => setWaterDraft(e.target.value)}
+                          aria-label="Water intake in milliliters"
                           className={`w-24 py-1 ${input}`}
                         />
                         <span className={mutedText}>ml</span>
+                        {habitSource.water === "ai-journal" && (
+                          <span className={badge} title="Populated from your journal entry">
+                            from journal
+                          </span>
+                        )}
                         <GoalTarget
                           value={goalDrafts.water ?? ""}
                           onChange={(v) => updateGoalDraft("water", v)}
                           onBlur={() => saveGoal("water")}
                           disabled={savingGoal === "water"}
+                          habitLabel="Water"
                         />
                       </div>
                       {fieldErrors.water && <p className={errorText}>{fieldErrors.water}</p>}
@@ -313,7 +346,7 @@ export default function TodayHabits() {
                 <tr className="border-b border-stone/40 dark:border-stone-dark/40">
                   <td className={rowLabelClass}>Sleep</td>
                   <td className={detailCellClass}>
-                    <DoneCheck done={Boolean(bedTime && wakeTime)} />
+                    <DoneCheck done={Boolean(bedTime && wakeTime)} label="Sleep" />
                   </td>
                   <td className={detailCellClass}>
                     <div className="flex flex-wrap items-center gap-2">
@@ -322,6 +355,7 @@ export default function TodayHabits() {
                         type="time"
                         value={bedTime}
                         onChange={(e) => setBedTime(e.target.value)}
+                        aria-label="Sleep bed time"
                         className={`py-1 ${input}`}
                       />
                       <span className={mutedText}>To</span>
@@ -329,6 +363,7 @@ export default function TodayHabits() {
                         type="time"
                         value={wakeTime}
                         onChange={(e) => setWakeTime(e.target.value)}
+                        aria-label="Sleep wake time"
                         className={`py-1 ${input}`}
                       />
                       {sleepDuration && <span className={mutedText}>({sleepDuration})</span>}
@@ -338,7 +373,7 @@ export default function TodayHabits() {
                 <tr className="border-b border-stone/40 dark:border-stone-dark/40">
                   <td className={rowLabelClass}>Call</td>
                   <td className={detailCellClass}>
-                    <DoneCheck done={callPerson.trim() !== ""} />
+                    <DoneCheck done={callPerson.trim() !== ""} label="Call" />
                   </td>
                   <td className={detailCellClass}>
                     <div className="flex flex-col gap-1">
@@ -349,6 +384,7 @@ export default function TodayHabits() {
                           placeholder="Name"
                           value={callPerson}
                           onChange={(e) => setCallPerson(e.target.value)}
+                          aria-label="Call: person's name"
                           className={`w-28 py-1 ${input}`}
                         />
                         <input
@@ -357,6 +393,7 @@ export default function TodayHabits() {
                           placeholder="0"
                           value={callDuration}
                           onChange={(e) => setCallDuration(e.target.value)}
+                          aria-label="Call duration in minutes"
                           className={`w-20 py-1 ${input}`}
                         />
                         <span className={mutedText}>min</span>
@@ -370,7 +407,7 @@ export default function TodayHabits() {
                 <tr className="border-b border-stone/40 dark:border-stone-dark/40">
                   <td className={rowLabelClass}>Exercise</td>
                   <td className={detailCellClass}>
-                    <DoneCheck done={Number(exerciseDraft) > 0} />
+                    <DoneCheck done={Number(exerciseDraft) > 0} label="Exercise" />
                   </td>
                   <td className={detailCellClass}>
                     <div className="flex flex-col gap-1">
@@ -381,14 +418,21 @@ export default function TodayHabits() {
                           placeholder="0"
                           value={exerciseDraft}
                           onChange={(e) => setExerciseDraft(e.target.value)}
+                          aria-label="Exercise duration in minutes"
                           className={`w-24 py-1 ${input}`}
                         />
                         <span className={mutedText}>minutes</span>
+                        {habitSource.exercise === "ai-journal" && (
+                          <span className={badge} title="Populated from your journal entry">
+                            from journal
+                          </span>
+                        )}
                         <GoalTarget
                           value={goalDrafts.exercise ?? ""}
                           onChange={(v) => updateGoalDraft("exercise", v)}
                           onBlur={() => saveGoal("exercise")}
                           disabled={savingGoal === "exercise"}
+                          habitLabel="Exercise"
                         />
                       </div>
                       {fieldErrors.exercise && <p className={errorText}>{fieldErrors.exercise}</p>}
@@ -398,7 +442,7 @@ export default function TodayHabits() {
                 <tr className="border-b border-stone/40 dark:border-stone-dark/40">
                   <td className={rowLabelClass}>Meditation</td>
                   <td className={detailCellClass}>
-                    <DoneCheck done={Number(meditationDraft) > 0} />
+                    <DoneCheck done={Number(meditationDraft) > 0} label="Meditation" />
                   </td>
                   <td className={detailCellClass}>
                     <div className="flex flex-col gap-1">
@@ -409,14 +453,21 @@ export default function TodayHabits() {
                           placeholder="0"
                           value={meditationDraft}
                           onChange={(e) => setMeditationDraft(e.target.value)}
+                          aria-label="Meditation duration in minutes"
                           className={`w-24 py-1 ${input}`}
                         />
                         <span className={mutedText}>minutes</span>
+                        {habitSource.meditation === "ai-journal" && (
+                          <span className={badge} title="Populated from your journal entry">
+                            from journal
+                          </span>
+                        )}
                         <GoalTarget
                           value={goalDrafts.meditation ?? ""}
                           onChange={(v) => updateGoalDraft("meditation", v)}
                           onBlur={() => saveGoal("meditation")}
                           disabled={savingGoal === "meditation"}
+                          habitLabel="Meditation"
                         />
                       </div>
                       {fieldErrors.meditation && (
@@ -428,7 +479,7 @@ export default function TodayHabits() {
                 <tr>
                   <td className={rowLabelClass}>Journal</td>
                   <td className={detailCellClass}>
-                    <DoneCheck done={journaledToday} />
+                    <DoneCheck done={journaledToday} label="Journal" />
                   </td>
                   <td className={detailCellClass}>
                     <Link to="/journal" className="text-sm text-sage hover:underline">

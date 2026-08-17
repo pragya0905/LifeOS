@@ -1,11 +1,24 @@
 import { useEffect, useState } from "react";
 import { useApi } from "../api/useApi";
 import type { Goal, HabitLog, LogEntry } from "../types";
-import Ring from "./Ring";
+import Ring, { type RingTrend } from "./Ring";
 import { mutedText } from "./ui";
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function yesterday(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function trendOf(current: number | null, previous: number | null): RingTrend | undefined {
+  if (current === null || previous === null) return undefined;
+  if (current > previous) return "up";
+  if (current < previous) return "down";
+  return "flat";
 }
 
 function computeSleepMinutes(bedTime: string, wakeTime: string): number | null {
@@ -31,6 +44,10 @@ export default function TodaySummaryRings() {
   const [meditation, setMeditation] = useState(0);
   const [sleepMinutes, setSleepMinutes] = useState<number | null>(null);
   const [goals, setGoals] = useState<Partial<Record<string, number>>>({});
+  const [yWater, setYWater] = useState<number | null>(null);
+  const [yExercise, setYExercise] = useState<number | null>(null);
+  const [yMeditation, setYMeditation] = useState<number | null>(null);
+  const [ySleepMinutes, setYSleepMinutes] = useState<number | null>(null);
 
   useEffect(() => {
     let ignore = false;
@@ -38,10 +55,13 @@ export default function TodaySummaryRings() {
       setLoading(true);
       try {
         const date = today();
-        const [habitsData, sleepData, goalsData] = await Promise.all([
+        const yDate = yesterday();
+        const [habitsData, sleepData, goalsData, yHabitsData, ySleepData] = await Promise.all([
           request<{ habits: HabitLog[] }>(`/habits/${date}`),
           request<{ entries: LogEntry[] }>(`/logs?logType=sleep&from=${date}&to=${date}`),
           request<{ goals: Goal[] }>("/goals"),
+          request<{ habits: HabitLog[] }>(`/habits/${yDate}`),
+          request<{ entries: LogEntry[] }>(`/logs?logType=sleep&from=${yDate}&to=${yDate}`),
         ]);
         if (ignore) return;
 
@@ -49,6 +69,11 @@ export default function TodaySummaryRings() {
           if (habit.habitType === "water") setWater(habit.value ?? 0);
           if (habit.habitType === "exercise") setExercise(habit.value ?? 0);
           if (habit.habitType === "meditation") setMeditation(habit.value ?? 0);
+        }
+        for (const habit of yHabitsData.habits) {
+          if (habit.habitType === "water") setYWater(habit.value ?? 0);
+          if (habit.habitType === "exercise") setYExercise(habit.value ?? 0);
+          if (habit.habitType === "meditation") setYMeditation(habit.value ?? 0);
         }
 
         const sleep = sleepData.entries[0];
@@ -58,6 +83,12 @@ export default function TodaySummaryRings() {
             sleep.data.wakeTime as string,
           );
           setSleepMinutes(minutes);
+        }
+        const ySleep = ySleepData.entries[0];
+        if (ySleep) {
+          setYSleepMinutes(
+            computeSleepMinutes(ySleep.data.bedTime as string, ySleep.data.wakeTime as string),
+          );
         }
 
         const goalsNext: Partial<Record<string, number>> = {};
@@ -99,6 +130,7 @@ export default function TodaySummaryRings() {
           target={goals.water ?? 2000}
           displayValue={`${(water / 1000).toFixed(1)} L`}
           sublabel={`/ ${(((goals.water ?? 2000) as number) / 1000).toFixed(1)} L`}
+          trend={trendOf(water, yWater)}
         />
       </div>
       <div className={tileClass}>
@@ -108,6 +140,7 @@ export default function TodaySummaryRings() {
           target={sleepTarget}
           displayValue={sleepMinutes !== null ? formatHoursMinutes(sleepMinutes) : "—"}
           sublabel={sleepDebt ? `debt ${formatHoursMinutes(sleepDebt)}` : undefined}
+          trend={trendOf(sleepMinutes, ySleepMinutes)}
         />
       </div>
       <div className={tileClass}>
@@ -117,6 +150,7 @@ export default function TodaySummaryRings() {
           target={goals.exercise ?? 30}
           displayValue={`${exercise} min`}
           sublabel={`/ ${goals.exercise ?? 30} min`}
+          trend={trendOf(exercise, yExercise)}
         />
       </div>
       <div className={tileClass}>
@@ -126,6 +160,7 @@ export default function TodaySummaryRings() {
           target={goals.meditation ?? 10}
           displayValue={`${meditation} min`}
           sublabel={`/ ${goals.meditation ?? 10} min`}
+          trend={trendOf(meditation, yMeditation)}
         />
       </div>
     </div>
