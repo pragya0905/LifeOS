@@ -171,6 +171,8 @@ export default function Logs() {
   const [editValues, setEditValues] = useState<Record<string, string>>({});
   const [savingEdit, setSavingEdit] = useState(false);
 
+  const [filterType, setFilterType] = useState<LogType | "all">("all");
+
   useEffect(() => {
     let ignore = false;
 
@@ -200,6 +202,9 @@ export default function Logs() {
     setLogType(next);
     setValues({});
   }
+
+  const filteredEntries =
+    filterType === "all" ? entries : entries.filter((e) => e.logType === filterType);
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
@@ -301,13 +306,33 @@ export default function Logs() {
 
       {error && <p className={`mb-4 ${errorText}`}>{error}</p>}
 
+      {entries.length > 0 && (
+        <div className="mb-4">
+          <label className={label}>Filter by type</label>
+          <select
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value as LogType | "all")}
+            className={input}
+          >
+            <option value="all">All types</option>
+            {LOG_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {LOG_TYPE_CONFIG[t].label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {loading ? (
         <p className={mutedText}>Loading entries...</p>
       ) : entries.length === 0 ? (
         <p className={mutedText}>No log entries yet.</p>
+      ) : filteredEntries.length === 0 ? (
+        <p className={mutedText}>No {LOG_TYPE_CONFIG[filterType as LogType]?.label ?? ""} entries.</p>
       ) : (
         <ul className="flex flex-col gap-3">
-          {entries.map((entry) => (
+          {filteredEntries.map((entry) => (
             <li key={entry.logId} className={`flex flex-col gap-3 ${card}`}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
