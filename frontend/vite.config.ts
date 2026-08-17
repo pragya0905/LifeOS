@@ -15,7 +15,8 @@ export default defineConfig({
       injectRegister: 'auto',
       registerType: 'autoUpdate',
       devOptions: {
-        enabled: false,
+        enabled: true,
+        type: 'module',
       },
       manifest: {
         name: 'LifeOs',
