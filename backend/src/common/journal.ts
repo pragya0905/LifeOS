@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { ddb } from "./dynamo";
 import { extractJournalInfo } from "./claude";
 import { computeEndDate } from "./medications";
-import { LOG_ENTRY_SCHEMAS } from "./logEntrySchemas";
+import { LOG_ENTRY_SCHEMAS, SINGULAR_LOG_TYPES } from "./logEntrySchemas";
 import type {
   HabitType,
   HabitUnit,
@@ -142,12 +142,11 @@ async function writeAiRoutineStepLog(
   }
 }
 
-// Sleep/weight/mood/cycle are naturally one-value-per-day concepts, so AI writes use a
-// deterministic slot id — re-extraction (e.g. editing the journal entry) updates the same
-// item instead of piling up duplicates. Food/call/expense are naturally multi-per-day, so
-// each mention gets its own new entry.
-const SINGULAR_LOG_TYPES: LogType[] = ["sleep", "weight", "mood", "cycle"];
-
+// Sleep/weight/mood/cycle are naturally one-value-per-day concepts, so AI writes target the
+// same deterministic logId a manual save for that day would use (see SINGULAR_LOG_TYPES) —
+// re-extraction updates that one item, and a ConditionExpression below refuses to clobber a
+// manual entry, mirroring writeAiHabitLog's manual-always-wins guarantee. Food/call/expense
+// are naturally multi-per-day, so each mention gets its own new entry.
 async function writeAiLogEntry(
   userId: string,
   date: string,
@@ -160,18 +159,52 @@ async function writeAiLogEntry(
     return;
   }
   const now = new Date().toISOString();
-  const logId = SINGULAR_LOG_TYPES.includes(logType) ? `ai-${date}-${logType}` : randomUUID();
-  const entry: LogEntry = {
-    userId,
-    logId,
-    logType,
-    date,
-    data: parsed.data as Record<string, unknown>,
-    source: "ai-journal",
-    createdAt: now,
-    updatedAt: now,
-  };
-  await ddb.send(new PutCommand({ TableName: process.env.LOG_ENTRIES_TABLE_NAME, Item: entry }));
+
+  if (!SINGULAR_LOG_TYPES.includes(logType)) {
+    const entry: LogEntry = {
+      userId,
+      logId: randomUUID(),
+      logType,
+      date,
+      data: parsed.data as Record<string, unknown>,
+      source: "ai-journal",
+      createdAt: now,
+      updatedAt: now,
+    };
+    await ddb.send(new PutCommand({ TableName: process.env.LOG_ENTRIES_TABLE_NAME, Item: entry }));
+    return;
+  }
+
+  try {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: process.env.LOG_ENTRIES_TABLE_NAME,
+        Key: { userId, logId: `${date}-${logType}` },
+        UpdateExpression:
+          "SET #date = :date, #logType = :logType, #data = :data, #source = :source, " +
+          "updatedAt = :updatedAt, createdAt = if_not_exists(createdAt, :updatedAt)",
+        ConditionExpression: "attribute_not_exists(logId) OR #source = :aiSource",
+        ExpressionAttributeNames: {
+          "#date": "date",
+          "#logType": "logType",
+          "#data": "data",
+          "#source": "source",
+        },
+        ExpressionAttributeValues: {
+          ":date": date,
+          ":logType": logType,
+          ":data": parsed.data,
+          ":source": "ai-journal",
+          ":aiSource": "ai-journal",
+          ":updatedAt": now,
+        },
+      }),
+    );
+  } catch (err) {
+    // A manual entry already exists for this date+logType — manual always wins, no exceptions.
+    if (err instanceof Error && err.name === "ConditionalCheckFailedException") return;
+    throw err;
+  }
 }
 
 async function fetchActiveMedications(userId: string): Promise<Medication[]> {

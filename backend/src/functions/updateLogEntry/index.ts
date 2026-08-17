@@ -50,11 +50,13 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     new UpdateCommand({
       TableName: process.env.LOG_ENTRIES_TABLE_NAME,
       Key: { userId, logId },
-      UpdateExpression: "SET #date = :date, #data = :data, updatedAt = :updatedAt",
-      ExpressionAttributeNames: { "#date": "date", "#data": "data" },
+      UpdateExpression:
+        "SET #date = :date, #data = :data, #source = :source, updatedAt = :updatedAt",
+      ExpressionAttributeNames: { "#date": "date", "#data": "data", "#source": "source" },
       ExpressionAttributeValues: {
         ":date": typeof body.date === "string" ? body.date : current.date,
         ":data": data,
+        ":source": "manual",
         ":updatedAt": now,
       },
       ConditionExpression: "attribute_exists(userId)",

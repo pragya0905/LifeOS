@@ -53,3 +53,9 @@ export const LOG_ENTRY_SCHEMAS: Record<LogType, z.ZodTypeAny> = {
 };
 
 export const LOG_TYPES = Object.keys(LOG_ENTRY_SCHEMAS) as LogType[];
+
+// Sleep/weight/mood/cycle are naturally one-value-per-day concepts, so both manual saves
+// and AI-journal writes target the same deterministic logId (date + logType) instead of a
+// random one — otherwise a manual entry and an AI-extracted entry for the same day become
+// two separate items, and which one displays becomes an arbitrary query-order coin flip.
+export const SINGULAR_LOG_TYPES: LogType[] = ["sleep", "weight", "mood", "cycle"];

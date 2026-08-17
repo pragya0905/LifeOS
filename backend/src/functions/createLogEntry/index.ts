@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { ddb } from "../../common/dynamo";
 import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
-import { LOG_ENTRY_SCHEMAS, LOG_TYPES } from "../../common/logEntrySchemas";
+import { LOG_ENTRY_SCHEMAS, LOG_TYPES, SINGULAR_LOG_TYPES } from "../../common/logEntrySchemas";
 import type { LogEntry, LogType } from "../../common/types";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -33,9 +33,10 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
   }
 
   const now = new Date().toISOString();
+  const logId = SINGULAR_LOG_TYPES.includes(logType) ? `${date}-${logType}` : randomUUID();
   const entry: LogEntry = {
     userId,
-    logId: randomUUID(),
+    logId,
     logType,
     date,
     data: parsed.data as Record<string, unknown>,
