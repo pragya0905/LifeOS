@@ -12,6 +12,7 @@ const UPDATABLE_FIELDS = [
   "title",
   "dueDate",
   "dueTime",
+  "dueAtUtc",
   "estimatedHours",
   "priority",
   "status",
@@ -57,13 +58,21 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     setParts.push("#prioritySource = :prioritySource");
   }
 
+  // Editing the due date/time invalidates any reminder already sent for the old time —
+  // clear it so the scheduler can remind again for the new due time.
+  const clearsReminder =
+    updates.includes("dueAtUtc") || updates.includes("dueDate") || updates.includes("dueTime");
+  const updateExpression = clearsReminder
+    ? `SET ${setParts.join(", ")} REMOVE reminderSentAt`
+    : `SET ${setParts.join(", ")}`;
+
   let task: Task;
   try {
     const result = await ddb.send(
       new UpdateCommand({
         TableName: process.env.TASKS_TABLE_NAME,
         Key: { userId, taskId },
-        UpdateExpression: `SET ${setParts.join(", ")}`,
+        UpdateExpression: updateExpression,
         ExpressionAttributeNames: names,
         ExpressionAttributeValues: values,
         ConditionExpression: "attribute_exists(taskId)",

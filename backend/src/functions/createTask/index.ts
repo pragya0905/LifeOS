@@ -25,6 +25,10 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
 
   const dueDate = typeof body.dueDate === "string" ? body.dueDate : undefined;
   const dueTime = typeof body.dueTime === "string" ? body.dueTime : undefined;
+  // The browser computes this from dueDate+dueTime in its own local timezone (the server
+  // has no way to know the user's timezone from dueDate/dueTime alone) — an unambiguous
+  // instant the reminder scheduler can compare against directly, in UTC, no guessing.
+  const dueAtUtc = typeof body.dueAtUtc === "string" ? body.dueAtUtc : undefined;
   const estimatedHours =
     typeof body.estimatedHours === "number" && Number.isFinite(body.estimatedHours)
       ? body.estimatedHours
@@ -57,6 +61,7 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     title,
     dueDate,
     dueTime,
+    dueAtUtc,
     estimatedHours,
     voiceInput,
     priority,

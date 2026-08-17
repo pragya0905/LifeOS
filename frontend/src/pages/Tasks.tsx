@@ -33,6 +33,15 @@ function joinText(base: string, addition: string): string {
   return base.endsWith(" ") ? base + addition : `${base} ${addition}`;
 }
 
+// The browser is the only place that actually knows the user's timezone — computed here
+// (not on the server) so the reminder scheduler can compare due times in UTC without
+// having to guess what timezone dueDate/dueTime were entered in.
+function computeDueAtUtc(dueDate: string, dueTime: string): string | undefined {
+  if (!dueDate || !dueTime) return undefined;
+  const d = new Date(`${dueDate}T${dueTime}`);
+  return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
+}
+
 function hoursUntilDue(task: Task, now: Date): number | null {
   if (!task.dueDate) return null;
   const due = new Date(`${task.dueDate}T${task.dueTime ?? "23:59"}`);
@@ -178,6 +187,7 @@ export default function Tasks() {
           title: title.trim(),
           dueDate: dueDate || undefined,
           dueTime: dueTime || undefined,
+          dueAtUtc: computeDueAtUtc(dueDate, dueTime),
           estimatedHours: estimatedHours ? Number(estimatedHours) : undefined,
           voiceInput: usedVoice,
           priority,
@@ -244,6 +254,7 @@ export default function Tasks() {
     await updateTask(taskId, {
       dueDate: editDueDate || undefined,
       dueTime: editDueTime || undefined,
+      dueAtUtc: computeDueAtUtc(editDueDate, editDueTime),
       estimatedHours: editEstimatedHours ? Number(editEstimatedHours) : undefined,
       suggestPriority: editSuggestPriority || undefined,
     });
