@@ -36,3 +36,9 @@ export const badge = "rounded-full bg-sage-soft px-2 py-0.5 text-xs font-medium 
 
 export const errorText = "text-sm text-terracotta";
 export const mutedText = "text-sm text-ink-muted dark:text-fog-muted";
+
+export const priorityBadgeClass: Record<"Low" | "Medium" | "High", string> = {
+  Low: "bg-stone text-ink-muted dark:bg-stone-dark dark:text-fog-muted",
+  Medium: "bg-[#F0E4C8] text-[#8A6A22] dark:bg-[#4A3D1E] dark:text-[#E3C878]",
+  High: "bg-terracotta-soft text-terracotta dark:bg-terracotta-soft-dark dark:text-[#D89478]",
+};

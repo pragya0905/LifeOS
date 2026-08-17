@@ -14,17 +14,12 @@ import {
   pillButton,
   pillButtonInactive,
   primaryButton,
+  priorityBadgeClass,
   secondaryButton,
 } from "../components/ui";
 
 const PRIORITIES: TaskPriority[] = ["Low", "Medium", "High"];
 const STATUSES: TaskStatus[] = ["todo", "in_progress", "done"];
-
-const PRIORITY_BADGE: Record<TaskPriority, string> = {
-  Low: "bg-stone text-ink-muted dark:bg-stone-dark dark:text-fog-muted",
-  Medium: "bg-[#F0E4C8] text-[#8A6A22] dark:bg-[#4A3D1E] dark:text-[#E3C878]",
-  High: "bg-terracotta-soft text-terracotta dark:bg-terracotta-soft-dark dark:text-[#D89478]",
-};
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
   todo: "To do",
@@ -367,7 +362,7 @@ export default function Tasks() {
                 </div>
                 <div className="flex items-center gap-2">
                   <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${PRIORITY_BADGE[task.priority]}`}
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${priorityBadgeClass[task.priority]}`}
                     title={`Priority source: ${task.prioritySource}`}
                   >
                     {task.priority}

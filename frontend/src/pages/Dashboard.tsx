@@ -5,11 +5,30 @@ import ExtractionLedger from "../components/ExtractionLedger";
 import TodayHabits from "../components/TodayHabits";
 import TodaySchedule from "../components/TodaySchedule";
 import TodaySummaryRings from "../components/TodaySummaryRings";
+import WelcomeCard from "../components/WelcomeCard";
 import type { Task } from "../types";
-import { card, errorText, mutedText, page, pageTitle, sectionLabel } from "../components/ui";
+import {
+  card,
+  errorText,
+  mutedText,
+  page,
+  pageTitle,
+  priorityBadgeClass,
+  sectionLabel,
+} from "../components/ui";
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+// Tasks with a due date/time come first (soonest first); undated tasks sort last.
+function byUrgency(a: Task, b: Task): number {
+  const aKey = a.dueDate ? `${a.dueDate}T${a.dueTime ?? "23:59"}` : null;
+  const bKey = b.dueDate ? `${b.dueDate}T${b.dueTime ?? "23:59"}` : null;
+  if (aKey && bKey) return aKey < bKey ? -1 : aKey > bKey ? 1 : 0;
+  if (aKey) return -1;
+  if (bKey) return 1;
+  return 0;
 }
 
 export default function Dashboard() {
@@ -36,10 +55,13 @@ export default function Dashboard() {
 
   const pending = tasks?.filter((t) => t.status !== "done") ?? [];
   const overdue = pending.filter((t) => t.dueDate && t.dueDate < today());
+  const topTasks = pending.slice().sort(byUrgency).slice(0, 3);
 
   return (
     <div className={page}>
       <h1 className={pageTitle}>Dashboard</h1>
+
+      <WelcomeCard />
 
       <div className="mb-6">
         <TodaySummaryRings />
@@ -63,15 +85,47 @@ export default function Dashboard() {
           {error && <p className={errorText}>{error}</p>}
           {!error && !tasks && <p className={mutedText}>Loading...</p>}
           {tasks && (
-            <p className="text-sm text-ink dark:text-cream">
-              <span className="font-medium">{pending.length}</span> pending
-              {overdue.length > 0 && (
-                <>
-                  {" "}
-                  · <span className="font-medium text-terracotta">{overdue.length} overdue</span>
-                </>
+            <>
+              <p className="mb-2 text-sm text-ink dark:text-cream">
+                <span className="font-medium">{pending.length}</span> pending
+                {overdue.length > 0 && (
+                  <>
+                    {" "}
+                    ·{" "}
+                    <span className="font-medium text-terracotta">
+                      {overdue.length} overdue
+                    </span>
+                  </>
+                )}
+              </p>
+              {topTasks.length > 0 && (
+                <ul className="mb-2 flex flex-col gap-1.5">
+                  {topTasks.map((task) => {
+                    const isOverdue = Boolean(task.dueDate && task.dueDate < today());
+                    return (
+                      <li key={task.taskId} className="flex items-center justify-between gap-2 text-sm">
+                        <span className="truncate text-ink dark:text-cream">{task.title}</span>
+                        <span className="flex shrink-0 items-center gap-1.5">
+                          {task.dueDate && (
+                            <span
+                              className={`text-xs ${isOverdue ? "font-medium text-terracotta" : "text-ink-muted dark:text-fog-muted"}`}
+                            >
+                              {task.dueDate}
+                              {task.dueTime ? ` ${task.dueTime}` : ""}
+                            </span>
+                          )}
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${priorityBadgeClass[task.priority]}`}
+                          >
+                            {task.priority}
+                          </span>
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
-            </p>
+            </>
           )}
           <Link to="/tasks" className="mt-1 inline-block text-xs text-sage hover:underline">
             Manage tasks →
