@@ -773,6 +773,35 @@ Resources:
             Auth:
               Authorizer: CognitoAuthorizer
 
+  ListMedicationLogsForRangeFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-list-medication-logs-for-range-${Environment}"
+      CodeUri: src/functions/listMedicationLogsForRange/
+      Handler: index.handler
+      Environment:
+        Variables:
+          MEDICATION_LOGS_TABLE_NAME: !Ref MedicationLogsTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref MedicationLogsTable
+      Events:
+        ListMedicationLogsForRange:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /medication-logs
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
   ########################
   # Lambda — Log Entries (unified tracker: food, sleep, weight, body fat, mood, call, expense, cycle)
   ########################
