@@ -2,7 +2,17 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../api/useApi";
 import type { Goal, GoalMetric, HabitLog, JournalEntry, LogEntry } from "../types";
-import { badge, card, errorText, input, mutedText, primaryButton, sectionLabel } from "./ui";
+import {
+  badge,
+  card,
+  errorText,
+  input,
+  mutedText,
+  pillButton,
+  pillButtonInactive,
+  primaryButton,
+  sectionLabel,
+} from "./ui";
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -264,6 +274,28 @@ export default function TodayHabits() {
     }
   }
 
+  const [quickAdding, setQuickAdding] = useState(false);
+
+  async function quickAddWater(amountMl: number) {
+    const next = (Number(waterDraft) || 0) + amountMl;
+    setQuickAdding(true);
+    setError(null);
+    try {
+      await request(`/habits/${date}/water`, {
+        method: "PATCH",
+        body: JSON.stringify({ value: next }),
+      });
+      setWaterDraft(String(next));
+      setHabitSource((prev) => ({ ...prev, water: "manual" }));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to log water");
+    } finally {
+      setQuickAdding(false);
+    }
+  }
+
   async function saveGoal(metric: GoalMetric) {
     const draft = goalDrafts[metric] ?? "";
     const parsed = Number(draft);
@@ -338,6 +370,19 @@ export default function TodayHabits() {
                           disabled={savingGoal === "water"}
                           habitLabel="Water"
                         />
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {[250, 500].map((amount) => (
+                          <button
+                            key={amount}
+                            type="button"
+                            disabled={quickAdding}
+                            onClick={() => quickAddWater(amount)}
+                            className={`${pillButton} ${pillButtonInactive}`}
+                          >
+                            +{amount}ml
+                          </button>
+                        ))}
                       </div>
                       {fieldErrors.water && <p className={errorText}>{fieldErrors.water}</p>}
                     </div>

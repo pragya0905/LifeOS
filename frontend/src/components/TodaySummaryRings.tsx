@@ -9,9 +9,24 @@ function today(): string {
 }
 
 function yesterday(): string {
+  return dateOffset(1);
+}
+
+function dateOffset(daysAgo: number): string {
   const d = new Date();
-  d.setDate(d.getDate() - 1);
+  d.setDate(d.getDate() - daysAgo);
   return d.toISOString().slice(0, 10);
+}
+
+// How many consecutive days (counting back from today) had a non-zero value —
+// stops at the first day with 0/missing, so a still-open streak includes today.
+function computeStreak(dailyValues: number[]): number {
+  let streak = 0;
+  for (const value of dailyValues) {
+    if (value <= 0) break;
+    streak += 1;
+  }
+  return streak;
 }
 
 function trendOf(current: number | null, previous: number | null): RingTrend | undefined {
@@ -48,6 +63,9 @@ export default function TodaySummaryRings() {
   const [yExercise, setYExercise] = useState<number | null>(null);
   const [yMeditation, setYMeditation] = useState<number | null>(null);
   const [ySleepMinutes, setYSleepMinutes] = useState<number | null>(null);
+  const [waterStreak, setWaterStreak] = useState(0);
+  const [exerciseStreak, setExerciseStreak] = useState(0);
+  const [meditationStreak, setMeditationStreak] = useState(0);
 
   useEffect(() => {
     let ignore = false;
@@ -56,25 +74,34 @@ export default function TodaySummaryRings() {
       try {
         const date = today();
         const yDate = yesterday();
-        const [habitsData, sleepData, goalsData, yHabitsData, ySleepData] = await Promise.all([
-          request<{ habits: HabitLog[] }>(`/habits/${date}`),
+        const last7Dates = Array.from({ length: 7 }, (_, i) => dateOffset(i));
+        const [rangeHabitsData, sleepData, goalsData, ySleepData] = await Promise.all([
+          request<{ habits: HabitLog[] }>(
+            `/habits?from=${last7Dates[last7Dates.length - 1]}&to=${date}`,
+          ),
           request<{ entries: LogEntry[] }>(`/logs?logType=sleep&from=${date}&to=${date}`),
           request<{ goals: Goal[] }>("/goals"),
-          request<{ habits: HabitLog[] }>(`/habits/${yDate}`),
           request<{ entries: LogEntry[] }>(`/logs?logType=sleep&from=${yDate}&to=${yDate}`),
         ]);
         if (ignore) return;
 
-        for (const habit of habitsData.habits) {
-          if (habit.habitType === "water") setWater(habit.value ?? 0);
-          if (habit.habitType === "exercise") setExercise(habit.value ?? 0);
-          if (habit.habitType === "meditation") setMeditation(habit.value ?? 0);
-        }
-        for (const habit of yHabitsData.habits) {
-          if (habit.habitType === "water") setYWater(habit.value ?? 0);
-          if (habit.habitType === "exercise") setYExercise(habit.value ?? 0);
-          if (habit.habitType === "meditation") setYMeditation(habit.value ?? 0);
-        }
+        const byDate = (d: string, type: HabitLog["habitType"]) =>
+          rangeHabitsData.habits.find(
+            (h) => h.date === d && h.habitType === type,
+          )?.value ?? 0;
+
+        setWater(byDate(date, "water"));
+        setExercise(byDate(date, "exercise"));
+        setMeditation(byDate(date, "meditation"));
+        setYWater(byDate(yDate, "water"));
+        setYExercise(byDate(yDate, "exercise"));
+        setYMeditation(byDate(yDate, "meditation"));
+
+        const valuesByType = (type: HabitLog["habitType"]) =>
+          last7Dates.map((d) => byDate(d, type));
+        setWaterStreak(computeStreak(valuesByType("water")));
+        setExerciseStreak(computeStreak(valuesByType("exercise")));
+        setMeditationStreak(computeStreak(valuesByType("meditation")));
 
         const sleep = sleepData.entries[0];
         if (sleep) {
@@ -131,6 +158,7 @@ export default function TodaySummaryRings() {
           displayValue={`${(water / 1000).toFixed(1)} L`}
           sublabel={`/ ${(((goals.water ?? 2000) as number) / 1000).toFixed(1)} L`}
           trend={trendOf(water, yWater)}
+          streakDays={waterStreak}
         />
       </div>
       <div className={tileClass}>
@@ -151,6 +179,7 @@ export default function TodaySummaryRings() {
           displayValue={`${exercise} min`}
           sublabel={`/ ${goals.exercise ?? 30} min`}
           trend={trendOf(exercise, yExercise)}
+          streakDays={exerciseStreak}
         />
       </div>
       <div className={tileClass}>
@@ -161,6 +190,7 @@ export default function TodaySummaryRings() {
           displayValue={`${meditation} min`}
           sublabel={`/ ${goals.meditation ?? 10} min`}
           trend={trendOf(meditation, yMeditation)}
+          streakDays={meditationStreak}
         />
       </div>
     </div>

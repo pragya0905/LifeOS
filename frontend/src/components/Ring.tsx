@@ -19,6 +19,7 @@ export default function Ring({
   displayValue,
   sublabel,
   trend,
+  streakDays,
 }: {
   value: number;
   target: number;
@@ -26,6 +27,7 @@ export default function Ring({
   displayValue: string;
   sublabel?: string;
   trend?: RingTrend;
+  streakDays?: number;
 }) {
   const progress = target > 0 ? Math.min(value / target, 1) : 0;
   const offset = CIRCUMFERENCE * (1 - progress);
@@ -72,8 +74,16 @@ export default function Ring({
         </span>
       </div>
       <div className="min-w-0">
-        <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-ink-muted dark:text-fog-muted">
+        <p className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-[0.14em] text-ink-muted dark:text-fog-muted">
           {label}
+          {Boolean(streakDays && streakDays >= 2) && (
+            <span
+              className="rounded-full bg-sage-soft px-1.5 py-px normal-case tracking-normal text-sage dark:bg-sage-soft-dark dark:text-sage-light"
+              title={`${streakDays}-day streak`}
+            >
+              {streakDays}d
+            </span>
+          )}
         </p>
         <p className="truncate text-base font-semibold tracking-tight text-ink dark:text-cream">
           {displayValue}

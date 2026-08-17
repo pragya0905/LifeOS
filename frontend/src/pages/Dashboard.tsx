@@ -21,6 +21,15 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function greeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 5) return "Still up";
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  if (hour < 21) return "Good evening";
+  return "Good night";
+}
+
 // Tasks with a due date/time come first (soonest first); undated tasks sort last.
 function byUrgency(a: Task, b: Task): number {
   const aKey = a.dueDate ? `${a.dueDate}T${a.dueTime ?? "23:59"}` : null;
@@ -59,7 +68,7 @@ export default function Dashboard() {
 
   return (
     <div className={page}>
-      <h1 className={pageTitle}>Dashboard</h1>
+      <h1 className={pageTitle}>{greeting()}</h1>
 
       <WelcomeCard />
 
