@@ -596,6 +596,35 @@ Resources:
             Auth:
               Authorizer: CognitoAuthorizer
 
+  ListHabitsForRangeFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-list-habits-for-range-${Environment}"
+      CodeUri: src/functions/listHabitsForRange/
+      Handler: index.handler
+      Environment:
+        Variables:
+          HABITS_TABLE_NAME: !Ref HabitLogsTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref HabitLogsTable
+      Events:
+        ListHabitsForRange:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /habits
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
   ########################
   # Lambda — Medications
   ########################
