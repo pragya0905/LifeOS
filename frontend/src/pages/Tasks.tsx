@@ -92,6 +92,7 @@ export default function Tasks() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   const [title, setTitle] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -253,6 +254,10 @@ export default function Tasks() {
   const selectClass =
     "rounded-xl border border-stone bg-cream-card px-2 py-1 text-xs text-ink focus:border-sage focus:outline-none dark:border-stone-dark dark:bg-charcoal-card dark:text-cream";
 
+  const filteredTasks = search.trim()
+    ? tasks.filter((t) => t.title.toLowerCase().includes(search.trim().toLowerCase()))
+    : tasks;
+
   return (
     <div className={page}>
       <h1 className={pageTitle}>Tasks</h1>
@@ -353,13 +358,26 @@ export default function Tasks() {
 
       {error && <p className={`mb-4 ${errorText}`}>{error}</p>}
 
+      {tasks.length > 0 && (
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search tasks..."
+          aria-label="Search tasks"
+          className={`mb-4 w-full ${input}`}
+        />
+      )}
+
       {loading ? (
         <p className={mutedText}>Loading tasks...</p>
       ) : tasks.length === 0 ? (
         <p className={mutedText}>No tasks yet — add one above.</p>
+      ) : filteredTasks.length === 0 ? (
+        <p className={mutedText}>No tasks match "{search}".</p>
       ) : (
         <ul className="flex flex-col gap-3">
-          {tasks.map((task) => (
+          {filteredTasks.map((task) => (
             <li key={task.taskId} className={`flex flex-col gap-3 ${card}`}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>

@@ -172,6 +172,7 @@ export default function Logs() {
   const [savingEdit, setSavingEdit] = useState(false);
 
   const [filterType, setFilterType] = useState<LogType | "all">("all");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     let ignore = false;
@@ -203,8 +204,13 @@ export default function Logs() {
     setValues({});
   }
 
-  const filteredEntries =
-    filterType === "all" ? entries : entries.filter((e) => e.logType === filterType);
+  const filteredEntries = entries
+    .filter((e) => filterType === "all" || e.logType === filterType)
+    .filter(
+      (e) =>
+        !search.trim() ||
+        summarize(e.logType, e.data).toLowerCase().includes(search.trim().toLowerCase()),
+    );
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
@@ -307,20 +313,30 @@ export default function Logs() {
       {error && <p className={`mb-4 ${errorText}`}>{error}</p>}
 
       {entries.length > 0 && (
-        <div className="mb-4">
-          <label className={label}>Filter by type</label>
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value as LogType | "all")}
-            className={input}
-          >
-            <option value="all">All types</option>
-            {LOG_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {LOG_TYPE_CONFIG[t].label}
-              </option>
-            ))}
-          </select>
+        <div className="mb-4 flex flex-wrap items-end gap-3">
+          <div>
+            <label className={label}>Filter by type</label>
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value as LogType | "all")}
+              className={input}
+            >
+              <option value="all">All types</option>
+              {LOG_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {LOG_TYPE_CONFIG[t].label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search entries..."
+            aria-label="Search log entries"
+            className={`min-w-[200px] flex-1 ${input}`}
+          />
         </div>
       )}
 
@@ -329,7 +345,7 @@ export default function Logs() {
       ) : entries.length === 0 ? (
         <p className={mutedText}>No log entries yet.</p>
       ) : filteredEntries.length === 0 ? (
-        <p className={mutedText}>No {LOG_TYPE_CONFIG[filterType as LogType]?.label ?? ""} entries.</p>
+        <p className={mutedText}>No matching entries.</p>
       ) : (
         <ul className="flex flex-col gap-3">
           {filteredEntries.map((entry) => (
