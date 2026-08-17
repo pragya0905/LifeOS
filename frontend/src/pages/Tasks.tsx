@@ -213,6 +213,23 @@ export default function Tasks() {
     }
   }
 
+  async function duplicateTask(task: Task) {
+    setError(null);
+    try {
+      const copy = await request<Task>("/tasks", {
+        method: "POST",
+        body: JSON.stringify({
+          title: task.title,
+          priority: task.priority,
+          estimatedHours: task.estimatedHours,
+        }),
+      });
+      setTasks((prev) => [copy, ...prev]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to duplicate task");
+    }
+  }
+
   function startEdit(task: Task) {
     setEditingTaskId(task.taskId);
     setEditDueDate(task.dueDate ?? "");
@@ -402,6 +419,14 @@ export default function Tasks() {
                     className={`${secondaryButton} px-2 py-1 text-xs`}
                   >
                     {editingTaskId === task.taskId ? "Cancel" : "Edit"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => duplicateTask(task)}
+                    title="Create a new task with the same title, priority, and estimate"
+                    className={`${secondaryButton} px-2 py-1 text-xs`}
+                  >
+                    Duplicate
                   </button>
                 </div>
               </div>
