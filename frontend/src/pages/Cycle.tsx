@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useApi } from "../api/useApi";
 import type { LogEntry } from "../types";
 import {
+  badge,
   card,
   errorText,
   input,
@@ -13,6 +14,8 @@ import {
   secondaryButton,
   sectionLabel,
 } from "../components/ui";
+
+const INTRO_DISMISSED_KEY = "lifeos-cycle-intro-dismissed";
 
 type CycleEvent = "period_start" | "period_end" | "symptom";
 
@@ -61,6 +64,14 @@ export default function Cycle() {
   const [event, setEvent] = useState<CycleEvent>("period_start");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [introDismissed, setIntroDismissed] = useState(
+    () => localStorage.getItem(INTRO_DISMISSED_KEY) === "true",
+  );
+
+  function dismissIntro() {
+    localStorage.setItem(INTRO_DISMISSED_KEY, "true");
+    setIntroDismissed(true);
+  }
 
   useEffect(() => {
     let ignore = false;
@@ -124,6 +135,29 @@ export default function Cycle() {
   return (
     <div className={page}>
       <h1 className={pageTitle}>Menstrual Cycle</h1>
+
+      {!introDismissed && (
+        <div className={`mb-6 flex items-start justify-between gap-4 ${card}`}>
+          <div>
+            <span className={badge}>Private to you</span>
+            <p className="mt-2 text-sm text-ink dark:text-cream">
+              Log period start/end dates and symptoms here to build a cycle-length prediction
+              over time — the more start dates you log, the more accurate the estimate gets.
+            </p>
+            <p className={`mt-1 ${mutedText}`}>
+              This data is stored under your account like everything else in LifeOs and is never
+              shown to anyone else.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={dismissIntro}
+            className={`${secondaryButton} shrink-0 px-2 py-1 text-xs`}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <div className={`mb-6 ${card}`}>
         <h2 className={`mb-2 ${sectionLabel}`}>Prediction</h2>
