@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../api/useApi";
+import Achievements from "../components/Achievements";
 import ExtractionLedger from "../components/ExtractionLedger";
 import TodayHabits from "../components/TodayHabits";
 import TodaySchedule from "../components/TodaySchedule";
@@ -75,6 +76,8 @@ export default function Dashboard() {
       <div className="mb-6">
         <TodaySummaryRings />
       </div>
+
+      <Achievements />
 
       <div className="mb-6">
         <TodaySchedule />
