@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useApi } from "../api/useApi";
 import { useSpeechToText } from "../hooks/useSpeechToText";
 import { formatDetection } from "../lib/formatExtraction";
-import type { JournalEntry } from "../types";
+import type { JournalEntry, LogEntry } from "../types";
 import {
   badge,
   card,
@@ -27,6 +27,21 @@ function joinText(base: string, addition: string): string {
   return base.endsWith(" ") || base.endsWith("\n") ? base + addition : `${base} ${addition}`;
 }
 
+const PROMPTS = [
+  "Today I'm grateful for...",
+  "The best part of today was...",
+  "What's on my mind right now...",
+  "Tomorrow I want to focus on...",
+];
+
+const MOOD_LABELS: Record<number, string> = {
+  1: "Very bad",
+  2: "Bad",
+  3: "Okay",
+  4: "Good",
+  5: "Very good",
+};
+
 export default function Journal() {
   const { request } = useApi();
   const [entries, setEntries] = useState<JournalEntry[]>([]);
@@ -37,6 +52,11 @@ export default function Journal() {
   const [text, setText] = useState("");
   const [saving, setSaving] = useState(false);
   const [usedVoice, setUsedVoice] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const [moodLogId, setMoodLogId] = useState<string | null>(null);
+  const [mood, setMood] = useState<number | null>(null);
+  const [savingMood, setSavingMood] = useState(false);
 
   const baseTextRef = useRef("");
   const finalTranscriptRef = useRef("");
@@ -83,6 +103,9 @@ export default function Journal() {
   }, []);
 
   const existingEntry = entries.find((entry) => entry.date === date);
+  const filteredEntries = search.trim()
+    ? entries.filter((entry) => entry.text.toLowerCase().includes(search.trim().toLowerCase()))
+    : entries;
 
   // Only one entry is allowed per day — whenever the selected date already has
   // an entry, load it into the form so saving edits it instead of duplicating it.
@@ -93,6 +116,54 @@ export default function Journal() {
     finalTranscriptRef.current = "";
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, entries]);
+
+  useEffect(() => {
+    let ignore = false;
+    async function loadMood() {
+      try {
+        const data = await request<{ entries: LogEntry[] }>(
+          `/logs?logType=mood&from=${date}&to=${date}`,
+        );
+        if (ignore) return;
+        const existing = data.entries[0];
+        setMoodLogId(existing?.logId ?? null);
+        setMood(existing ? (existing.data.rating as number) : null);
+      } catch {
+        // Best-effort — mood picker just stays unset if this fails.
+      }
+    }
+    loadMood();
+    return () => {
+      ignore = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date]);
+
+  async function selectMood(rating: number) {
+    setSavingMood(true);
+    try {
+      const data = { rating };
+      const entry = moodLogId
+        ? await request<LogEntry>(`/logs/${moodLogId}`, {
+            method: "PATCH",
+            body: JSON.stringify({ data }),
+          })
+        : await request<LogEntry>("/logs", {
+            method: "POST",
+            body: JSON.stringify({ logType: "mood", date, data }),
+          });
+      setMoodLogId(entry.logId);
+      setMood(rating);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save mood");
+    } finally {
+      setSavingMood(false);
+    }
+  }
+
+  function insertPrompt(prompt: string) {
+    setText((prev) => joinText(prev, prompt));
+  }
 
   function handleToggleVoice() {
     if (listening) {
@@ -150,6 +221,40 @@ export default function Journal() {
           )}
         </div>
         <div>
+          <label className={label}>Mood</label>
+          <div className="flex flex-wrap gap-1.5">
+            {[1, 2, 3, 4, 5].map((rating) => (
+              <button
+                key={rating}
+                type="button"
+                disabled={savingMood}
+                onClick={() => selectMood(rating)}
+                title={MOOD_LABELS[rating]}
+                className={`${pillButton} px-3 py-1 ${
+                  mood === rating ? "border-sage bg-sage text-cream-card" : pillButtonInactive
+                }`}
+              >
+                {rating}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <label className={label}>Prompts</label>
+          <div className="flex flex-wrap gap-1.5">
+            {PROMPTS.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                onClick={() => insertPrompt(prompt)}
+                className={`${pillButton} ${pillButtonInactive} px-3 py-1`}
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
           <div className="mb-1 flex items-center justify-between">
             <label className={label}>Entry</label>
             {voiceSupported ? (
@@ -186,13 +291,26 @@ export default function Journal() {
 
       {error && <p className={`mb-4 ${errorText}`}>{error}</p>}
 
+      {entries.length > 0 && (
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search journal entries..."
+          aria-label="Search journal entries"
+          className={`mb-4 w-full ${input}`}
+        />
+      )}
+
       {loading ? (
         <p className={mutedText}>Loading entries...</p>
       ) : entries.length === 0 ? (
         <p className={mutedText}>No journal entries yet.</p>
+      ) : filteredEntries.length === 0 ? (
+        <p className={mutedText}>No entries match "{search}".</p>
       ) : (
         <ul className="flex flex-col gap-3">
-          {entries.map((entry) => (
+          {filteredEntries.map((entry) => (
             <li key={entry.date} className={card}>
               <p className="mb-1 flex items-center gap-2 text-xs font-medium text-ink-muted dark:text-fog-muted">
                 {entry.date}
