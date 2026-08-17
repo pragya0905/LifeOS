@@ -13,6 +13,15 @@
       rel="stylesheet"
     />
     <title>LifeOs</title>
+    <script>
+      (function () {
+        var stored = localStorage.getItem("lifeos-theme");
+        var isDark =
+          stored === "dark" ||
+          (stored !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.toggle("dark", isDark);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
