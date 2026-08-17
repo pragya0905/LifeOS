@@ -33,6 +33,9 @@ export default function Layout() {
             <NavLink to="/tasks" className={linkClass}>
               Tasks
             </NavLink>
+            <NavLink to="/calendar" className={linkClass}>
+              Calendar
+            </NavLink>
             <NavLink to="/journal" className={linkClass}>
               Journal
             </NavLink>
@@ -57,6 +60,9 @@ export default function Layout() {
             <span className="text-sm text-ink-muted dark:text-fog-muted">{user?.email}</span>
             <NavLink to="/settings" className={linkClass}>
               Settings
+            </NavLink>
+            <NavLink to="/help" className={linkClass}>
+              Help
             </NavLink>
             <button onClick={() => signOut()} className={secondaryButton}>
               Log out

@@ -14,6 +14,8 @@ import Cycle from "./pages/Cycle";
 import Routines from "./pages/Routines";
 import Insights from "./pages/Insights";
 import Settings from "./pages/Settings";
+import Calendar from "./pages/Calendar";
+import Help from "./pages/Help";
 
 export default function App() {
   return (
@@ -39,7 +41,9 @@ export default function App() {
             <Route path="/cycle" element={<Cycle />} />
             <Route path="/routines" element={<Routines />} />
             <Route path="/insights" element={<Insights />} />
+            <Route path="/calendar" element={<Calendar />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/help" element={<Help />} />
           </Route>
         </Routes>
       </BrowserRouter>
