@@ -20,6 +20,7 @@ const TABLES: { envVar: string; sortKeyName: string }[] = [
   { envVar: "ROUTINE_TEMPLATES_TABLE_NAME", sortKeyName: "routineId" },
   { envVar: "ROUTINE_LOGS_TABLE_NAME", sortKeyName: "dateRoutineStep" },
   { envVar: "GOALS_TABLE_NAME", sortKeyName: "metric" },
+  { envVar: "PUSH_SUBSCRIPTIONS_TABLE_NAME", sortKeyName: "endpoint" },
 ];
 
 async function deleteAllItemsForUser(tableName: string, sortKeyName: string, userId: string) {
@@ -53,6 +54,16 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     const tableName = process.env[table.envVar];
     if (!tableName) continue;
     await deleteAllItemsForUser(tableName, table.sortKeyName, userId);
+  }
+
+  // UserProfile has no sort key (one item per user) — a plain delete, no query needed.
+  if (process.env.USER_PROFILE_TABLE_NAME) {
+    await ddb.send(
+      new DeleteCommand({
+        TableName: process.env.USER_PROFILE_TABLE_NAME,
+        Key: { userId },
+      }),
+    );
   }
 
   await cognito.send(

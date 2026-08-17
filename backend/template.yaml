@@ -280,6 +280,22 @@ Resources:
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
 
+  UserProfileTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "LifeOs-UserProfile-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
   ########################
   # API Gateway (HTTP API) + Cognito JWT authorizer
   ########################
@@ -1272,6 +1288,8 @@ Resources:
           ROUTINE_TEMPLATES_TABLE_NAME: !Ref RoutineTemplatesTable
           ROUTINE_LOGS_TABLE_NAME: !Ref RoutineLogsTable
           GOALS_TABLE_NAME: !Ref GoalsTable
+          PUSH_SUBSCRIPTIONS_TABLE_NAME: !Ref PushSubscriptionsTable
+          USER_PROFILE_TABLE_NAME: !Ref UserProfileTable
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TasksTable
@@ -1291,6 +1309,10 @@ Resources:
             TableName: !Ref RoutineLogsTable
         - DynamoDBCrudPolicy:
             TableName: !Ref GoalsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PushSubscriptionsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserProfileTable
         - Statement:
             - Effect: Allow
               Action: cognito-idp:AdminDeleteUser
@@ -1403,6 +1425,67 @@ Resources:
           Properties:
             Schedule: "rate(15 minutes)"
             Enabled: true
+
+  ########################
+  # Lambda — User profile
+  ########################
+  GetProfileFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-get-profile-${Environment}"
+      CodeUri: src/functions/getProfile/
+      Handler: index.handler
+      Environment:
+        Variables:
+          USER_PROFILE_TABLE_NAME: !Ref UserProfileTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref UserProfileTable
+      Events:
+        GetProfile:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /profile
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  UpdateProfileFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-update-profile-${Environment}"
+      CodeUri: src/functions/updateProfile/
+      Handler: index.handler
+      Environment:
+        Variables:
+          USER_PROFILE_TABLE_NAME: !Ref UserProfileTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserProfileTable
+      Events:
+        UpdateProfile:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /profile
+            Method: PATCH
+            Auth:
+              Authorizer: CognitoAuthorizer
 
 Outputs:
   UserPoolId:

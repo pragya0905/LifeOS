@@ -20,6 +20,12 @@ export interface Task {
   updatedAt: string;
 }
 
+export interface UserProfile {
+  userId: string;
+  heightCm?: number;
+  updatedAt: string;
+}
+
 export interface PushSubscription {
   userId: string;
   endpoint: string;

@@ -149,3 +149,9 @@ export interface Goal {
   targetValue: number;
   updatedAt: string;
 }
+
+export interface UserProfile {
+  userId: string;
+  heightCm?: number;
+  updatedAt?: string;
+}
