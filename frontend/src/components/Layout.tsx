@@ -15,6 +15,12 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen bg-cream dark:bg-charcoal">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-full focus:bg-sage focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-cream-card"
+      >
+        Skip to main content
+      </a>
       <header className="border-b border-stone dark:border-stone-dark">
         <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-x-6 gap-y-3 px-4 py-4">
           <nav className="flex flex-wrap items-center gap-x-5 gap-y-2">
@@ -58,7 +64,9 @@ export default function Layout() {
           </div>
         </div>
       </header>
-      <Outlet />
+      <main id="main-content">
+        <Outlet />
+      </main>
     </div>
   );
 }
