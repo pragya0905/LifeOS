@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useApi } from "../api/useApi";
 import type { RoutineCategory, RoutineStepLog, RoutineTemplate } from "../types";
 import {
+  badge,
   card,
   errorText,
   input,
@@ -24,6 +25,27 @@ const CATEGORY_LABEL: Record<RoutineCategory, string> = {
 };
 
 const CATEGORIES = Object.keys(CATEGORY_LABEL) as RoutineCategory[];
+
+const ROUTINE_TEMPLATES: { label: string; category: RoutineCategory; name: string; steps: string[] }[] = [
+  {
+    label: "AM skincare",
+    category: "skinCare",
+    name: "Morning skin care",
+    steps: ["Cleanser", "Toner", "Moisturizer", "Sunscreen"],
+  },
+  {
+    label: "PM skincare",
+    category: "skinCare",
+    name: "Evening skin care",
+    steps: ["Cleanser", "Treatment", "Moisturizer"],
+  },
+  {
+    label: "30-30-30",
+    category: "dailyRoutine",
+    name: "30-30-30 morning",
+    steps: ["30g protein within 30 minutes of waking", "30 minutes of low-intensity exercise"],
+  },
+];
 
 const pillButtonDone = "border-sage bg-sage text-cream-card";
 const pillButtonSkipped = "border-fog-muted bg-fog-muted text-cream-card";
@@ -75,6 +97,12 @@ export default function Routines() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function applyTemplate(template: (typeof ROUTINE_TEMPLATES)[number]) {
+    setCategory(template.category);
+    setName(template.name);
+    setStepsText(template.steps.join("\n"));
+  }
 
   async function handleAdd(e: FormEvent) {
     e.preventDefault();
@@ -135,6 +163,21 @@ export default function Routines() {
       <h1 className={pageTitle}>Routines</h1>
 
       <form onSubmit={handleAdd} className={`mb-8 flex flex-col gap-3 ${card}`}>
+        <div>
+          <label className={label}>Templates</label>
+          <div className="flex flex-wrap gap-1.5">
+            {ROUTINE_TEMPLATES.map((template) => (
+              <button
+                key={template.label}
+                type="button"
+                onClick={() => applyTemplate(template)}
+                className={`${pillButton} ${pillButtonInactive} px-3 py-1`}
+              >
+                {template.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="flex flex-wrap gap-3">
           <div>
             <label className={label}>Category</label>
@@ -189,13 +232,20 @@ export default function Routines() {
             <p className={`mb-6 ${mutedText}`}>No routines yet — add one above.</p>
           ) : (
             <ul className="mb-6 flex flex-col gap-3">
-              {routines.map((routine) => (
+              {routines.map((routine) => {
+                const doneCount = routine.steps.filter(
+                  (_, index) => stepStatuses[`${routine.routineId}#${index}`] === "done",
+                ).length;
+                return (
                 <li key={routine.routineId} className={card}>
                   <div className="mb-2 flex items-center justify-between">
                     <p className="text-sm font-medium text-ink dark:text-cream">
                       {routine.name}{" "}
                       <span className="font-normal text-ink-muted dark:text-fog-muted">
                         ({CATEGORY_LABEL[routine.category]})
+                      </span>{" "}
+                      <span className={badge}>
+                        {doneCount}/{routine.steps.length} done
                       </span>
                     </p>
                     <button
@@ -241,7 +291,8 @@ export default function Routines() {
                     })}
                   </ul>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
         </>
