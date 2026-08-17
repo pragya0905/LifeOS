@@ -22,7 +22,45 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function daysAgo(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
 const DURATION_PRESETS = [7, 30];
+const ADHERENCE_WINDOW_DAYS = 14;
+
+// % of active days (within the last 14 days, clamped to the medication's own start/end)
+// logged as "taken". Days with no log at all count against adherence, same as "missed".
+function computeAdherence(
+  medication: Medication,
+  logs: MedicationLog[],
+  windowStart: string,
+  windowEnd: string,
+): number | null {
+  const activeStart = medication.startDate > windowStart ? medication.startDate : windowStart;
+  const activeEnd = medication.endDate < windowEnd ? medication.endDate : windowEnd;
+  if (activeStart > activeEnd) return null;
+
+  const takenDates = new Set(
+    logs
+      .filter((l) => l.medicationId === medication.medicationId && l.status === "taken")
+      .map((l) => l.date),
+  );
+
+  let activeDays = 0;
+  let takenDays = 0;
+  const cursor = new Date(`${activeStart}T00:00:00Z`);
+  const end = new Date(`${activeEnd}T00:00:00Z`);
+  while (cursor <= end) {
+    const d = cursor.toISOString().slice(0, 10);
+    activeDays += 1;
+    if (takenDates.has(d)) takenDays += 1;
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return activeDays > 0 ? Math.round((takenDays / activeDays) * 100) : null;
+}
 
 export default function Medications() {
   const { request } = useApi();
@@ -35,6 +73,7 @@ export default function Medications() {
   const [durationDays, setDurationDays] = useState(7);
   const [saving, setSaving] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
+  const [recentLogs, setRecentLogs] = useState<MedicationLog[]>([]);
 
   useEffect(() => {
     let ignore = false;
@@ -43,15 +82,20 @@ export default function Medications() {
       setLoading(true);
       setError(null);
       try {
-        const [medsData, logsData] = await Promise.all([
+        const windowStart = daysAgo(ADHERENCE_WINDOW_DAYS - 1);
+        const [medsData, logsData, rangeLogsData] = await Promise.all([
           request<{ medications: Medication[] }>("/medications"),
           request<{ logs: MedicationLog[] }>(`/medication-logs/${today()}`),
+          request<{ logs: MedicationLog[] }>(
+            `/medication-logs?from=${windowStart}&to=${today()}`,
+          ),
         ]);
         if (ignore) return;
         setMedications(medsData.medications);
         const next: Partial<Record<string, MedicationLogStatus>> = {};
         for (const log of logsData.logs) next[log.medicationId] = log.status;
         setLogStatuses(next);
+        setRecentLogs(rangeLogsData.logs);
       } catch (err) {
         if (ignore) return;
         setError(err instanceof Error ? err.message : "Failed to load medications");
@@ -109,6 +153,8 @@ export default function Medications() {
         body: JSON.stringify({ status }),
       });
       setLogStatuses((prev) => ({ ...prev, [medicationId]: updated.status }));
+      // Keep the adherence stat in sync immediately rather than waiting for a reload.
+      setRecentLogs((prev) => [...prev.filter((l) => l.dateMedicationId !== updated.dateMedicationId), updated]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update medication log");
     } finally {
@@ -217,24 +263,49 @@ export default function Medications() {
             <p className={mutedText}>No medications added yet.</p>
           ) : (
             <ul className="flex flex-col gap-2">
-              {medications.map((medication) => (
-                <li key={medication.medicationId} className={`flex items-center justify-between gap-3 ${card}`}>
-                  <div>
-                    <p className="text-sm font-medium text-ink dark:text-cream">{medication.name}</p>
-                    <p className="text-xs text-ink-muted dark:text-fog-muted">
-                      {medication.startDate} → {medication.endDate} ({medication.durationDays} days)
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={pending === medication.medicationId}
-                    onClick={() => handleDelete(medication.medicationId)}
-                    className={`${secondaryButton} px-3 py-1.5 text-xs`}
-                  >
-                    Delete
-                  </button>
-                </li>
-              ))}
+              {medications.map((medication) => {
+                const adherence = computeAdherence(
+                  medication,
+                  recentLogs,
+                  daysAgo(ADHERENCE_WINDOW_DAYS - 1),
+                  today(),
+                );
+                return (
+                  <li key={medication.medicationId} className={`flex items-center justify-between gap-3 ${card}`}>
+                    <div>
+                      <p className="text-sm font-medium text-ink dark:text-cream">{medication.name}</p>
+                      <p className="text-xs text-ink-muted dark:text-fog-muted">
+                        {medication.startDate} → {medication.endDate} ({medication.durationDays} days)
+                        {adherence !== null && (
+                          <>
+                            {" · "}
+                            <span
+                              className={
+                                adherence >= 80
+                                  ? "text-sage"
+                                  : adherence >= 50
+                                    ? "text-[#8A6A22] dark:text-[#E3C878]"
+                                    : "text-terracotta"
+                              }
+                            >
+                              {adherence}% adherence
+                            </span>{" "}
+                            (last {ADHERENCE_WINDOW_DAYS}d)
+                          </>
+                        )}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={pending === medication.medicationId}
+                      onClick={() => handleDelete(medication.medicationId)}
+                      className={`${secondaryButton} px-3 py-1.5 text-xs`}
+                    >
+                      Delete
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </>
