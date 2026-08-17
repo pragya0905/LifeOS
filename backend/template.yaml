@@ -1219,6 +1219,68 @@ Resources:
             Auth:
               Authorizer: CognitoAuthorizer
 
+  ########################
+  # Lambda — Delete account (destructive: wipes every table + the Cognito user)
+  ########################
+  DeleteAccountFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-delete-account-${Environment}"
+      CodeUri: src/functions/deleteAccount/
+      Handler: index.handler
+      Timeout: 60
+      Environment:
+        Variables:
+          USER_POOL_ID: !Ref LifeOsUserPool
+          TASKS_TABLE_NAME: !Ref TasksTable
+          JOURNAL_TABLE_NAME: !Ref JournalEntriesTable
+          HABITS_TABLE_NAME: !Ref HabitLogsTable
+          MEDICATIONS_TABLE_NAME: !Ref MedicationsTable
+          MEDICATION_LOGS_TABLE_NAME: !Ref MedicationLogsTable
+          LOG_ENTRIES_TABLE_NAME: !Ref LogEntriesTable
+          ROUTINE_TEMPLATES_TABLE_NAME: !Ref RoutineTemplatesTable
+          ROUTINE_LOGS_TABLE_NAME: !Ref RoutineLogsTable
+          GOALS_TABLE_NAME: !Ref GoalsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TasksTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref JournalEntriesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref HabitLogsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MedicationsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MedicationLogsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref LogEntriesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RoutineTemplatesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RoutineLogsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref GoalsTable
+        - Statement:
+            - Effect: Allow
+              Action: cognito-idp:AdminDeleteUser
+              Resource: !GetAtt LifeOsUserPool.Arn
+      Events:
+        DeleteAccount:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /account
+            Method: DELETE
+            Auth:
+              Authorizer: CognitoAuthorizer
+
 Outputs:
   UserPoolId:
     Value: !Ref LifeOsUserPool

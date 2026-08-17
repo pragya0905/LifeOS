@@ -1,4 +1,5 @@
 import DataExport from "../components/DataExport";
+import DeleteAccount from "../components/DeleteAccount";
 import PwaSettings from "../components/PwaSettings";
 import { page, pageTitle } from "../components/ui";
 
@@ -9,6 +10,7 @@ export default function Settings() {
       <div className="flex flex-col gap-6">
         <PwaSettings />
         <DataExport />
+        <DeleteAccount />
       </div>
     </div>
   );

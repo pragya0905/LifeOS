@@ -7,3 +7,14 @@ export function getUserId(event: APIGatewayProxyEventV2WithJWTAuthorizer): strin
   }
   return sub;
 }
+
+// The Cognito admin APIs (e.g. AdminDeleteUser) need the pool "Username", which in this
+// pool is the user's email — distinct from the immutable `sub` used as the DynamoDB
+// partition key everywhere else. ID tokens carry it as the cognito:username claim.
+export function getUsername(event: APIGatewayProxyEventV2WithJWTAuthorizer): string {
+  const username = event.requestContext.authorizer?.jwt?.claims?.["cognito:username"];
+  if (typeof username !== "string") {
+    throw new Error("Missing cognito:username claim on authorizer context");
+  }
+  return username;
+}
