@@ -8,14 +8,23 @@ export interface Task {
   title: string;
   dueDate?: string;
   dueTime?: string;
+  dueAtUtc?: string;
   estimatedHours?: number;
   voiceInput?: boolean;
   priority: TaskPriority;
   prioritySource: PrioritySource;
   status: TaskStatus;
   scheduleTime?: string;
+  reminderSentAt?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PushSubscription {
+  userId: string;
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+  createdAt: string;
 }
 
 export interface JournalEntryExtraction {
