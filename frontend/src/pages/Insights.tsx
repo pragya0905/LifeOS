@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useApi } from "../api/useApi";
-import type { Insights as InsightsData } from "../types";
+import LineChart from "../components/LineChart";
+import type { HabitLog, Insights as InsightsData } from "../types";
 import {
   card,
   errorText,
@@ -16,12 +17,55 @@ import {
 
 type Period = "day" | "week";
 
+const TREND_DAYS = 14;
+
+function dateOffset(daysAgo: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - daysAgo);
+  return d.toISOString().slice(0, 10);
+}
+
 export default function Insights() {
   const { request } = useApi();
   const [period, setPeriod] = useState<Period>("day");
   const [insights, setInsights] = useState<InsightsData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [trendLoading, setTrendLoading] = useState(true);
+  const [waterTrend, setWaterTrend] = useState<{ date: string; value: number }[]>([]);
+  const [exerciseTrend, setExerciseTrend] = useState<{ date: string; value: number }[]>([]);
+  const [meditationTrend, setMeditationTrend] = useState<{ date: string; value: number }[]>([]);
+
+  useEffect(() => {
+    let ignore = false;
+    async function loadTrend() {
+      setTrendLoading(true);
+      try {
+        const from = dateOffset(TREND_DAYS - 1);
+        const to = dateOffset(0);
+        const data = await request<{ habits: HabitLog[] }>(`/habits?from=${from}&to=${to}`);
+        if (ignore) return;
+        const byType = (type: HabitLog["habitType"]) =>
+          data.habits
+            .filter((h) => h.habitType === type)
+            .map((h) => ({ date: h.date, value: h.value ?? 0 }))
+            .sort((a, b) => (a.date < b.date ? -1 : 1));
+        setWaterTrend(byType("water"));
+        setExerciseTrend(byType("exercise"));
+        setMeditationTrend(byType("meditation"));
+      } catch {
+        // Trend charts are a bonus view — the on-demand AI insights below still work.
+      } finally {
+        if (!ignore) setTrendLoading(false);
+      }
+    }
+    loadTrend();
+    return () => {
+      ignore = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleGenerate() {
     setLoading(true);
@@ -42,6 +86,29 @@ export default function Insights() {
       <p className={`mb-6 ${mutedText}`}>
         Generate an AI summary of your recent activity, on demand — nothing runs automatically.
       </p>
+
+      {!trendLoading && (waterTrend.length > 0 || exerciseTrend.length > 0 || meditationTrend.length > 0) && (
+        <div className={`mb-6 flex flex-col gap-4 sm:flex-row ${card}`}>
+          {waterTrend.length > 0 && (
+            <div className="flex-1">
+              <h2 className={`mb-2 ${sectionLabel}`}>Water ({TREND_DAYS}d)</h2>
+              <LineChart points={waterTrend} formatValue={(v) => `${(v / 1000).toFixed(1)}L`} />
+            </div>
+          )}
+          {exerciseTrend.length > 0 && (
+            <div className="flex-1">
+              <h2 className={`mb-2 ${sectionLabel}`}>Exercise ({TREND_DAYS}d)</h2>
+              <LineChart points={exerciseTrend} color="stroke-terracotta" formatValue={(v) => `${v}min`} />
+            </div>
+          )}
+          {meditationTrend.length > 0 && (
+            <div className="flex-1">
+              <h2 className={`mb-2 ${sectionLabel}`}>Meditation ({TREND_DAYS}d)</h2>
+              <LineChart points={meditationTrend} color="stroke-[#C79233]" formatValue={(v) => `${v}min`} />
+            </div>
+          )}
+        </div>
+      )}
 
       <div className={`mb-6 flex flex-wrap items-center gap-3 ${card}`}>
         <div className="flex gap-1.5">

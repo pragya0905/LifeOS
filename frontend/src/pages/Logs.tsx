@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useApi } from "../api/useApi";
+import WeightTrend from "../components/WeightTrend";
 import type { LogEntry, LogType } from "../types";
 import {
   badge,
@@ -274,6 +275,8 @@ export default function Logs() {
   return (
     <div className={page}>
       <h1 className={pageTitle}>Quick Log</h1>
+
+      <WeightTrend entries={entries} />
 
       <form onSubmit={handleCreate} className={`mb-8 flex flex-wrap items-end gap-3 ${card}`}>
         <div>
