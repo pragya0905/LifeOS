@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import OnlineStatusBadge from "./OnlineStatusBadge";
 import { secondaryButton } from "./ui";
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
@@ -46,6 +47,7 @@ export default function Layout() {
             </NavLink>
           </nav>
           <div className="flex items-center gap-3">
+            <OnlineStatusBadge />
             <span className="text-sm text-ink-muted dark:text-fog-muted">{user?.email}</span>
             <NavLink to="/settings" className={linkClass}>
               Settings

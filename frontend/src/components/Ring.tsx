@@ -18,6 +18,8 @@ export default function Ring({
 }) {
   const progress = target > 0 ? Math.min(value / target, 1) : 0;
   const offset = CIRCUMFERENCE * (1 - progress);
+  const progressColorClass =
+    progress >= 0.67 ? "stroke-sage" : progress >= 0.34 ? "stroke-[#C79233]" : "stroke-terracotta";
 
   return (
     <div className="flex items-center gap-3">
@@ -40,7 +42,7 @@ export default function Ring({
           strokeDasharray={CIRCUMFERENCE}
           strokeDashoffset={offset}
           transform={`rotate(-90 ${SIZE / 2} ${SIZE / 2})`}
-          className="stroke-sage transition-[stroke-dashoffset] duration-500"
+          className={`${progressColorClass} transition-[stroke-dashoffset,stroke] duration-500`}
         />
       </svg>
       <div className="min-w-0">

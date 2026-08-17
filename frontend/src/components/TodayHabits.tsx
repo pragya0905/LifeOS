@@ -8,6 +8,14 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Returns the parsed number if valid, null if the draft is blank (field not being
+// submitted), or NaN if the draft has content but isn't a valid non-negative number.
+function parseNonNegative(draft: string): number | null {
+  if (draft.trim() === "") return null;
+  const n = Number(draft);
+  return Number.isFinite(n) && n >= 0 ? n : NaN;
+}
+
 function computeSleepDuration(bedTime: string, wakeTime: string): string | null {
   if (!bedTime || !wakeTime) return null;
   const [bh, bm] = bedTime.split(":").map(Number);
@@ -50,12 +58,12 @@ function GoalTarget({
       <input
         type="number"
         min={1}
-        placeholder="—"
+        placeholder="target"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
         disabled={disabled}
-        className={`w-16 py-0.5 text-xs ${input}`}
+        className={`w-20 py-0.5 text-xs ${input}`}
       />
     </span>
   );
@@ -68,6 +76,10 @@ export default function TodayHabits() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<
+    Partial<Record<"water" | "exercise" | "meditation" | "callDuration", string>>
+  >({});
 
   const [waterDraft, setWaterDraft] = useState("");
   const [exerciseDraft, setExerciseDraft] = useState("");
@@ -146,32 +158,47 @@ export default function TodayHabits() {
   }, []);
 
   async function handleSaveAll() {
-    setSaving(true);
     setError(null);
+    setSaved(false);
+
+    const water = parseNonNegative(waterDraft);
+    const exercise = parseNonNegative(exerciseDraft);
+    const meditation = parseNonNegative(meditationDraft);
+    const duration = parseNonNegative(callDuration);
+
+    const nextFieldErrors: typeof fieldErrors = {};
+    if (Number.isNaN(water)) nextFieldErrors.water = "Enter a non-negative number";
+    if (Number.isNaN(exercise)) nextFieldErrors.exercise = "Enter a non-negative number";
+    if (Number.isNaN(meditation)) nextFieldErrors.meditation = "Enter a non-negative number";
+    if (Number.isNaN(duration)) nextFieldErrors.callDuration = "Enter a non-negative number";
+    setFieldErrors(nextFieldErrors);
+    if (Object.keys(nextFieldErrors).length > 0) return;
+
+    setSaving(true);
     try {
       const tasks: Promise<unknown>[] = [];
 
-      if (waterDraft.trim() !== "") {
+      if (water !== null) {
         tasks.push(
           request(`/habits/${date}/water`, {
             method: "PATCH",
-            body: JSON.stringify({ value: Number(waterDraft) }),
+            body: JSON.stringify({ value: water }),
           }),
         );
       }
-      if (exerciseDraft.trim() !== "") {
+      if (exercise !== null) {
         tasks.push(
           request(`/habits/${date}/exercise`, {
             method: "PATCH",
-            body: JSON.stringify({ value: Number(exerciseDraft) }),
+            body: JSON.stringify({ value: exercise }),
           }),
         );
       }
-      if (meditationDraft.trim() !== "") {
+      if (meditation !== null) {
         tasks.push(
           request(`/habits/${date}/meditation`, {
             method: "PATCH",
-            body: JSON.stringify({ value: Number(meditationDraft) }),
+            body: JSON.stringify({ value: meditation }),
           }),
         );
       }
@@ -189,7 +216,7 @@ export default function TodayHabits() {
       if (callPerson.trim() !== "") {
         const data = {
           personName: callPerson.trim(),
-          durationMinutes: callDuration ? Number(callDuration) : undefined,
+          durationMinutes: duration ?? undefined,
         };
         tasks.push(
           callLogId
@@ -202,6 +229,8 @@ export default function TodayHabits() {
       }
 
       await Promise.all(tasks);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save habits");
     } finally {
@@ -259,22 +288,25 @@ export default function TodayHabits() {
                     <DoneCheck done={Number(waterDraft) > 0} />
                   </td>
                   <td className={detailCellClass}>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min={0}
-                        placeholder="0"
-                        value={waterDraft}
-                        onChange={(e) => setWaterDraft(e.target.value)}
-                        className={`w-24 py-1 ${input}`}
-                      />
-                      <span className={mutedText}>ml</span>
-                      <GoalTarget
-                        value={goalDrafts.water ?? ""}
-                        onChange={(v) => updateGoalDraft("water", v)}
-                        onBlur={() => saveGoal("water")}
-                        disabled={savingGoal === "water"}
-                      />
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="0"
+                          value={waterDraft}
+                          onChange={(e) => setWaterDraft(e.target.value)}
+                          className={`w-24 py-1 ${input}`}
+                        />
+                        <span className={mutedText}>ml</span>
+                        <GoalTarget
+                          value={goalDrafts.water ?? ""}
+                          onChange={(v) => updateGoalDraft("water", v)}
+                          onBlur={() => saveGoal("water")}
+                          disabled={savingGoal === "water"}
+                        />
+                      </div>
+                      {fieldErrors.water && <p className={errorText}>{fieldErrors.water}</p>}
                     </div>
                   </td>
                 </tr>
@@ -309,24 +341,29 @@ export default function TodayHabits() {
                     <DoneCheck done={callPerson.trim() !== ""} />
                   </td>
                   <td className={detailCellClass}>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className={mutedText}>with</span>
-                      <input
-                        type="text"
-                        placeholder="Name"
-                        value={callPerson}
-                        onChange={(e) => setCallPerson(e.target.value)}
-                        className={`w-28 py-1 ${input}`}
-                      />
-                      <input
-                        type="number"
-                        min={0}
-                        placeholder="0"
-                        value={callDuration}
-                        onChange={(e) => setCallDuration(e.target.value)}
-                        className={`w-20 py-1 ${input}`}
-                      />
-                      <span className={mutedText}>min</span>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={mutedText}>with</span>
+                        <input
+                          type="text"
+                          placeholder="Name"
+                          value={callPerson}
+                          onChange={(e) => setCallPerson(e.target.value)}
+                          className={`w-28 py-1 ${input}`}
+                        />
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="0"
+                          value={callDuration}
+                          onChange={(e) => setCallDuration(e.target.value)}
+                          className={`w-20 py-1 ${input}`}
+                        />
+                        <span className={mutedText}>min</span>
+                      </div>
+                      {fieldErrors.callDuration && (
+                        <p className={errorText}>{fieldErrors.callDuration}</p>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -336,22 +373,25 @@ export default function TodayHabits() {
                     <DoneCheck done={Number(exerciseDraft) > 0} />
                   </td>
                   <td className={detailCellClass}>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min={0}
-                        placeholder="0"
-                        value={exerciseDraft}
-                        onChange={(e) => setExerciseDraft(e.target.value)}
-                        className={`w-24 py-1 ${input}`}
-                      />
-                      <span className={mutedText}>minutes</span>
-                      <GoalTarget
-                        value={goalDrafts.exercise ?? ""}
-                        onChange={(v) => updateGoalDraft("exercise", v)}
-                        onBlur={() => saveGoal("exercise")}
-                        disabled={savingGoal === "exercise"}
-                      />
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="0"
+                          value={exerciseDraft}
+                          onChange={(e) => setExerciseDraft(e.target.value)}
+                          className={`w-24 py-1 ${input}`}
+                        />
+                        <span className={mutedText}>minutes</span>
+                        <GoalTarget
+                          value={goalDrafts.exercise ?? ""}
+                          onChange={(v) => updateGoalDraft("exercise", v)}
+                          onBlur={() => saveGoal("exercise")}
+                          disabled={savingGoal === "exercise"}
+                        />
+                      </div>
+                      {fieldErrors.exercise && <p className={errorText}>{fieldErrors.exercise}</p>}
                     </div>
                   </td>
                 </tr>
@@ -361,22 +401,27 @@ export default function TodayHabits() {
                     <DoneCheck done={Number(meditationDraft) > 0} />
                   </td>
                   <td className={detailCellClass}>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min={0}
-                        placeholder="0"
-                        value={meditationDraft}
-                        onChange={(e) => setMeditationDraft(e.target.value)}
-                        className={`w-24 py-1 ${input}`}
-                      />
-                      <span className={mutedText}>minutes</span>
-                      <GoalTarget
-                        value={goalDrafts.meditation ?? ""}
-                        onChange={(v) => updateGoalDraft("meditation", v)}
-                        onBlur={() => saveGoal("meditation")}
-                        disabled={savingGoal === "meditation"}
-                      />
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="0"
+                          value={meditationDraft}
+                          onChange={(e) => setMeditationDraft(e.target.value)}
+                          className={`w-24 py-1 ${input}`}
+                        />
+                        <span className={mutedText}>minutes</span>
+                        <GoalTarget
+                          value={goalDrafts.meditation ?? ""}
+                          onChange={(v) => updateGoalDraft("meditation", v)}
+                          onBlur={() => saveGoal("meditation")}
+                          disabled={savingGoal === "meditation"}
+                        />
+                      </div>
+                      {fieldErrors.meditation && (
+                        <p className={errorText}>{fieldErrors.meditation}</p>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -394,14 +439,17 @@ export default function TodayHabits() {
               </tbody>
             </table>
           </div>
-          <button
-            type="button"
-            disabled={saving}
-            onClick={handleSaveAll}
-            className={`mt-4 ${primaryButton}`}
-          >
-            {saving ? "Saving..." : "Save habits"}
-          </button>
+          <div className="mt-4 flex items-center gap-3">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={handleSaveAll}
+              className={primaryButton}
+            >
+              {saving ? "Saving..." : "Save habits"}
+            </button>
+            {saved && <span className="text-sm text-sage">Saved ✓</span>}
+          </div>
         </>
       )}
     </div>
