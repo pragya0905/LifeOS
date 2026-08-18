@@ -30,6 +30,34 @@
   --color-terracotta: #b0654a;
   --color-terracotta-soft: #f3e2da;
   --color-terracotta-soft-dark: #402a22;
+
+  --animate-fade-in-up: fade-in-up 0.35s ease-out both;
+  --animate-pop: pop 0.25s ease-out both;
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(0.85);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.05);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 body {
