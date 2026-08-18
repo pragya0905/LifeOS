@@ -155,3 +155,50 @@ export interface UserProfile {
   heightCm?: number;
   updatedAt?: string;
 }
+
+export type WishType =
+  | "learning"
+  | "travel"
+  | "savings"
+  | "health"
+  | "shopping"
+  | "creative"
+  | "personal_growth"
+  | "achievement";
+
+export type WishProgressMode = "percentage" | "milestone" | "habit_linked" | "time_based" | "quantity";
+export type WishStatus = "active" | "completed" | "abandoned";
+export type WishHabitType = "water" | "exercise" | "meditation";
+
+export interface WishMilestone {
+  id: string;
+  text: string;
+  targetDate?: string;
+  done: boolean;
+}
+
+export interface Wish {
+  userId: string;
+  wishId: string;
+  title: string;
+  type: WishType;
+  progressMode: WishProgressMode;
+  status: WishStatus;
+  targetDate?: string;
+  percentage?: number;
+  milestones?: WishMilestone[];
+  quantityTarget?: number;
+  quantityCurrent?: number;
+  quantityUnit?: string;
+  linkedHabitType?: WishHabitType;
+  habitLinkTargetValue?: number;
+  habitLinkedProgress?: number | null;
+  imageKeys?: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WishImage {
+  key: string;
+  url: string;
+}
