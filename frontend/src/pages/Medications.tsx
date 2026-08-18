@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useApi } from "../api/useApi";
+import { todayLocal, toLocalDateStr } from "../lib/date";
 import type { Medication, MedicationLog, MedicationLogStatus } from "../types";
 import {
   card,
@@ -19,13 +20,13 @@ import {
 } from "../components/ui";
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayLocal();
 }
 
 function daysAgo(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
+  return toLocalDateStr(d);
 }
 
 const DURATION_PRESETS = [7, 30];

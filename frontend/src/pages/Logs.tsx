@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useApi } from "../api/useApi";
 import WeightTrend from "../components/WeightTrend";
+import { todayLocal } from "../lib/date";
 import type { LogEntry, LogType } from "../types";
 import {
   badge,
@@ -91,7 +92,7 @@ const LOG_TYPE_CONFIG: Record<LogType, { label: string; fields: FieldConfig[] }>
 const LOG_TYPES = Object.keys(LOG_TYPE_CONFIG) as LogType[];
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayLocal();
 }
 
 function buildData(fields: FieldConfig[], raw: Record<string, string>): Record<string, unknown> {

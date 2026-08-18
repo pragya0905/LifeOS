@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { useApi } from "../api/useApi";
+import { todayLocal, toLocalDateStr } from "../lib/date";
 import type { Goal, HabitLog, LogEntry } from "../types";
 import Ring, { type RingTrend } from "./Ring";
 import { mutedText } from "./ui";
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayLocal();
 }
 
 function yesterday(): string {
@@ -15,7 +16,7 @@ function yesterday(): string {
 function dateOffset(daysAgo: number): string {
   const d = new Date();
   d.setDate(d.getDate() - daysAgo);
-  return d.toISOString().slice(0, 10);
+  return toLocalDateStr(d);
 }
 
 // How many consecutive days (counting back from today) had a non-zero value —

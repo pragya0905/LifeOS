@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../api/useApi";
+import { todayLocal } from "../lib/date";
 import type { Goal, GoalMetric, HabitLog, JournalEntry, LogEntry } from "../types";
 import {
   badge,
@@ -15,7 +16,7 @@ import {
 } from "./ui";
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayLocal();
 }
 
 // Returns the parsed number if valid, null if the draft is blank (field not being

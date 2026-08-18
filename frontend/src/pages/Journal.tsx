@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useApi } from "../api/useApi";
 import { useSpeechToText } from "../hooks/useSpeechToText";
 import { formatDetection } from "../lib/formatExtraction";
+import { todayLocal } from "../lib/date";
 import type { JournalEntry, LogEntry } from "../types";
 import {
   badge,
@@ -18,7 +19,7 @@ import {
 } from "../components/ui";
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayLocal();
 }
 
 function joinText(base: string, addition: string): string {

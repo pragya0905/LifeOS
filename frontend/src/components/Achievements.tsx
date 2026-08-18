@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useApi } from "../api/useApi";
+import { toLocalDateStr } from "../lib/date";
 import type { HabitLog, JournalEntry, Task } from "../types";
 import { badge, card, sectionLabel } from "./ui";
 
@@ -14,7 +15,7 @@ const STREAK_LOOKBACK_DAYS = 30;
 function dateOffset(daysAgo: number): string {
   const d = new Date();
   d.setDate(d.getDate() - daysAgo);
-  return d.toISOString().slice(0, 10);
+  return toLocalDateStr(d);
 }
 
 function bestStreak(dailyValues: number[]): number {

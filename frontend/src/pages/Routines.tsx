@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useApi } from "../api/useApi";
+import { todayLocal } from "../lib/date";
 import type { RoutineCategory, RoutineStepLog, RoutineTemplate } from "../types";
 import {
   badge,
@@ -51,7 +52,7 @@ const pillButtonDone = "border-sage bg-sage text-cream-card";
 const pillButtonSkipped = "border-fog-muted bg-fog-muted text-cream-card";
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayLocal();
 }
 
 export default function Routines() {

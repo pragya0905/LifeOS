@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { useApi } from "../api/useApi";
 import type { JournalEntry } from "../types";
 import { extractionParts } from "../lib/formatExtraction";
+import { todayLocal } from "../lib/date";
 import { badge, card, mutedText, sectionLabel } from "./ui";
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayLocal();
 }
 
 export default function ExtractionLedger() {

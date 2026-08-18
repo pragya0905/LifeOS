@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useApi } from "../api/useApi";
 import LineChart from "../components/LineChart";
+import { toLocalDateStr } from "../lib/date";
 import type { HabitLog, Insights as InsightsData } from "../types";
 import {
   card,
@@ -22,7 +23,7 @@ const TREND_DAYS = 14;
 function dateOffset(daysAgo: number): string {
   const d = new Date();
   d.setDate(d.getDate() - daysAgo);
-  return d.toISOString().slice(0, 10);
+  return toLocalDateStr(d);
 }
 
 export default function Insights() {

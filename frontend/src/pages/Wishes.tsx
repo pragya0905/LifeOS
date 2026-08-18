@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useApi } from "../api/useApi";
 import WishImageGallery from "../components/WishImageGallery";
+import { todayLocal } from "../lib/date";
 import type { Wish, WishHabitType, WishMilestone, WishProgressMode, WishType } from "../types";
 import {
   badge,
@@ -45,7 +46,7 @@ const HABIT_TYPE_LABEL: Record<WishHabitType, string> = {
 const HABIT_TYPES = Object.keys(HABIT_TYPE_LABEL) as WishHabitType[];
 
 function daysUntil(dateStr: string): number {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const ms = new Date(`${dateStr}T00:00:00Z`).getTime() - new Date(`${today}T00:00:00Z`).getTime();
   return Math.round(ms / (1000 * 60 * 60 * 24));
 }

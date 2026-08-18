@@ -7,6 +7,7 @@ import TodayHabits from "../components/TodayHabits";
 import TodaySchedule from "../components/TodaySchedule";
 import TodaySummaryRings from "../components/TodaySummaryRings";
 import WelcomeCard from "../components/WelcomeCard";
+import { todayLocal } from "../lib/date";
 import type { Task } from "../types";
 import {
   card,
@@ -19,7 +20,7 @@ import {
 } from "../components/ui";
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayLocal();
 }
 
 function greeting(): string {

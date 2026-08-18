@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../api/useApi";
+import { todayLocal } from "../lib/date";
 import type { Schedule, TaskPriority } from "../types";
 import { card, errorText, mutedText, sectionLabel } from "./ui";
 
@@ -11,7 +12,7 @@ const PRIORITY_BADGE: Record<TaskPriority, string> = {
 };
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayLocal();
 }
 
 export default function TodaySchedule() {

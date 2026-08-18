@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useApi } from "../api/useApi";
+import { todayLocal } from "../lib/date";
 import type { JournalEntry, LogEntry, Task } from "../types";
 import { card, errorText, mutedText, primaryButton, secondaryButton, sectionLabel } from "./ui";
 
@@ -78,7 +79,7 @@ export default function DataExport() {
         rows.push([logEntry.logType, logEntry.date, "", JSON.stringify(logEntry.data)]);
       }
 
-      downloadCsv(`lifeos-export-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows));
+      downloadCsv(`lifeos-export-${todayLocal()}.csv`, toCsv(rows));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to export data");
     } finally {
@@ -120,7 +121,7 @@ export default function DataExport() {
         <!doctype html>
         <html>
         <head>
-          <title>LifeOs export — ${new Date().toISOString().slice(0, 10)}</title>
+          <title>LifeOs export — ${todayLocal()}</title>
           <style>
             body { font-family: system-ui, sans-serif; color: #2a2620; padding: 24px; }
             h1 { font-size: 20px; }
@@ -132,7 +133,7 @@ export default function DataExport() {
           </style>
         </head>
         <body>
-          <h1>LifeOs export — ${new Date().toISOString().slice(0, 10)}</h1>
+          <h1>LifeOs export — ${todayLocal()}</h1>
           <h2>Tasks (${tasks.length})</h2>
           <table><tr><th>Title</th><th>Due</th><th>Priority</th><th>Status</th></tr>${taskRows || "<tr><td colspan=4>None</td></tr>"}</table>
           <h2>Journal entries (${journalEntries.length})</h2>

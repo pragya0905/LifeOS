@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useApi } from "../api/useApi";
+import { todayLocal } from "../lib/date";
 import type { LogEntry } from "../types";
 import {
   badge,
@@ -26,7 +27,7 @@ const EVENT_LABEL: Record<CycleEvent, string> = {
 };
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayLocal();
 }
 
 function daysBetween(a: string, b: string): number {
