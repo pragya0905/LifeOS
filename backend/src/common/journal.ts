@@ -1,4 +1,4 @@
-import { PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { randomUUID } from "node:crypto";
 import { ddb } from "./dynamo";
 import { extractJournalInfo } from "./claude";
@@ -175,6 +175,22 @@ async function writeAiLogEntry(
     return;
   }
 
+  // Sleep can be extracted a field at a time (e.g. a journal entry mentioning only a wake
+  // time), so merge onto any existing AI-written data instead of overwriting the whole record
+  // — otherwise a later wake-time-only mention would erase a bedTime recorded earlier that day.
+  let mergedData: Record<string, unknown> = parsed.data as Record<string, unknown>;
+  if (logType === "sleep") {
+    const existing = await ddb.send(
+      new GetCommand({
+        TableName: process.env.LOG_ENTRIES_TABLE_NAME,
+        Key: { userId, logId: `${date}-${logType}` },
+      }),
+    );
+    const existingEntry = existing.Item as LogEntry | undefined;
+    if (existingEntry && existingEntry.source !== "ai-journal") return; // manual entry wins
+    mergedData = { ...(existingEntry?.data ?? {}), ...mergedData };
+  }
+
   try {
     await ddb.send(
       new UpdateCommand({
@@ -193,7 +209,7 @@ async function writeAiLogEntry(
         ExpressionAttributeValues: {
           ":date": date,
           ":logType": logType,
-          ":data": parsed.data,
+          ":data": mergedData,
           ":source": "ai-journal",
           ":aiSource": "ai-journal",
           ":updatedAt": now,
@@ -205,6 +221,41 @@ async function writeAiLogEntry(
     if (err instanceof Error && err.name === "ConditionalCheckFailedException") return;
     throw err;
   }
+}
+
+// Food/call/expense entries are naturally multi-per-day, so each extraction run writes a fresh
+// item per mention rather than updating one deterministic record (see writeAiLogEntry). That
+// means re-extracting the same day's journal text on every edit/re-save would otherwise pile up
+// duplicates of the same mentions instead of replacing them, so the previous AI-written batch
+// for this date is cleared first. Manual entries (source !== "ai-journal") are never touched.
+async function clearPreviousAiJournalEntries(userId: string, date: string): Promise<void> {
+  const result = await ddb.send(
+    new QueryCommand({
+      TableName: process.env.LOG_ENTRIES_TABLE_NAME,
+      KeyConditionExpression: "userId = :userId",
+      FilterExpression: "#date = :date AND #source = :source AND #logType IN (:food, :call, :expense)",
+      ExpressionAttributeNames: { "#date": "date", "#source": "source", "#logType": "logType" },
+      ExpressionAttributeValues: {
+        ":userId": userId,
+        ":date": date,
+        ":source": "ai-journal",
+        ":food": "food",
+        ":call": "call",
+        ":expense": "expense",
+      },
+    }),
+  );
+  const items = (result.Items ?? []) as LogEntry[];
+  await Promise.all(
+    items.map((item) =>
+      ddb.send(
+        new DeleteCommand({
+          TableName: process.env.LOG_ENTRIES_TABLE_NAME,
+          Key: { userId, logId: item.logId },
+        }),
+      ),
+    ),
+  );
 }
 
 async function fetchActiveMedications(userId: string): Promise<Medication[]> {
@@ -266,6 +317,8 @@ export async function applyJournalExtraction(
       }),
     );
 
+    await clearPreviousAiJournalEntries(userId, date);
+
     const writes: Promise<void>[] = [];
 
     if (extraction.waterMl !== null) {
@@ -281,7 +334,12 @@ export async function applyJournalExtraction(
       writes.push(writeAiLogEntry(userId, date, "food", { description: extraction.food }));
     }
     if (extraction.sleep !== null) {
-      writes.push(writeAiLogEntry(userId, date, "sleep", extraction.sleep));
+      writes.push(
+        writeAiLogEntry(userId, date, "sleep", {
+          bedTime: extraction.sleep.bedTime ?? undefined,
+          wakeTime: extraction.sleep.wakeTime ?? undefined,
+        }),
+      );
     }
     if (extraction.weightKg !== null) {
       writes.push(writeAiLogEntry(userId, date, "weight", { valueKg: extraction.weightKg }));

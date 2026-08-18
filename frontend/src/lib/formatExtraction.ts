@@ -8,7 +8,10 @@ export function extractionParts(aiExtracted: JournalEntry["aiExtracted"]): strin
   if (aiExtracted.meditationMinutes !== null) parts.push(`meditation ${aiExtracted.meditationMinutes}min`);
   if (aiExtracted.food !== null) parts.push(`food: ${aiExtracted.food}`);
   if (aiExtracted.sleep !== null) {
-    parts.push(`sleep ${aiExtracted.sleep.bedTime}–${aiExtracted.sleep.wakeTime}`);
+    const { bedTime, wakeTime } = aiExtracted.sleep;
+    if (bedTime !== null && wakeTime !== null) parts.push(`sleep ${bedTime}–${wakeTime}`);
+    else if (wakeTime !== null) parts.push(`woke up ${wakeTime}`);
+    else if (bedTime !== null) parts.push(`bedtime ${bedTime}`);
   }
   if (aiExtracted.weightKg !== null) parts.push(`weight ${aiExtracted.weightKg}kg`);
   if (aiExtracted.moodRating !== null) parts.push(`mood ${aiExtracted.moodRating}/5`);

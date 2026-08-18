@@ -86,7 +86,7 @@ export interface JournalEntryExtraction {
   exerciseMinutes: number | null;
   meditationMinutes: number | null;
   food: string | null;
-  sleep: { bedTime: string; wakeTime: string } | null;
+  sleep: { bedTime: string | null; wakeTime: string | null } | null;
   weightKg: number | null;
   moodRating: 1 | 2 | 3 | 4 | 5 | null;
   medicationNamesTaken: string[];

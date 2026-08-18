@@ -8,7 +8,9 @@ const JournalExtractionSchema = z.object({
   exerciseMinutes: z.number().nullable(),
   meditationMinutes: z.number().nullable(),
   food: z.string().nullable(),
-  sleep: z.object({ bedTime: z.string(), wakeTime: z.string() }).nullable(),
+  sleep: z
+    .object({ bedTime: z.string().nullable(), wakeTime: z.string().nullable() })
+    .nullable(),
   weightKg: z.number().nullable(),
   moodRating: z
     .union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)])
@@ -42,7 +44,9 @@ function buildJournalSystemPrompt(
     "- exerciseMinutes: exercise duration in minutes (convert other units).",
     "- meditationMinutes: meditation duration in minutes (convert other units).",
     "- food: a short free-text description of food/meals mentioned, or null.",
-    "- sleep: { bedTime, wakeTime } as HH:MM 24-hour times if both are mentioned, else null.",
+    "- sleep: { bedTime, wakeTime } as HH:MM 24-hour times. Either field can be null if only " +
+      "one was mentioned (e.g. just a wake-up time). The whole object is null if neither is " +
+      "mentioned.",
     "- weightKg: body weight in kilograms (convert lbs if needed).",
     "- moodRating: overall mood as an integer 1 (very bad) to 5 (very good), or null.",
     "- cycleEvent: 'period_start', 'period_end', or 'symptom' if a menstrual cycle event is " +
@@ -170,9 +174,16 @@ export async function suggestTaskPriority(
   dueDate?: string,
   dueTime?: string,
   estimatedHours?: number,
+  dueAtUtc?: string,
 ): Promise<"Low" | "Medium" | "High"> {
   let hoursUntilDue: number | undefined;
-  if (dueDate) {
+  // dueAtUtc is computed browser-side from dueDate+dueTime in the user's own local timezone —
+  // prefer it. Reconstructing a Date from the bare dueDate/dueTime strings server-side is
+  // ambiguous: Lambda runs in UTC, so e.g. "13:00" gets interpreted as 13:00 UTC rather than
+  // the user's actual local 13:00, skewing hoursUntilDue by the user's UTC offset.
+  if (dueAtUtc) {
+    hoursUntilDue = (new Date(dueAtUtc).getTime() - Date.now()) / (1000 * 60 * 60);
+  } else if (dueDate) {
     const due = new Date(`${dueDate}T${dueTime ?? "23:59"}:00`);
     hoursUntilDue = (due.getTime() - Date.now()) / (1000 * 60 * 60);
   }

@@ -6,10 +6,16 @@ const FoodSchema = z.object({
   mealType: z.enum(["breakfast", "lunch", "dinner", "snack"]).optional(),
 });
 
-const SleepSchema = z.object({
-  bedTime: z.string().regex(/^\d{2}:\d{2}$/),
-  wakeTime: z.string().regex(/^\d{2}:\d{2}$/),
-});
+// Both optional so AI extraction can record a wake-up or bed time mentioned alone (e.g. "woke
+// up at 9am") without requiring the other half of the pair to have been mentioned too.
+const SleepSchema = z
+  .object({
+    bedTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+    wakeTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  })
+  .refine((data) => data.bedTime !== undefined || data.wakeTime !== undefined, {
+    message: "At least one of bedTime or wakeTime is required",
+  });
 
 const WeightSchema = z.object({
   valueKg: z.number().positive(),
