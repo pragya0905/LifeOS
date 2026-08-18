@@ -59,28 +59,6 @@ export default function Journal() {
   const [savingMood, setSavingMood] = useState(false);
 
   const baseTextRef = useRef("");
-  const finalTranscriptRef = useRef("");
-  // Android Chrome's continuous recognition periodically restarts its internal
-  // session and re-finalizes the whole utterance-so-far as a "new" final result
-  // instead of just the new words, so we track finalized chunks individually and
-  // collapse exact/prefix repeats instead of blindly concatenating every one.
-  const finalSegmentsRef = useRef<string[]>([]);
-
-  function addFinalSegment(transcript: string) {
-    const trimmed = transcript.trim();
-    if (!trimmed) return;
-    const segments = finalSegmentsRef.current;
-    const last = segments[segments.length - 1];
-    if (last !== undefined && (trimmed === last || last.startsWith(trimmed))) {
-      return;
-    }
-    if (last !== undefined && trimmed.startsWith(last)) {
-      segments[segments.length - 1] = trimmed;
-    } else {
-      segments.push(trimmed);
-    }
-    finalTranscriptRef.current = segments.join(" ");
-  }
 
   const {
     supported: voiceSupported,
@@ -89,13 +67,8 @@ export default function Journal() {
     start: startListening,
     stop: stopListening,
   } = useSpeechToText((transcript, isFinal) => {
-    if (isFinal) {
-      addFinalSegment(transcript);
-      setText(joinText(baseTextRef.current, finalTranscriptRef.current));
-      setUsedVoice(true);
-    } else {
-      setText(joinText(baseTextRef.current, joinText(finalTranscriptRef.current, transcript.trim())));
-    }
+    setText(joinText(baseTextRef.current, transcript));
+    if (isFinal) setUsedVoice(true);
   });
 
   useEffect(() => {
@@ -134,7 +107,6 @@ export default function Journal() {
     setText(existingEntry?.text ?? "");
     setUsedVoice(false);
     baseTextRef.current = "";
-    finalTranscriptRef.current = "";
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, entries]);
 
@@ -192,8 +164,6 @@ export default function Journal() {
       return;
     }
     baseTextRef.current = text;
-    finalTranscriptRef.current = "";
-    finalSegmentsRef.current = [];
     startListening();
   }
 

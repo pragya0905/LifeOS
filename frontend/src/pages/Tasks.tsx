@@ -121,7 +121,6 @@ export default function Tasks() {
   const [savingEdit, setSavingEdit] = useState(false);
 
   const baseTitleRef = useRef("");
-  const finalTranscriptRef = useRef("");
 
   const {
     supported: voiceSupported,
@@ -130,13 +129,8 @@ export default function Tasks() {
     start: startListening,
     stop: stopListening,
   } = useSpeechToText((transcript, isFinal) => {
-    if (isFinal) {
-      finalTranscriptRef.current = joinText(finalTranscriptRef.current, transcript.trim());
-      setTitle(joinText(baseTitleRef.current, finalTranscriptRef.current));
-      setUsedVoice(true);
-    } else {
-      setTitle(joinText(baseTitleRef.current, joinText(finalTranscriptRef.current, transcript.trim())));
-    }
+    setTitle(joinText(baseTitleRef.current, transcript));
+    if (isFinal) setUsedVoice(true);
   });
 
   useEffect(() => {
@@ -170,7 +164,6 @@ export default function Tasks() {
       return;
     }
     baseTitleRef.current = title;
-    finalTranscriptRef.current = "";
     startListening();
   }
 
