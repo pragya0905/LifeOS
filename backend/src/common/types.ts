@@ -26,6 +26,54 @@ export interface UserProfile {
   updatedAt: string;
 }
 
+export type WishType =
+  | "learning"
+  | "travel"
+  | "savings"
+  | "health"
+  | "shopping"
+  | "creative"
+  | "personal_growth"
+  | "achievement";
+
+export type WishProgressMode = "percentage" | "milestone" | "habit_linked" | "time_based" | "quantity";
+export type WishStatus = "active" | "completed" | "abandoned";
+export type WishHabitType = "water" | "exercise" | "meditation";
+
+export interface WishMilestone {
+  id: string;
+  text: string;
+  targetDate?: string;
+  done: boolean;
+}
+
+export interface Wish {
+  userId: string;
+  wishId: string;
+  title: string;
+  type: WishType;
+  progressMode: WishProgressMode;
+  status: WishStatus;
+  targetDate?: string;
+  // percentage mode
+  percentage?: number;
+  // milestone mode
+  milestones?: WishMilestone[];
+  // quantity mode
+  quantityTarget?: number;
+  quantityCurrent?: number;
+  quantityUnit?: string;
+  // habit_linked mode — progress is computed on read from habit logs since createdAt,
+  // not stored, so it always reflects the live total rather than going stale.
+  linkedHabitType?: WishHabitType;
+  habitLinkTargetValue?: number;
+  imageKeys?: string[];
+  deadlineReminderSentAt?: string;
+  fallBehindWarningSentAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface PushSubscription {
   userId: string;
   endpoint: string;
