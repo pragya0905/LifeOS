@@ -296,6 +296,52 @@ Resources:
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
 
+  WishesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "LifeOs-Wishes-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: wishId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: wishId
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  WishImagesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "lifeos-wish-images-${Environment}-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins: !Ref AllowedOrigins
+            AllowedMethods: [PUT, GET]
+            AllowedHeaders: ["*"]
+            MaxAge: 3000
+      LifecycleConfiguration:
+        Rules:
+          - Id: AbortIncompleteUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+
   ########################
   # API Gateway (HTTP API) + Cognito JWT authorizer
   ########################
@@ -1290,6 +1336,8 @@ Resources:
           GOALS_TABLE_NAME: !Ref GoalsTable
           PUSH_SUBSCRIPTIONS_TABLE_NAME: !Ref PushSubscriptionsTable
           USER_PROFILE_TABLE_NAME: !Ref UserProfileTable
+          WISHES_TABLE_NAME: !Ref WishesTable
+          WISH_IMAGES_BUCKET_NAME: !Ref WishImagesBucket
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TasksTable
@@ -1313,6 +1361,10 @@ Resources:
             TableName: !Ref PushSubscriptionsTable
         - DynamoDBCrudPolicy:
             TableName: !Ref UserProfileTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref WishesTable
+        - S3CrudPolicy:
+            BucketName: !Ref WishImagesBucket
         - Statement:
             - Effect: Allow
               Action: cognito-idp:AdminDeleteUser
@@ -1486,6 +1538,271 @@ Resources:
             Method: PATCH
             Auth:
               Authorizer: CognitoAuthorizer
+
+  ########################
+  # Lambda — Wishes
+  ########################
+  CreateWishFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-create-wish-${Environment}"
+      CodeUri: src/functions/createWish/
+      Handler: index.handler
+      Environment:
+        Variables:
+          WISHES_TABLE_NAME: !Ref WishesTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref WishesTable
+      Events:
+        CreateWish:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /wishes
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  ListWishesFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-list-wishes-${Environment}"
+      CodeUri: src/functions/listWishes/
+      Handler: index.handler
+      Environment:
+        Variables:
+          WISHES_TABLE_NAME: !Ref WishesTable
+          HABITS_TABLE_NAME: !Ref HabitLogsTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref WishesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref HabitLogsTable
+      Events:
+        ListWishes:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /wishes
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  UpdateWishFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-update-wish-${Environment}"
+      CodeUri: src/functions/updateWish/
+      Handler: index.handler
+      Environment:
+        Variables:
+          WISHES_TABLE_NAME: !Ref WishesTable
+          PUSH_SUBSCRIPTIONS_TABLE_NAME: !Ref PushSubscriptionsTable
+          PUSH_VAPID_PRIVATE_KEY_PARAM: !Sub "/lifeos/${Environment}/push-vapid-private-key"
+          PUSH_VAPID_PUBLIC_KEY: !Ref PushVapidPublicKey
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref WishesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref PushSubscriptionsTable
+        - DynamoDBWritePolicy:
+            TableName: !Ref PushSubscriptionsTable
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifeos/${Environment}/push-vapid-private-key"
+      Events:
+        UpdateWish:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /wishes/{id}
+            Method: PATCH
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  DeleteWishFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-delete-wish-${Environment}"
+      CodeUri: src/functions/deleteWish/
+      Handler: index.handler
+      Environment:
+        Variables:
+          WISHES_TABLE_NAME: !Ref WishesTable
+          WISH_IMAGES_BUCKET_NAME: !Ref WishImagesBucket
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref WishesTable
+        - S3CrudPolicy:
+            BucketName: !Ref WishImagesBucket
+      Events:
+        DeleteWish:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /wishes/{id}
+            Method: DELETE
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  GetWishImageUploadUrlFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-get-wish-image-upload-url-${Environment}"
+      CodeUri: src/functions/getWishImageUploadUrl/
+      Handler: index.handler
+      Environment:
+        Variables:
+          WISH_IMAGES_BUCKET_NAME: !Ref WishImagesBucket
+      Policies:
+        - S3WritePolicy:
+            BucketName: !Ref WishImagesBucket
+      Events:
+        GetWishImageUploadUrl:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /wishes/{id}/images/presign
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  ListWishImagesFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-list-wish-images-${Environment}"
+      CodeUri: src/functions/listWishImages/
+      Handler: index.handler
+      Environment:
+        Variables:
+          WISHES_TABLE_NAME: !Ref WishesTable
+          WISH_IMAGES_BUCKET_NAME: !Ref WishImagesBucket
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref WishesTable
+        - S3ReadPolicy:
+            BucketName: !Ref WishImagesBucket
+      Events:
+        ListWishImages:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /wishes/{id}/images
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  DeleteWishImageFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-delete-wish-image-${Environment}"
+      CodeUri: src/functions/deleteWishImage/
+      Handler: index.handler
+      Environment:
+        Variables:
+          WISHES_TABLE_NAME: !Ref WishesTable
+          WISH_IMAGES_BUCKET_NAME: !Ref WishImagesBucket
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref WishesTable
+        - S3CrudPolicy:
+            BucketName: !Ref WishImagesBucket
+      Events:
+        DeleteWishImage:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /wishes/{id}/images
+            Method: DELETE
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  WishReminderSchedulerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-wish-reminder-scheduler-${Environment}"
+      CodeUri: src/functions/wishReminderScheduler/
+      Handler: index.handler
+      Timeout: 60
+      Environment:
+        Variables:
+          WISHES_TABLE_NAME: !Ref WishesTable
+          PUSH_SUBSCRIPTIONS_TABLE_NAME: !Ref PushSubscriptionsTable
+          PUSH_VAPID_PRIVATE_KEY_PARAM: !Sub "/lifeos/${Environment}/push-vapid-private-key"
+          PUSH_VAPID_PUBLIC_KEY: !Ref PushVapidPublicKey
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref WishesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref PushSubscriptionsTable
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifeos/${Environment}/push-vapid-private-key"
+      Events:
+        Schedule:
+          Type: Schedule
+          Properties:
+            Schedule: "rate(15 minutes)"
+            Enabled: true
 
 Outputs:
   UserPoolId:

@@ -1,11 +1,13 @@
 import type { APIGatewayProxyHandlerV2WithJWTAuthorizer } from "aws-lambda";
 import { QueryCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
 import { CognitoIdentityProviderClient, AdminDeleteUserCommand } from "@aws-sdk/client-cognito-identity-provider";
+import { S3Client, ListObjectsV2Command, DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import { ddb } from "../../common/dynamo";
 import { getUserId, getUsername } from "../../common/auth";
 import { jsonResponse } from "../../common/http";
 
 const cognito = new CognitoIdentityProviderClient({});
+const s3 = new S3Client({});
 
 // One entry per DynamoDB table this account has data in, naming each table's sort-key
 // attribute so items can be deleted by their real primary key (Query returns full items,
@@ -21,7 +23,29 @@ const TABLES: { envVar: string; sortKeyName: string }[] = [
   { envVar: "ROUTINE_LOGS_TABLE_NAME", sortKeyName: "dateRoutineStep" },
   { envVar: "GOALS_TABLE_NAME", sortKeyName: "metric" },
   { envVar: "PUSH_SUBSCRIPTIONS_TABLE_NAME", sortKeyName: "endpoint" },
+  { envVar: "WISHES_TABLE_NAME", sortKeyName: "wishId" },
 ];
+
+// All of a user's wish images live under a userId/ prefix in the bucket (see
+// getWishImageUploadUrl) — bulk-listing and deleting that prefix is far simpler than
+// walking each wish's imageKeys individually.
+async function deleteAllWishImages(bucketName: string, userId: string) {
+  let continuationToken: string | undefined;
+  do {
+    const result = await s3.send(
+      new ListObjectsV2Command({
+        Bucket: bucketName,
+        Prefix: `${userId}/`,
+        ContinuationToken: continuationToken,
+      }),
+    );
+    const objects = (result.Contents ?? []).flatMap((obj) => (obj.Key ? [{ Key: obj.Key }] : []));
+    if (objects.length > 0) {
+      await s3.send(new DeleteObjectsCommand({ Bucket: bucketName, Delete: { Objects: objects } }));
+    }
+    continuationToken = result.NextContinuationToken;
+  } while (continuationToken);
+}
 
 async function deleteAllItemsForUser(tableName: string, sortKeyName: string, userId: string) {
   let lastKey: Record<string, unknown> | undefined;
@@ -54,6 +78,10 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     const tableName = process.env[table.envVar];
     if (!tableName) continue;
     await deleteAllItemsForUser(tableName, table.sortKeyName, userId);
+  }
+
+  if (process.env.WISH_IMAGES_BUCKET_NAME) {
+    await deleteAllWishImages(process.env.WISH_IMAGES_BUCKET_NAME, userId);
   }
 
   // UserProfile has no sort key (one item per user) — a plain delete, no query needed.
