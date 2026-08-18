@@ -16,6 +16,7 @@ import Insights from "./pages/Insights";
 import Settings from "./pages/Settings";
 import Calendar from "./pages/Calendar";
 import Help from "./pages/Help";
+import Wishes from "./pages/Wishes";
 
 export default function App() {
   return (
@@ -42,6 +43,7 @@ export default function App() {
             <Route path="/routines" element={<Routines />} />
             <Route path="/insights" element={<Insights />} />
             <Route path="/calendar" element={<Calendar />} />
+            <Route path="/wishes" element={<Wishes />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/help" element={<Help />} />
           </Route>

@@ -38,6 +38,10 @@ const SECTIONS: { title: string; body: string }[] = [
     body: "On-demand AI-generated summary, highlights, and suggestions from your recent activity (today or this past week). Nothing runs automatically — you trigger it.",
   },
   {
+    title: "Wishes",
+    body: "Goals and dreams with real progress tracking — a percentage slider, a milestone checklist, tied to how much of a daily habit you've logged since creating the wish, a countdown to a date, or a quantity target. Attach photos as a small vision board. You'll get a push reminder as a deadline approaches, a one-time nudge if you're falling behind schedule, and a celebration when every milestone is checked off.",
+  },
+  {
     title: "Settings",
     body: "Install the app to your home screen, enable notifications and task due-date reminders, set your profile height, switch light/dark/system theme, export your data as CSV or PDF, and delete your account.",
   },
