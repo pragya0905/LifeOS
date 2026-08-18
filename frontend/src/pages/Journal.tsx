@@ -60,6 +60,27 @@ export default function Journal() {
 
   const baseTextRef = useRef("");
   const finalTranscriptRef = useRef("");
+  // Android Chrome's continuous recognition periodically restarts its internal
+  // session and re-finalizes the whole utterance-so-far as a "new" final result
+  // instead of just the new words, so we track finalized chunks individually and
+  // collapse exact/prefix repeats instead of blindly concatenating every one.
+  const finalSegmentsRef = useRef<string[]>([]);
+
+  function addFinalSegment(transcript: string) {
+    const trimmed = transcript.trim();
+    if (!trimmed) return;
+    const segments = finalSegmentsRef.current;
+    const last = segments[segments.length - 1];
+    if (last !== undefined && (trimmed === last || last.startsWith(trimmed))) {
+      return;
+    }
+    if (last !== undefined && trimmed.startsWith(last)) {
+      segments[segments.length - 1] = trimmed;
+    } else {
+      segments.push(trimmed);
+    }
+    finalTranscriptRef.current = segments.join(" ");
+  }
 
   const {
     supported: voiceSupported,
@@ -69,7 +90,7 @@ export default function Journal() {
     stop: stopListening,
   } = useSpeechToText((transcript, isFinal) => {
     if (isFinal) {
-      finalTranscriptRef.current = joinText(finalTranscriptRef.current, transcript.trim());
+      addFinalSegment(transcript);
       setText(joinText(baseTextRef.current, finalTranscriptRef.current));
       setUsedVoice(true);
     } else {
@@ -172,6 +193,7 @@ export default function Journal() {
     }
     baseTextRef.current = text;
     finalTranscriptRef.current = "";
+    finalSegmentsRef.current = [];
     startListening();
   }
 
