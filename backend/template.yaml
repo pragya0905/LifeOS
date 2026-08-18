@@ -9,8 +9,8 @@ Parameters:
     AllowedValues: [dev, prod]
   AllowedOrigins:
     Type: CommaDelimitedList
-    Default: "http://localhost:5173,http://localhost:5174"
-    Description: CORS origins allowed to call the HTTP API (add the deployed frontend URL later). 5174 covers Vite's auto-fallback port when 5173 is already in use by another local project.
+    Default: "http://localhost:5173,http://localhost:5174,https://d1t6ezlql25na7.cloudfront.net"
+    Description: CORS origins allowed to call the HTTP API. 5174 covers Vite's auto-fallback port when 5173 is already in use by another local project. The cloudfront.net origin is the deployed frontend (FrontendUrl stack output).
   PushVapidPublicKey:
     Type: String
     Default: "BIZH0_W8D833DZWVY58koXoQm3QA-ZMid1dFWJT0o37USDdwVEJTH9lk9fdOB0UuqcJLvjaT_ZyIs3U-li9fGzE"
@@ -341,6 +341,76 @@ Resources:
             Status: Enabled
             AbortIncompleteMultipartUpload:
               DaysAfterInitiation: 1
+
+  ########################
+  # Frontend hosting: private S3 bucket behind CloudFront (OAC)
+  ########################
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "lifeos-frontend-${Environment}-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${FrontendBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${FrontendDistribution}"
+
+  FrontendOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "lifeos-frontend-${Environment}"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  FrontendDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        HttpVersion: http2
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: FrontendBucketOrigin
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            OriginAccessControlId: !Ref FrontendOriginAccessControl
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+        DefaultCacheBehavior:
+          TargetOriginId: FrontendBucketOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # AWS managed: CachingOptimized
+        # SPA client-side routing: serve index.html for paths S3 doesn't have,
+        # letting React Router handle the route instead of showing a CloudFront error.
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
 
   ########################
   # API Gateway (HTTP API) + Cognito JWT authorizer
@@ -1829,3 +1899,9 @@ Outputs:
     Value: !Ref RoutineLogsTable
   GoalsTableName:
     Value: !Ref GoalsTable
+  FrontendBucketName:
+    Value: !Ref FrontendBucket
+  FrontendUrl:
+    Value: !Sub "https://${FrontendDistribution.DomainName}"
+  FrontendDistributionId:
+    Value: !Ref FrontendDistribution
