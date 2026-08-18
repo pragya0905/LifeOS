@@ -47,7 +47,7 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
   // manual/default priority above rather than blocking task creation.
   if (body.suggestPriority === true) {
     try {
-      priority = await suggestTaskPriority(title, dueDate, dueTime, estimatedHours);
+      priority = await suggestTaskPriority(title, dueDate, dueTime, estimatedHours, dueAtUtc);
       prioritySource = "ai";
     } catch (err) {
       console.error("Task priority suggestion failed (falling back to manual):", err);
