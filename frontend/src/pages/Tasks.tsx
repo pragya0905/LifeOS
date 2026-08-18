@@ -399,7 +399,7 @@ export default function Tasks() {
                     {task.scheduleTime ? ` · scheduled ${task.scheduleTime}` : ""}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs font-medium ${priorityBadgeClass[task.priority]}`}
                     title={`Priority source: ${task.prioritySource}`}
