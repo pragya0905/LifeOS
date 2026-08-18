@@ -10,6 +10,7 @@ const VALID_PRIORITIES: TaskPriority[] = ["Low", "Medium", "High"];
 const VALID_STATUSES: TaskStatus[] = ["todo", "in_progress", "done"];
 const UPDATABLE_FIELDS = [
   "title",
+  "description",
   "dueDate",
   "dueTime",
   "dueAtUtc",

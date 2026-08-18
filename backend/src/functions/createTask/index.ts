@@ -23,6 +23,9 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
   const title = typeof body.title === "string" ? body.title.trim() : "";
   if (!title) return errorResponse(400, "title is required");
 
+  const description =
+    typeof body.description === "string" && body.description.trim() ? body.description.trim() : undefined;
+
   const dueDate = typeof body.dueDate === "string" ? body.dueDate : undefined;
   const dueTime = typeof body.dueTime === "string" ? body.dueTime : undefined;
   // The browser computes this from dueDate+dueTime in its own local timezone (the server
@@ -59,6 +62,7 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     userId,
     taskId: randomUUID(),
     title,
+    description,
     dueDate,
     dueTime,
     dueAtUtc,

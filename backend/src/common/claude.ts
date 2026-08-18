@@ -103,11 +103,15 @@ const TaskPrioritySchema = z.object({
 
 const TASK_PRIORITY_SYSTEM_PROMPT =
   "Suggest a priority (Low, Medium, or High) for a personal to-do task based on its title, " +
-  "due date, and how much slack time remains versus the estimated effort needed. Weigh " +
-  "urgency and importance: soon due dates and language like 'urgent', 'ASAP', or a hard " +
-  "deadline push toward High; vague or low-stakes tasks ('someday', 'maybe') push toward " +
-  "Low; a task with little slack between now and its deadline relative to its estimated " +
-  "effort should lean High even if the wording sounds casual. Default to Medium when unclear.";
+  "due date, and how much slack time remains versus the estimated effort needed. A due date " +
+  "being 'today' or 'tomorrow' is NOT by itself a reason for High — judge urgency from the " +
+  "slack ratio (hours remaining ÷ estimated effort) when both are given: a ratio below ~2x " +
+  "means little room for delay and leans High; a ratio above ~5x means ample slack and should " +
+  "lean Medium or Low even if the due date is today, unless the title itself uses urgent " +
+  "language ('urgent', 'ASAP', a hard deadline) or names a fixed one-time event that can't " +
+  "slip (e.g. 'interview', 'flight', 'exam') — those lean High on importance regardless of " +
+  "slack. Vague or low-stakes tasks ('someday', 'maybe') push toward Low. Default to Medium " +
+  "when unclear or when no due date/estimate is given.";
 
 let cachedApiKey: string | undefined;
 let cachedClient: Anthropic | undefined;
@@ -205,6 +209,9 @@ export async function suggestTaskPriority(
   if (estimatedHours !== undefined) contentLines.push(`Estimated effort: ${estimatedHours} hours`);
   if (hoursUntilDue !== undefined) {
     contentLines.push(`Hours remaining until due: ${hoursUntilDue.toFixed(1)}`);
+  }
+  if (hoursUntilDue !== undefined && estimatedHours !== undefined && estimatedHours > 0) {
+    contentLines.push(`Slack ratio (hours remaining ÷ estimate): ${(hoursUntilDue / estimatedHours).toFixed(1)}x`);
   }
 
   const response = await client.messages.parse({

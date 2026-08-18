@@ -6,6 +6,7 @@ export interface Task {
   userId: string;
   taskId: string;
   title: string;
+  description?: string;
   dueDate?: string;
   dueTime?: string;
   dueAtUtc?: string;

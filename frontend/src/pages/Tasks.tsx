@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type TouchEvent as ReactTouchEvent } from "react";
 import { useApi } from "../api/useApi";
 import { useSpeechToText } from "../hooks/useSpeechToText";
+import { todayLocal } from "../lib/date";
 import type { Task, TaskPriority, TaskStatus } from "../types";
 import {
   badge,
@@ -16,10 +17,10 @@ import {
   primaryButton,
   priorityBadgeClass,
   secondaryButton,
+  sectionLabel,
 } from "../components/ui";
 
 const PRIORITIES: TaskPriority[] = ["Low", "Medium", "High"];
-const STATUSES: TaskStatus[] = ["todo", "in_progress", "done"];
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
   todo: "To do",
@@ -96,6 +97,353 @@ function TaskTimeline({ task }: { task: Task }) {
   );
 }
 
+const STATUS_CYCLE: Record<TaskStatus, TaskStatus> = {
+  todo: "in_progress",
+  in_progress: "done",
+  done: "todo",
+};
+
+const PRIORITY_DOT_COLOR: Record<TaskPriority, string> = {
+  Low: "bg-fog-muted",
+  Medium: "bg-[#C79233]",
+  High: "bg-terracotta",
+};
+
+// A single click-to-cycle control (todo -> in_progress -> done -> todo) instead of a
+// plain dropdown, so the most common action (marking progress) is one tap/click away.
+function StatusToggle({ status, onCycle }: { status: TaskStatus; onCycle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onCycle}
+      title={`Status: ${STATUS_LABEL[status]} — click to advance`}
+      className="group flex items-center gap-1.5 rounded-full border border-stone py-1 pl-1 pr-2.5 text-xs font-medium text-ink transition-colors hover:bg-stone/40 dark:border-stone-dark dark:text-cream dark:hover:bg-stone-dark/40"
+    >
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+        <circle
+          cx="8"
+          cy="8"
+          r="6.5"
+          fill={status === "done" ? "currentColor" : "none"}
+          className={
+            status === "done"
+              ? "text-sage"
+              : status === "in_progress"
+                ? "text-[#C79233]"
+                : "text-fog-muted"
+          }
+          strokeWidth={status === "done" ? 0 : 1.75}
+          stroke="currentColor"
+          strokeDasharray={status === "in_progress" ? "6 4" : undefined}
+        />
+        {status === "done" && (
+          <path
+            d="M5 8.2l2 2 4-4.4"
+            stroke="var(--color-cream-card)"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+        )}
+      </svg>
+      {STATUS_LABEL[status]}
+    </button>
+  );
+}
+
+// Small ring (visually consistent with the Dashboard's habit rings) showing how much of the
+// remaining time-before-due the estimated effort would consume — inverted color from the
+// Dashboard rings on purpose: here a HIGH fraction means urgent (red), not "closer to goal".
+function DeadlineRing({ task }: { task: Task }) {
+  if (!task.dueDate) return null;
+  const remaining = hoursUntilDue(task, new Date());
+  if (remaining === null) return null;
+
+  let fraction: number;
+  if (remaining <= 0) {
+    fraction = 1;
+  } else if (task.estimatedHours) {
+    fraction = Math.min(task.estimatedHours / remaining, 1);
+  } else {
+    const daysLeft = remaining / 24;
+    fraction = daysLeft < 1 ? 0.9 : daysLeft < 3 ? 0.6 : daysLeft < 7 ? 0.3 : 0.1;
+  }
+
+  const SIZE = 30;
+  const STROKE = 4;
+  const RADIUS = (SIZE - STROKE) / 2;
+  const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+  const offset = CIRCUMFERENCE * (1 - fraction);
+  const colorClass = fraction >= 0.67 ? "stroke-terracotta" : fraction >= 0.34 ? "stroke-[#C79233]" : "stroke-sage";
+
+  return (
+    <div
+      className="relative shrink-0"
+      style={{ width: SIZE, height: SIZE }}
+      title={remaining <= 0 ? "Overdue" : `${remaining.toFixed(1)}h remaining until due`}
+    >
+      <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} role="img" aria-label="Time until due">
+        <circle
+          cx={SIZE / 2}
+          cy={SIZE / 2}
+          r={RADIUS}
+          fill="none"
+          strokeWidth={STROKE}
+          className="stroke-stone dark:stroke-stone-dark"
+        />
+        <circle
+          cx={SIZE / 2}
+          cy={SIZE / 2}
+          r={RADIUS}
+          fill="none"
+          strokeWidth={STROKE}
+          strokeLinecap="round"
+          strokeDasharray={CIRCUMFERENCE}
+          strokeDashoffset={offset}
+          transform={`rotate(-90 ${SIZE / 2} ${SIZE / 2})`}
+          className={`${colorClass} transition-[stroke-dashoffset,stroke] duration-500`}
+        />
+      </svg>
+    </div>
+  );
+}
+
+const SWIPE_THRESHOLD = 90;
+
+// Module-level (not nested in Tasks) so React doesn't remount it — and lose local
+// swipe-gesture state — on every parent re-render, same fix applied to WishCard earlier.
+function TaskCard({
+  task,
+  isEditing,
+  onToggleEdit,
+  onUpdate,
+  onDuplicate,
+  editDescription,
+  setEditDescription,
+  editDueDate,
+  setEditDueDate,
+  editDueTime,
+  setEditDueTime,
+  editEstimatedHours,
+  setEditEstimatedHours,
+  editSuggestPriority,
+  setEditSuggestPriority,
+  savingEdit,
+  onSaveEdit,
+  selectClass,
+}: {
+  task: Task;
+  isEditing: boolean;
+  onToggleEdit: () => void;
+  onUpdate: (patch: Record<string, unknown>) => void;
+  onDuplicate: () => void;
+  editDescription: string;
+  setEditDescription: (v: string) => void;
+  editDueDate: string;
+  setEditDueDate: (v: string) => void;
+  editDueTime: string;
+  setEditDueTime: (v: string) => void;
+  editEstimatedHours: string;
+  setEditEstimatedHours: (v: string) => void;
+  editSuggestPriority: boolean;
+  setEditSuggestPriority: (v: boolean) => void;
+  savingEdit: boolean;
+  onSaveEdit: () => void;
+  selectClass: string;
+}) {
+  const [swipeX, setSwipeX] = useState(0);
+  const [swiping, setSwiping] = useState(false);
+  const startXRef = useRef<number | null>(null);
+
+  function onTouchStart(e: ReactTouchEvent) {
+    if (task.status === "done") return;
+    startXRef.current = e.touches[0].clientX;
+    setSwiping(true);
+  }
+  function onTouchMove(e: ReactTouchEvent) {
+    if (startXRef.current === null) return;
+    const dx = e.touches[0].clientX - startXRef.current;
+    if (dx > 0) setSwipeX(Math.min(dx, 130));
+  }
+  function onTouchEnd() {
+    if (swipeX > SWIPE_THRESHOLD) onUpdate({ status: "done" });
+    setSwipeX(0);
+    setSwiping(false);
+    startXRef.current = null;
+  }
+
+  return (
+    <li className="relative animate-fade-in-up overflow-hidden rounded-2xl">
+      <div
+        className="absolute inset-0 flex items-center gap-2 rounded-2xl bg-sage px-5 text-cream-card"
+        aria-hidden="true"
+        style={{ opacity: Math.min(swipeX / SWIPE_THRESHOLD, 1) }}
+      >
+        <svg width="20" height="20" viewBox="0 0 16 16">
+          <path
+            d="M3 8.5l3 3 7-7.5"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+        </svg>
+        Done
+      </div>
+      <div
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        style={{
+          transform: `translateX(${swipeX}px)`,
+          transition: swiping ? "none" : "transform 0.25s ease-out",
+        }}
+        className={`relative flex flex-col gap-3 border-l-4 transition-shadow hover:shadow-md ${card} ${
+          task.priority === "High"
+            ? "border-l-terracotta"
+            : task.priority === "Medium"
+              ? "border-l-[#C79233]"
+              : "border-l-fog-muted"
+        }`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <DeadlineRing task={task} />
+            <div className="min-w-0">
+              <p
+                className={`font-medium text-ink dark:text-cream ${
+                  task.status === "done" ? "line-through opacity-60" : ""
+                }`}
+              >
+                {task.title}
+              </p>
+              {task.description && (
+                <p className="mt-0.5 max-w-md text-sm text-ink-muted dark:text-fog-muted">
+                  {task.description}
+                </p>
+              )}
+              <p className="text-xs text-ink-muted dark:text-fog-muted">
+                {task.dueDate ?? "No due date"}
+                {task.dueTime ? ` ${task.dueTime}` : ""}
+                {task.estimatedHours !== undefined ? ` · ~${task.estimatedHours}h` : ""}
+                {task.scheduleTime ? ` · scheduled ${task.scheduleTime}` : ""}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${priorityBadgeClass[task.priority]}`}
+              title={`Priority source: ${task.prioritySource}`}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${PRIORITY_DOT_COLOR[task.priority]}`} aria-hidden="true" />
+              {task.priority}
+            </span>
+            {task.prioritySource === "ai" && <span className={badge}>AI</span>}
+            <select
+              value={task.priority}
+              onChange={(e) => onUpdate({ priority: e.target.value as TaskPriority })}
+              className={selectClass}
+            >
+              {PRIORITIES.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+            <StatusToggle status={task.status} onCycle={() => onUpdate({ status: STATUS_CYCLE[task.status] })} />
+            <button
+              type="button"
+              onClick={onToggleEdit}
+              className={`${secondaryButton} px-2 py-1 text-xs`}
+            >
+              {isEditing ? "Cancel" : "Edit"}
+            </button>
+            <button
+              type="button"
+              onClick={onDuplicate}
+              title="Create a new task with the same title, priority, and estimate"
+              className={`${secondaryButton} px-2 py-1 text-xs`}
+            >
+              Duplicate
+            </button>
+          </div>
+        </div>
+
+        <TaskTimeline task={task} />
+
+        {isEditing && (
+          <div className="flex flex-wrap items-end gap-3 border-t border-stone/60 pt-3 dark:border-stone-dark/60">
+            <div className="min-w-[200px] flex-1">
+              <label className={label}>Description (optional)</label>
+              <input
+                type="text"
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                placeholder="Notes, links, anything you'll want later"
+                className={`w-full ${input}`}
+              />
+            </div>
+            <div>
+              <label className={label}>Due date</label>
+              <input
+                type="date"
+                value={editDueDate}
+                onChange={(e) => setEditDueDate(e.target.value)}
+                className={input}
+              />
+            </div>
+            <div>
+              <label className={label}>Due time</label>
+              <input
+                type="time"
+                value={editDueTime}
+                onChange={(e) => setEditDueTime(e.target.value)}
+                className={input}
+              />
+            </div>
+            <div>
+              <label className={label}>Est. hours</label>
+              <input
+                type="number"
+                min={0}
+                step="0.5"
+                value={editEstimatedHours}
+                onChange={(e) => setEditEstimatedHours(e.target.value)}
+                className={`w-20 ${input}`}
+              />
+            </div>
+            <label className={`flex items-center gap-1.5 pb-2 ${label}`}>
+              <input
+                type="checkbox"
+                checked={editSuggestPriority}
+                onChange={(e) => setEditSuggestPriority(e.target.checked)}
+                className="rounded border-stone text-sage focus:ring-sage dark:border-stone-dark"
+              />
+              Re-suggest priority with AI
+            </label>
+            <button type="button" disabled={savingEdit} onClick={onSaveEdit} className={primaryButton}>
+              {savingEdit ? "Saving..." : "Save"}
+            </button>
+          </div>
+        )}
+      </div>
+    </li>
+  );
+}
+
+type TaskGroup = "Overdue" | "Today" | "Upcoming" | "No due date" | "Done";
+const GROUP_ORDER: TaskGroup[] = ["Overdue", "Today", "Upcoming", "No due date", "Done"];
+
+function taskGroup(task: Task, today: string): TaskGroup {
+  if (task.status === "done") return "Done";
+  if (!task.dueDate) return "No due date";
+  if (task.dueDate < today) return "Overdue";
+  if (task.dueDate === today) return "Today";
+  return "Upcoming";
+}
+
 export default function Tasks() {
   const { request } = useApi();
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -104,6 +452,7 @@ export default function Tasks() {
   const [search, setSearch] = useState("");
 
   const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [dueTime, setDueTime] = useState("");
   const [estimatedHours, setEstimatedHours] = useState("");
@@ -114,6 +463,7 @@ export default function Tasks() {
   const [usedVoice, setUsedVoice] = useState(false);
 
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editDescription, setEditDescription] = useState("");
   const [editDueDate, setEditDueDate] = useState("");
   const [editDueTime, setEditDueTime] = useState("");
   const [editEstimatedHours, setEditEstimatedHours] = useState("");
@@ -178,6 +528,7 @@ export default function Tasks() {
         method: "POST",
         body: JSON.stringify({
           title: title.trim(),
+          description: description.trim() || undefined,
           dueDate: dueDate || undefined,
           dueTime: dueTime || undefined,
           dueAtUtc: computeDueAtUtc(dueDate, dueTime),
@@ -190,6 +541,7 @@ export default function Tasks() {
       });
       setTasks((prev) => [task, ...prev]);
       setTitle("");
+      setDescription("");
       setDueDate("");
       setDueTime("");
       setEstimatedHours("");
@@ -224,6 +576,7 @@ export default function Tasks() {
         method: "POST",
         body: JSON.stringify({
           title: task.title,
+          description: task.description,
           priority: task.priority,
           estimatedHours: task.estimatedHours,
         }),
@@ -236,6 +589,7 @@ export default function Tasks() {
 
   function startEdit(task: Task) {
     setEditingTaskId(task.taskId);
+    setEditDescription(task.description ?? "");
     setEditDueDate(task.dueDate ?? "");
     setEditDueTime(task.dueTime ?? "");
     setEditEstimatedHours(task.estimatedHours !== undefined ? String(task.estimatedHours) : "");
@@ -245,6 +599,7 @@ export default function Tasks() {
   async function saveEdit(taskId: string) {
     setSavingEdit(true);
     await updateTask(taskId, {
+      description: editDescription.trim(),
       dueDate: editDueDate || undefined,
       dueTime: editDueTime || undefined,
       dueAtUtc: computeDueAtUtc(editDueDate, editDueTime),
@@ -261,6 +616,26 @@ export default function Tasks() {
   const filteredTasks = search.trim()
     ? tasks.filter((t) => t.title.toLowerCase().includes(search.trim().toLowerCase()))
     : tasks;
+
+  const today = todayLocal();
+  const groupedTasks: Record<TaskGroup, Task[]> = {
+    Overdue: [],
+    Today: [],
+    Upcoming: [],
+    "No due date": [],
+    Done: [],
+  };
+  for (const task of filteredTasks) {
+    groupedTasks[taskGroup(task, today)].push(task);
+  }
+  for (const group of GROUP_ORDER) {
+    if (group === "No due date") continue;
+    groupedTasks[group].sort((a, b) => {
+      const aKey = `${a.dueDate ?? ""}${a.dueTime ?? ""}`;
+      const bKey = `${b.dueDate ?? ""}${b.dueTime ?? ""}`;
+      return aKey.localeCompare(bKey);
+    });
+  }
 
   return (
     <div className={page}>
@@ -292,6 +667,16 @@ export default function Tasks() {
             className={`w-full ${input}`}
           />
           {voiceError && <p className={`mt-1 text-xs ${errorText}`}>{voiceError}</p>}
+        </div>
+        <div className="min-w-[200px] flex-1">
+          <label className={label}>Description (optional)</label>
+          <input
+            type="text"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Notes, links, anything you'll want later"
+            className={`w-full ${input}`}
+          />
         </div>
         <div>
           <label className={label}>Due date</label>
@@ -380,134 +765,42 @@ export default function Tasks() {
       ) : filteredTasks.length === 0 ? (
         <p className={mutedText}>No tasks match "{search}".</p>
       ) : (
-        <ul className="flex flex-col gap-3">
-          {filteredTasks.map((task) => (
-            <li key={task.taskId} className={`flex flex-col gap-3 ${card}`}>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p
-                    className={`font-medium text-ink dark:text-cream ${
-                      task.status === "done" ? "line-through opacity-60" : ""
-                    }`}
-                  >
-                    {task.title}
-                  </p>
-                  <p className="text-xs text-ink-muted dark:text-fog-muted">
-                    {task.dueDate ?? "No due date"}
-                    {task.dueTime ? ` ${task.dueTime}` : ""}
-                    {task.estimatedHours !== undefined ? ` · ~${task.estimatedHours}h` : ""}
-                    {task.scheduleTime ? ` · scheduled ${task.scheduleTime}` : ""}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${priorityBadgeClass[task.priority]}`}
-                    title={`Priority source: ${task.prioritySource}`}
-                  >
-                    {task.priority}
-                  </span>
-                  {task.prioritySource === "ai" && <span className={badge}>AI</span>}
-                  <select
-                    value={task.priority}
-                    onChange={(e) =>
-                      updateTask(task.taskId, { priority: e.target.value as TaskPriority })
-                    }
-                    className={selectClass}
-                  >
-                    {PRIORITIES.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={task.status}
-                    onChange={(e) =>
-                      updateTask(task.taskId, { status: e.target.value as TaskStatus })
-                    }
-                    className={selectClass}
-                  >
-                    {STATUSES.map((s) => (
-                      <option key={s} value={s}>
-                        {STATUS_LABEL[s]}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() =>
+        <div className="flex flex-col gap-6">
+          {GROUP_ORDER.filter((g) => groupedTasks[g].length > 0).map((group) => (
+            <div key={group}>
+              <p className={`mb-2 ${sectionLabel}`}>
+                {group} <span className="normal-case text-fog-muted">({groupedTasks[group].length})</span>
+              </p>
+              <ul className="flex flex-col gap-3">
+                {groupedTasks[group].map((task) => (
+                  <TaskCard
+                    key={task.taskId}
+                    task={task}
+                    isEditing={editingTaskId === task.taskId}
+                    onToggleEdit={() =>
                       editingTaskId === task.taskId ? setEditingTaskId(null) : startEdit(task)
                     }
-                    className={`${secondaryButton} px-2 py-1 text-xs`}
-                  >
-                    {editingTaskId === task.taskId ? "Cancel" : "Edit"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => duplicateTask(task)}
-                    title="Create a new task with the same title, priority, and estimate"
-                    className={`${secondaryButton} px-2 py-1 text-xs`}
-                  >
-                    Duplicate
-                  </button>
-                </div>
-              </div>
-
-              <TaskTimeline task={task} />
-
-              {editingTaskId === task.taskId && (
-                <div className="flex flex-wrap items-end gap-3 border-t border-stone/60 pt-3 dark:border-stone-dark/60">
-                  <div>
-                    <label className={label}>Due date</label>
-                    <input
-                      type="date"
-                      value={editDueDate}
-                      onChange={(e) => setEditDueDate(e.target.value)}
-                      className={input}
-                    />
-                  </div>
-                  <div>
-                    <label className={label}>Due time</label>
-                    <input
-                      type="time"
-                      value={editDueTime}
-                      onChange={(e) => setEditDueTime(e.target.value)}
-                      className={input}
-                    />
-                  </div>
-                  <div>
-                    <label className={label}>Est. hours</label>
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.5"
-                      value={editEstimatedHours}
-                      onChange={(e) => setEditEstimatedHours(e.target.value)}
-                      className={`w-20 ${input}`}
-                    />
-                  </div>
-                  <label className={`flex items-center gap-1.5 pb-2 ${label}`}>
-                    <input
-                      type="checkbox"
-                      checked={editSuggestPriority}
-                      onChange={(e) => setEditSuggestPriority(e.target.checked)}
-                      className="rounded border-stone text-sage focus:ring-sage dark:border-stone-dark"
-                    />
-                    Re-suggest priority with AI
-                  </label>
-                  <button
-                    type="button"
-                    disabled={savingEdit}
-                    onClick={() => saveEdit(task.taskId)}
-                    className={primaryButton}
-                  >
-                    {savingEdit ? "Saving..." : "Save"}
-                  </button>
-                </div>
-              )}
-            </li>
+                    onUpdate={(patch) => updateTask(task.taskId, patch)}
+                    onDuplicate={() => duplicateTask(task)}
+                    editDescription={editDescription}
+                    setEditDescription={setEditDescription}
+                    editDueDate={editDueDate}
+                    setEditDueDate={setEditDueDate}
+                    editDueTime={editDueTime}
+                    setEditDueTime={setEditDueTime}
+                    editEstimatedHours={editEstimatedHours}
+                    setEditEstimatedHours={setEditEstimatedHours}
+                    editSuggestPriority={editSuggestPriority}
+                    setEditSuggestPriority={setEditSuggestPriority}
+                    savingEdit={savingEdit}
+                    onSaveEdit={() => saveEdit(task.taskId)}
+                    selectClass={selectClass}
+                  />
+                ))}
+              </ul>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
     </div>
   );
