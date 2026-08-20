@@ -99,6 +99,7 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
         task.dueTime,
         task.estimatedHours,
         task.dueAtUtc,
+        task.description,
       );
       const updated = await ddb.send(
         new UpdateCommand({

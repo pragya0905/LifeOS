@@ -103,15 +103,19 @@ const TaskPrioritySchema = z.object({
 
 const TASK_PRIORITY_SYSTEM_PROMPT =
   "Suggest a priority (Low, Medium, or High) for a personal to-do task based on its title, " +
-  "due date, and how much slack time remains versus the estimated effort needed. A due date " +
-  "being 'today' or 'tomorrow' is NOT by itself a reason for High — judge urgency from the " +
-  "slack ratio (hours remaining ÷ estimated effort) when both are given: a ratio below ~2x " +
-  "means little room for delay and leans High; a ratio above ~5x means ample slack and should " +
-  "lean Medium or Low even if the due date is today, unless the title itself uses urgent " +
-  "language ('urgent', 'ASAP', a hard deadline) or names a fixed one-time event that can't " +
-  "slip (e.g. 'interview', 'flight', 'exam') — those lean High on importance regardless of " +
-  "slack. Vague or low-stakes tasks ('someday', 'maybe') push toward Low. Default to Medium " +
-  "when unclear or when no due date/estimate is given.";
+  "description, due date, and how much slack time remains versus the estimated effort needed. " +
+  "Read the description as carefully as the title — it often carries the real urgency/importance " +
+  "signal the title alone doesn't (e.g. a title of 'Follow up' says nothing, but a description of " +
+  "'visa expires Friday if I don't submit this' does; conversely a description that says 'no rush, " +
+  "whenever' should pull priority down even if the title sounds important). A due date being " +
+  "'today' or 'tomorrow' is NOT by itself a reason for High — judge urgency from the slack ratio " +
+  "(hours remaining ÷ estimated effort) when both are given: a ratio below ~2x means little room " +
+  "for delay and leans High; a ratio above ~5x means ample slack and should lean Medium or Low " +
+  "even if the due date is today, unless the title or description uses urgent language ('urgent', " +
+  "'ASAP', a hard deadline) or names a fixed one-time event that can't slip (e.g. 'interview', " +
+  "'flight', 'exam') — those lean High on importance regardless of slack. Vague or low-stakes tasks " +
+  "('someday', 'maybe') push toward Low. Default to Medium when unclear or when no due " +
+  "date/estimate is given.";
 
 let cachedApiKey: string | undefined;
 let cachedClient: Anthropic | undefined;
@@ -179,6 +183,7 @@ export async function suggestTaskPriority(
   dueTime?: string,
   estimatedHours?: number,
   dueAtUtc?: string,
+  description?: string,
 ): Promise<"Low" | "Medium" | "High"> {
   let hoursUntilDue: number | undefined;
   // dueAtUtc is computed browser-side from dueDate+dueTime in the user's own local timezone —
@@ -205,6 +210,7 @@ export async function suggestTaskPriority(
 
   const client = await getClient();
   const contentLines = [`Title: ${title}`];
+  if (description) contentLines.push(`Description: ${description}`);
   if (dueDate) contentLines.push(`Due date: ${dueDate}${dueTime ? ` ${dueTime}` : ""}`);
   if (estimatedHours !== undefined) contentLines.push(`Estimated effort: ${estimatedHours} hours`);
   if (hoursUntilDue !== undefined) {
