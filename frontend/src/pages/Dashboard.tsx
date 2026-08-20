@@ -32,6 +32,15 @@ function greeting(): string {
   return "Good night";
 }
 
+function formattedDate(): string {
+  return new Date().toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 // Tasks with a due date/time come first (soonest first); undated tasks sort last.
 function byUrgency(a: Task, b: Task): number {
   const aKey = a.dueDate ? `${a.dueDate}T${a.dueTime ?? "23:59"}` : null;
@@ -71,6 +80,7 @@ export default function Dashboard() {
   return (
     <div className={page}>
       <h1 className={pageTitle}>{greeting()}</h1>
+      <p className={`-mt-4 mb-6 ${mutedText}`}>{formattedDate()}</p>
 
       <WelcomeCard />
 
