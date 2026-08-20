@@ -241,7 +241,7 @@ export default function Cycle() {
                   {EVENT_LABEL[entry.data.event as CycleEvent]}
                 </span>
                 {entry.data.note ? (
-                  <p className="mt-1 text-sm text-ink dark:text-paper">{entry.data.note}</p>
+                  <p className="mt-1 text-sm text-ink dark:text-paper">{String(entry.data.note)}</p>
                 ) : null}
               </div>
               <button
