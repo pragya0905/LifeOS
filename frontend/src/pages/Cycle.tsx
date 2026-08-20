@@ -26,6 +26,12 @@ const EVENT_LABEL: Record<CycleEvent, string> = {
   symptom: "Symptom",
 };
 
+const EVENT_BADGE: Record<CycleEvent, string> = {
+  period_start: "bg-alert-soft text-alert dark:bg-alert-soft-dark dark:text-alert-light",
+  period_end: "bg-stone text-ink-muted dark:bg-stone-dark dark:text-mist-muted",
+  symptom: "bg-amber-soft text-amber-ink dark:bg-amber-soft-dark dark:text-amber-ink-dark",
+};
+
 function today(): string {
   return todayLocal();
 }
@@ -224,13 +230,19 @@ export default function Cycle() {
       ) : (
         <ul className="flex flex-col gap-2">
           {entries.map((entry) => (
-            <li key={entry.logId} className={`flex items-center justify-between gap-3 ${card}`}>
+            <li key={entry.logId} className={`flex flex-wrap items-center justify-between gap-3 ${card}`}>
               <div>
                 <p className="text-xs font-medium text-ink-muted dark:text-mist-muted">{entry.date}</p>
-                <p className="text-sm text-ink dark:text-paper">
+                <span
+                  className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                    EVENT_BADGE[entry.data.event as CycleEvent]
+                  }`}
+                >
                   {EVENT_LABEL[entry.data.event as CycleEvent]}
-                  {entry.data.note ? ` — ${entry.data.note}` : ""}
-                </p>
+                </span>
+                {entry.data.note ? (
+                  <p className="mt-1 text-sm text-ink dark:text-paper">{entry.data.note}</p>
+                ) : null}
               </div>
               <button
                 type="button"
