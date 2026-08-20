@@ -80,6 +80,7 @@ const SECTIONS: Section[] = [
       "🔮 Once you've logged two period starts, the same card shows your average cycle length, next predicted period, and (once you've logged a matching end date too) your average period length.",
       "🗂️ Entries are grouped into per-cycle blocks (\"Cycle starting …\") once you've logged a period start, so you can see each cycle's events together instead of one long flat list.",
       "📊 Symptom patterns attributes every symptom you've logged to the estimated phase it fell in, and calls out which phase they cluster in most — so you can spot things like symptoms trending toward your luteal phase over time.",
+      "🔔 You'll get a push reminder around the time your next period is predicted, once you've logged enough cycles for a prediction — sent once per predicted date, not repeated.",
     ],
   },
   {

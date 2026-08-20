@@ -1874,6 +1874,42 @@ Resources:
             Schedule: "rate(15 minutes)"
             Enabled: true
 
+  CycleReminderSchedulerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-cycle-reminder-scheduler-${Environment}"
+      CodeUri: src/functions/cycleReminderScheduler/
+      Handler: index.handler
+      Timeout: 60
+      Environment:
+        Variables:
+          LOG_ENTRIES_TABLE_NAME: !Ref LogEntriesTable
+          PUSH_SUBSCRIPTIONS_TABLE_NAME: !Ref PushSubscriptionsTable
+          PUSH_VAPID_PRIVATE_KEY_PARAM: !Sub "/lifeos/${Environment}/push-vapid-private-key"
+          PUSH_VAPID_PUBLIC_KEY: !Ref PushVapidPublicKey
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref LogEntriesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref PushSubscriptionsTable
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifeos/${Environment}/push-vapid-private-key"
+      Events:
+        Schedule:
+          Type: Schedule
+          Properties:
+            Schedule: "rate(6 hours)"
+            Enabled: true
+
 Outputs:
   UserPoolId:
     Value: !Ref LifeOsUserPool
