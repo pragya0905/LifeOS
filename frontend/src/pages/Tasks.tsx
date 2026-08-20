@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type TouchEvent as ReactTouchEvent } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useApi } from "../api/useApi";
 import { useSpeechToText } from "../hooks/useSpeechToText";
 import { todayLocal, toLocalDateStr } from "../lib/date";
@@ -492,6 +493,7 @@ function taskGroup(task: Task, today: string): TaskGroup {
 
 export default function Tasks() {
   const { request } = useApi();
+  const [searchParams] = useSearchParams();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -499,7 +501,8 @@ export default function Tasks() {
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [dueDate, setDueDate] = useState("");
+  // Pre-filled when arriving from the Calendar page's "Add task for this day" link.
+  const [dueDate, setDueDate] = useState(() => searchParams.get("date") ?? "");
   const [dueTime, setDueTime] = useState("");
   const [estimatedHours, setEstimatedHours] = useState("");
   const [priority, setPriority] = useState<TaskPriority>("Medium");
