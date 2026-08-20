@@ -113,10 +113,10 @@ const STATUS_CYCLE: Record<TaskStatus, TaskStatus> = {
   done: "todo",
 };
 
-const PRIORITY_DOT_COLOR: Record<TaskPriority, string> = {
-  Low: "bg-mist-muted",
-  Medium: "bg-amber",
-  High: "bg-alert",
+const PRIORITY_EMOJI: Record<TaskPriority, string> = {
+  Low: "🟢",
+  Medium: "🟡",
+  High: "🔴",
 };
 
 // A single click-to-cycle control (todo -> in_progress -> done -> todo) instead of a
@@ -347,7 +347,7 @@ function TaskCard({
               className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${priorityBadgeClass[task.priority]}`}
               title={`Priority source: ${task.prioritySource}`}
             >
-              <span className={`h-1.5 w-1.5 rounded-full ${PRIORITY_DOT_COLOR[task.priority]}`} aria-hidden="true" />
+              <span aria-hidden="true">{PRIORITY_EMOJI[task.priority]}</span>
               {task.priority}
             </span>
             {task.prioritySource === "ai" && <span className={badge}>AI</span>}
@@ -445,6 +445,13 @@ function TaskCard({
 
 type TaskGroup = "Overdue" | "Today" | "Upcoming" | "No due date" | "Done";
 const GROUP_ORDER: TaskGroup[] = ["Overdue", "Today", "Upcoming", "No due date", "Done"];
+const GROUP_EMOJI: Record<TaskGroup, string> = {
+  Overdue: "🔥",
+  Today: "☀️",
+  Upcoming: "📅",
+  "No due date": "📌",
+  Done: "✅",
+};
 
 function taskGroup(task: Task, today: string): TaskGroup {
   if (task.status === "done") return "Done";
@@ -689,7 +696,7 @@ export default function Tasks() {
                     : pillButtonInactive
                 }`}
               >
-                {listening ? "Stop" : "Voice input"}
+                {listening ? "⏹️ Stop" : "🎤 Voice input"}
               </button>
             )}
           </div>
@@ -715,7 +722,7 @@ export default function Tasks() {
                     : pillButtonInactive
                 }`}
               >
-                {descriptionListening ? "Stop" : "Voice input"}
+                {descriptionListening ? "⏹️ Stop" : "🎤 Voice input"}
               </button>
             )}
           </div>
@@ -811,7 +818,7 @@ export default function Tasks() {
         )}
 
         <button type="submit" disabled={creating} className={primaryButton}>
-          {creating ? "Adding..." : "Add task"}
+          {creating ? "Adding..." : "➕ Add task"}
         </button>
       </form>
 
@@ -831,15 +838,16 @@ export default function Tasks() {
       {loading ? (
         <p className={mutedText}>Loading tasks...</p>
       ) : tasks.length === 0 ? (
-        <p className={mutedText}>No tasks yet — add one above.</p>
+        <p className={mutedText}>No tasks yet — add one above. ✨</p>
       ) : filteredTasks.length === 0 ? (
-        <p className={mutedText}>No tasks match "{search}".</p>
+        <p className={mutedText}>No tasks match "{search}". 🔍</p>
       ) : (
         <div className="flex flex-col gap-6">
           {GROUP_ORDER.filter((g) => groupedTasks[g].length > 0).map((group) => (
             <div key={group}>
               <p className={`mb-2 ${sectionLabel}`}>
-                {group} <span className="normal-case text-mist-muted">({groupedTasks[group].length})</span>
+                {GROUP_EMOJI[group]} {group}{" "}
+                <span className="normal-case text-mist-muted">({groupedTasks[group].length})</span>
               </p>
               <ul className="flex flex-col gap-3">
                 {groupedTasks[group].map((task) => (
