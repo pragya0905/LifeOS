@@ -72,7 +72,13 @@ const SECTIONS: Section[] = [
   },
   {
     title: "Cycle",
-    body: "Log period start/end and symptoms; once you've logged two period starts, it predicts your next one. Private to your account like everything else.",
+    body: "",
+    intro: "Log period start/end and symptoms, and let LifeOs turn that history into predictions — private to your account like everything else.",
+    bullets: [
+      "🔮 Once you've logged two period starts, the Prediction card shows your average cycle length, next predicted period, and (once you've logged a matching end date too) your average period length.",
+      "🌙 How a day might feel estimates the cycle phase — Menstrual, Follicular, Ovulation, or Luteal — for any date you pick, plus a short note on what mood/energy tends to look like there. It's an estimate from your own averages, not a medical prediction.",
+      "🗂️ Entries are grouped into per-cycle blocks (\"Cycle starting …\") once you've logged a period start, so you can see each cycle's events together instead of one long flat list.",
+    ],
   },
   {
     title: "Routines",

@@ -61,6 +61,81 @@ function predictNextCycle(entries: LogEntry[]): { avgCycleDays: number | null; n
   return { avgCycleDays, nextPredicted: last.toISOString().slice(0, 10) };
 }
 
+// Pairs each period_start with the next period_end on or after it — a best-effort match,
+// not a strict one-to-one, since a day with no matching end just doesn't contribute a length.
+function computeAvgPeriodDays(entries: LogEntry[]): number | null {
+  const starts = entries.filter((e) => e.data.event === "period_start").map((e) => e.date).sort();
+  const ends = entries.filter((e) => e.data.event === "period_end").map((e) => e.date).sort();
+  const lengths: number[] = [];
+  for (const start of starts) {
+    const end = ends.find((e) => e >= start);
+    if (end) lengths.push(daysBetween(start, end) + 1);
+  }
+  if (lengths.length === 0) return null;
+  return Math.round(lengths.reduce((a, b) => a + b, 0) / lengths.length);
+}
+
+type Phase = "Menstrual" | "Follicular" | "Ovulation" | "Luteal";
+
+const PHASE_INFO: Record<Phase, { emoji: string; description: string }> = {
+  Menstrual: { emoji: "🩸", description: "Your period. Energy is often lower here — a natural stretch to take it easier." },
+  Follicular: { emoji: "🌱", description: "Between your period and ovulation. Energy and mood tend to rise through this stretch." },
+  Ovulation: { emoji: "🥚", description: "Your estimated fertile window — ovulation is expected around now." },
+  Luteal: { emoji: "🌙", description: "After ovulation. PMS-type symptoms (mood, cramps, fatigue) are more common later in this phase." },
+};
+
+// Standard cycle-phase estimation (the same math apps like Clue use): the luteal phase is
+// usually a fairly fixed ~14 days regardless of cycle length, so ovulation is estimated by
+// counting back 14 days from the *next* predicted period rather than forward from this one —
+// this is an estimate assuming your logged cycles are a reasonable guide to this one, not a
+// medical prediction.
+function estimatePhase(
+  targetDate: string,
+  lastPeriodStart: string,
+  avgCycleDays: number,
+  avgPeriodDays: number,
+): { cycleDay: number; phase: Phase; isFertile: boolean } {
+  const daysSince = daysBetween(lastPeriodStart, targetDate);
+  const cycleDay = (((daysSince % avgCycleDays) + avgCycleDays) % avgCycleDays) + 1;
+
+  const ovulationDay = Math.max(avgCycleDays - 14, avgPeriodDays + 1);
+  const fertileStart = Math.max(ovulationDay - 5, avgPeriodDays + 1);
+  const fertileEnd = ovulationDay + 1;
+
+  let phase: Phase;
+  if (cycleDay <= avgPeriodDays) phase = "Menstrual";
+  else if (cycleDay < fertileStart) phase = "Follicular";
+  else if (cycleDay <= fertileEnd) phase = "Ovulation";
+  else phase = "Luteal";
+
+  return { cycleDay, phase, isFertile: cycleDay >= fertileStart && cycleDay <= fertileEnd };
+}
+
+interface CycleGroup {
+  label: string;
+  entries: LogEntry[];
+}
+
+// Buckets entries into per-cycle blocks bounded by period_start dates, most recent first —
+// gracefully degrades to one "before first logged period" bucket when there isn't a
+// period_start yet, which reads the same as the old flat list in that case.
+function groupByCycle(entriesDesc: LogEntry[]): CycleGroup[] {
+  const entriesAsc = entriesDesc.slice().reverse();
+  const groups: CycleGroup[] = [];
+  let current: LogEntry[] = [];
+  let currentLabel = "Before first logged period";
+  for (const entry of entriesAsc) {
+    if (entry.data.event === "period_start") {
+      if (current.length > 0) groups.push({ label: currentLabel, entries: current });
+      current = [];
+      currentLabel = `Cycle starting ${entry.date}`;
+    }
+    current.push(entry);
+  }
+  if (current.length > 0) groups.push({ label: currentLabel, entries: current });
+  return groups.reverse().map((g) => ({ ...g, entries: g.entries.slice().reverse() }));
+}
+
 export default function Cycle() {
   const { request } = useApi();
   const [entries, setEntries] = useState<LogEntry[]>([]);
@@ -71,6 +146,7 @@ export default function Cycle() {
   const [event, setEvent] = useState<CycleEvent>("period_start");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [phaseDate, setPhaseDate] = useState(today());
   const [introDismissed, setIntroDismissed] = useState(
     () => localStorage.getItem(INTRO_DISMISSED_KEY) === "true",
   );
@@ -138,6 +214,17 @@ export default function Cycle() {
   }
 
   const { avgCycleDays, nextPredicted } = predictNextCycle(entries);
+  const avgPeriodDays = computeAvgPeriodDays(entries);
+  const lastPeriodStart = entries
+    .filter((e) => e.data.event === "period_start")
+    .map((e) => e.date)
+    .sort()
+    .at(-1);
+  const phaseResult =
+    avgCycleDays !== null && lastPeriodStart
+      ? estimatePhase(phaseDate, lastPeriodStart, avgCycleDays, avgPeriodDays ?? 5)
+      : null;
+  const cycleGroups = groupByCycle(entries);
 
   return (
     <div className={page}>
@@ -177,7 +264,48 @@ export default function Cycle() {
             Average cycle length: <span className="font-medium">{avgCycleDays} days</span>
             <br />
             Next period predicted around: <span className="font-medium">{nextPredicted}</span>
+            {avgPeriodDays !== null && (
+              <>
+                <br />
+                Average period length: <span className="font-medium">{avgPeriodDays} days</span>
+              </>
+            )}
           </p>
+        )}
+      </div>
+
+      <div className={`mb-6 ${card}`}>
+        <h2 className={`mb-2 ${sectionLabel}`}>How a day might feel</h2>
+        {phaseResult === null ? (
+          <p className={mutedText}>
+            Log at least two period start dates to estimate cycle phases for a given day.
+          </p>
+        ) : (
+          <>
+            <div className="mb-3">
+              <label className={label}>Check a date</label>
+              <input
+                type="date"
+                value={phaseDate}
+                onChange={(e) => setPhaseDate(e.target.value)}
+                className={input}
+              />
+            </div>
+            <p className="text-sm text-ink dark:text-paper">
+              <span className="text-base font-medium">
+                {PHASE_INFO[phaseResult.phase].emoji} {phaseResult.phase}
+              </span>{" "}
+              <span className={mutedText}>
+                — cycle day {phaseResult.cycleDay} of ~{avgCycleDays}
+                {phaseResult.isFertile ? ", estimated fertile window" : ""}
+              </span>
+            </p>
+            <p className={`mt-1 ${mutedText}`}>{PHASE_INFO[phaseResult.phase].description}</p>
+            <p className={`mt-2 text-xs ${mutedText}`}>
+              This is an estimate based on your average cycle, not a medical prediction — actual
+              timing can vary.
+            </p>
+          </>
         )}
       </div>
 
@@ -228,32 +356,42 @@ export default function Cycle() {
       ) : entries.length === 0 ? (
         <p className={mutedText}>No cycle entries yet.</p>
       ) : (
-        <ul className="flex flex-col gap-2">
-          {entries.map((entry) => (
-            <li key={entry.logId} className={`flex flex-wrap items-center justify-between gap-3 ${card}`}>
-              <div>
-                <p className="text-xs font-medium text-ink-muted dark:text-mist-muted">{entry.date}</p>
-                <span
-                  className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                    EVENT_BADGE[entry.data.event as CycleEvent]
-                  }`}
-                >
-                  {EVENT_LABEL[entry.data.event as CycleEvent]}
-                </span>
-                {entry.data.note ? (
-                  <p className="mt-1 text-sm text-ink dark:text-paper">{String(entry.data.note)}</p>
-                ) : null}
-              </div>
-              <button
-                type="button"
-                onClick={() => handleDelete(entry.logId)}
-                className={`${secondaryButton} px-2 py-1 text-xs`}
-              >
-                Delete
-              </button>
-            </li>
+        <div className="flex flex-col gap-5">
+          {cycleGroups.map((group, i) => (
+            <div key={`${group.label}-${i}`}>
+              <h3 className={`mb-2 ${sectionLabel}`}>{group.label}</h3>
+              <ul className="flex flex-col gap-2">
+                {group.entries.map((entry) => (
+                  <li
+                    key={entry.logId}
+                    className={`flex flex-wrap items-center justify-between gap-3 ${card}`}
+                  >
+                    <div>
+                      <p className="text-xs font-medium text-ink-muted dark:text-mist-muted">{entry.date}</p>
+                      <span
+                        className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                          EVENT_BADGE[entry.data.event as CycleEvent]
+                        }`}
+                      >
+                        {EVENT_LABEL[entry.data.event as CycleEvent]}
+                      </span>
+                      {entry.data.note ? (
+                        <p className="mt-1 text-sm text-ink dark:text-paper">{String(entry.data.note)}</p>
+                      ) : null}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(entry.logId)}
+                      className={`${secondaryButton} px-2 py-1 text-xs`}
+                    >
+                      Delete
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
     </div>
   );
