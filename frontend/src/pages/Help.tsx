@@ -68,7 +68,21 @@ const SECTIONS: Section[] = [
   },
   {
     title: "Logs",
-    body: "A generic log for anything that doesn't fit elsewhere: food, sleep, weight, body fat %, mood, calls, expenses, cycle events. Filterable by type and searchable.",
+    body: "A generic log for anything that doesn't fit elsewhere: food, sleep, weight, body fat %, mood, calls, cycle events. Filterable by type and searchable.",
+  },
+  {
+    title: "Budget",
+    body: "",
+    intro: "Track spending by category against monthly budgets you set once — no need to recreate them every month.",
+    bullets: [
+      "💸 Log an expense with a category, amount in ₹, and optional note — the same categories Journal AI-extraction uses when you mention a purchase in an entry.",
+      "💰 Set an overall monthly budget for This month — your spending total is measured against it, and it's the ceiling every category budget has to fit under.",
+      "🎯 Set a recurring monthly limit per category once; it applies every month going forward until you change or remove it. Category budgets can't collectively exceed your overall monthly budget.",
+      "📊 Each category with a budget shows a spent-vs-limit progress bar and either the amount remaining, or how far over you've gone flagged in red.",
+      "🍩 The category breakdown bar shows where this month's spending actually went, at a glance.",
+      "📅 Flip between months with Prev/Next to review past spending or catch up on a month you fell behind logging.",
+      "🗑️ Delete any expense or remove a category's budget entirely from its card.",
+    ],
   },
   {
     title: "Cycle",

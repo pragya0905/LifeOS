@@ -5,6 +5,7 @@ import { extractJournalInfo } from "./claude";
 import { computeEndDate } from "./medications";
 import { LOG_ENTRY_SCHEMAS, SINGULAR_LOG_TYPES } from "./logEntrySchemas";
 import type {
+  Expense,
   HabitType,
   HabitUnit,
   JournalEntry,
@@ -142,6 +143,26 @@ async function writeAiRoutineStepLog(
   }
 }
 
+async function writeAiExpense(
+  userId: string,
+  date: string,
+  expense: { category: Expense["category"]; amount?: number; note?: string },
+): Promise<void> {
+  const now = new Date().toISOString();
+  const item: Expense = {
+    userId,
+    expenseId: randomUUID(),
+    category: expense.category,
+    amount: expense.amount ?? 0,
+    note: expense.note,
+    date,
+    source: "ai-journal",
+    createdAt: now,
+    updatedAt: now,
+  };
+  await ddb.send(new PutCommand({ TableName: process.env.EXPENSES_TABLE_NAME, Item: item }));
+}
+
 // Sleep/weight/mood/cycle are naturally one-value-per-day concepts, so AI writes target the
 // same deterministic logId a manual save for that day would use (see SINGULAR_LOG_TYPES) —
 // re-extraction updates that one item, and a ConditionExpression below refuses to clobber a
@@ -223,9 +244,9 @@ async function writeAiLogEntry(
   }
 }
 
-// Food/call/expense entries are naturally multi-per-day, so each extraction run writes a fresh
-// item per mention rather than updating one deterministic record (see writeAiLogEntry). That
-// means re-extracting the same day's journal text on every edit/re-save would otherwise pile up
+// Food/call entries are naturally multi-per-day, so each extraction run writes a fresh item per
+// mention rather than updating one deterministic record (see writeAiLogEntry). That means
+// re-extracting the same day's journal text on every edit/re-save would otherwise pile up
 // duplicates of the same mentions instead of replacing them, so the previous AI-written batch
 // for this date is cleared first. Manual entries (source !== "ai-journal") are never touched.
 async function clearPreviousAiJournalEntries(userId: string, date: string): Promise<void> {
@@ -233,7 +254,7 @@ async function clearPreviousAiJournalEntries(userId: string, date: string): Prom
     new QueryCommand({
       TableName: process.env.LOG_ENTRIES_TABLE_NAME,
       KeyConditionExpression: "userId = :userId",
-      FilterExpression: "#date = :date AND #source = :source AND #logType IN (:food, :call, :expense)",
+      FilterExpression: "#date = :date AND #source = :source AND #logType IN (:food, :call)",
       ExpressionAttributeNames: { "#date": "date", "#source": "source", "#logType": "logType" },
       ExpressionAttributeValues: {
         ":userId": userId,
@@ -241,7 +262,6 @@ async function clearPreviousAiJournalEntries(userId: string, date: string): Prom
         ":source": "ai-journal",
         ":food": "food",
         ":call": "call",
-        ":expense": "expense",
       },
     }),
   );
@@ -252,6 +272,31 @@ async function clearPreviousAiJournalEntries(userId: string, date: string): Prom
         new DeleteCommand({
           TableName: process.env.LOG_ENTRIES_TABLE_NAME,
           Key: { userId, logId: item.logId },
+        }),
+      ),
+    ),
+  );
+}
+
+// Same idea as clearPreviousAiJournalEntries, but for the dedicated Expenses table — expenses
+// are also naturally multi-per-day and now live outside LogEntriesTable.
+async function clearPreviousAiExpenses(userId: string, date: string): Promise<void> {
+  const result = await ddb.send(
+    new QueryCommand({
+      TableName: process.env.EXPENSES_TABLE_NAME,
+      KeyConditionExpression: "userId = :userId",
+      FilterExpression: "#date = :date AND #source = :source",
+      ExpressionAttributeNames: { "#date": "date", "#source": "source" },
+      ExpressionAttributeValues: { ":userId": userId, ":date": date, ":source": "ai-journal" },
+    }),
+  );
+  const items = (result.Items ?? []) as Expense[];
+  await Promise.all(
+    items.map((item) =>
+      ddb.send(
+        new DeleteCommand({
+          TableName: process.env.EXPENSES_TABLE_NAME,
+          Key: { userId, expenseId: item.expenseId },
         }),
       ),
     ),
@@ -317,7 +362,7 @@ export async function applyJournalExtraction(
       }),
     );
 
-    await clearPreviousAiJournalEntries(userId, date);
+    await Promise.all([clearPreviousAiJournalEntries(userId, date), clearPreviousAiExpenses(userId, date)]);
 
     const writes: Promise<void>[] = [];
 
@@ -361,8 +406,8 @@ export async function applyJournalExtraction(
     }
     for (const expense of extraction.expenses) {
       writes.push(
-        writeAiLogEntry(userId, date, "expense", {
-          category: expense.category,
+        writeAiExpense(userId, date, {
+          category: expense.category as Expense["category"],
           amount: expense.amount ?? undefined,
           note: expense.note ?? undefined,
         }),

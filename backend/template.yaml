@@ -316,6 +316,46 @@ Resources:
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
 
+  ExpensesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "LifeOs-Expenses-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: expenseId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: expenseId
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  BudgetsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "LifeOs-Budgets-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: category
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: category
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
   WishImagesBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -422,7 +462,7 @@ Resources:
       CorsConfiguration:
         AllowOrigins: !Ref AllowedOrigins
         AllowHeaders: ["Content-Type", "Authorization"]
-        AllowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
+        AllowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
       Auth:
         Authorizers:
           CognitoAuthorizer:
@@ -583,6 +623,7 @@ Resources:
           ROUTINE_TEMPLATES_TABLE_NAME: !Ref RoutineTemplatesTable
           ROUTINE_LOGS_TABLE_NAME: !Ref RoutineLogsTable
           LOG_ENTRIES_TABLE_NAME: !Ref LogEntriesTable
+          EXPENSES_TABLE_NAME: !Ref ExpensesTable
           ANTHROPIC_API_KEY_PARAM: !Sub "/lifeos/${Environment}/anthropic-api-key"
       Policies:
         - DynamoDBCrudPolicy:
@@ -599,6 +640,8 @@ Resources:
             TableName: !Ref RoutineLogsTable
         - DynamoDBCrudPolicy:
             TableName: !Ref LogEntriesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ExpensesTable
         - SSMParameterReadPolicy:
             ParameterName: !Sub "lifeos/${Environment}/anthropic-api-key"
       Events:
@@ -663,6 +706,7 @@ Resources:
           ROUTINE_TEMPLATES_TABLE_NAME: !Ref RoutineTemplatesTable
           ROUTINE_LOGS_TABLE_NAME: !Ref RoutineLogsTable
           LOG_ENTRIES_TABLE_NAME: !Ref LogEntriesTable
+          EXPENSES_TABLE_NAME: !Ref ExpensesTable
           ANTHROPIC_API_KEY_PARAM: !Sub "/lifeos/${Environment}/anthropic-api-key"
       Policies:
         - DynamoDBCrudPolicy:
@@ -679,6 +723,8 @@ Resources:
             TableName: !Ref RoutineLogsTable
         - DynamoDBCrudPolicy:
             TableName: !Ref LogEntriesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ExpensesTable
         - SSMParameterReadPolicy:
             ParameterName: !Sub "lifeos/${Environment}/anthropic-api-key"
       Events:
@@ -1408,6 +1454,8 @@ Resources:
           USER_PROFILE_TABLE_NAME: !Ref UserProfileTable
           WISHES_TABLE_NAME: !Ref WishesTable
           WISH_IMAGES_BUCKET_NAME: !Ref WishImagesBucket
+          EXPENSES_TABLE_NAME: !Ref ExpensesTable
+          BUDGETS_TABLE_NAME: !Ref BudgetsTable
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TasksTable
@@ -1433,6 +1481,10 @@ Resources:
             TableName: !Ref UserProfileTable
         - DynamoDBCrudPolicy:
             TableName: !Ref WishesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ExpensesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref BudgetsTable
         - S3CrudPolicy:
             BucketName: !Ref WishImagesBucket
         - Statement:
@@ -1873,6 +1925,215 @@ Resources:
           Properties:
             Schedule: "rate(15 minutes)"
             Enabled: true
+
+  ########################
+  # Lambda — Expenses
+  ########################
+  CreateExpenseFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-create-expense-${Environment}"
+      CodeUri: src/functions/createExpense/
+      Handler: index.handler
+      Environment:
+        Variables:
+          EXPENSES_TABLE_NAME: !Ref ExpensesTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ExpensesTable
+      Events:
+        CreateExpense:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /expenses
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  ListExpensesFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-list-expenses-${Environment}"
+      CodeUri: src/functions/listExpenses/
+      Handler: index.handler
+      Environment:
+        Variables:
+          EXPENSES_TABLE_NAME: !Ref ExpensesTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref ExpensesTable
+      Events:
+        ListExpenses:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /expenses
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  UpdateExpenseFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-update-expense-${Environment}"
+      CodeUri: src/functions/updateExpense/
+      Handler: index.handler
+      Environment:
+        Variables:
+          EXPENSES_TABLE_NAME: !Ref ExpensesTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ExpensesTable
+      Events:
+        UpdateExpense:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /expenses/{id}
+            Method: PATCH
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  DeleteExpenseFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-delete-expense-${Environment}"
+      CodeUri: src/functions/deleteExpense/
+      Handler: index.handler
+      Environment:
+        Variables:
+          EXPENSES_TABLE_NAME: !Ref ExpensesTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ExpensesTable
+      Events:
+        DeleteExpense:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /expenses/{id}
+            Method: DELETE
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  ########################
+  # Lambda — Budgets
+  ########################
+  ListBudgetsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-list-budgets-${Environment}"
+      CodeUri: src/functions/listBudgets/
+      Handler: index.handler
+      Environment:
+        Variables:
+          BUDGETS_TABLE_NAME: !Ref BudgetsTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref BudgetsTable
+      Events:
+        ListBudgets:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /budgets
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  UpsertBudgetFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-upsert-budget-${Environment}"
+      CodeUri: src/functions/upsertBudget/
+      Handler: index.handler
+      Environment:
+        Variables:
+          BUDGETS_TABLE_NAME: !Ref BudgetsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref BudgetsTable
+      Events:
+        UpsertBudget:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /budgets/{category}
+            Method: PUT
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  DeleteBudgetFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-delete-budget-${Environment}"
+      CodeUri: src/functions/deleteBudget/
+      Handler: index.handler
+      Environment:
+        Variables:
+          BUDGETS_TABLE_NAME: !Ref BudgetsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref BudgetsTable
+      Events:
+        DeleteBudget:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /budgets/{category}
+            Method: DELETE
+            Auth:
+              Authorizer: CognitoAuthorizer
 
   CycleReminderSchedulerFunction:
     Type: AWS::Serverless::Function

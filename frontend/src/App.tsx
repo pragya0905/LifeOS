@@ -11,6 +11,7 @@ import Journal from "./pages/Journal";
 import Medications from "./pages/Medications";
 import Logs from "./pages/Logs";
 import Cycle from "./pages/Cycle";
+import BudgetPage from "./pages/Budget";
 import Routines from "./pages/Routines";
 import Insights from "./pages/Insights";
 import Settings from "./pages/Settings";
@@ -40,6 +41,7 @@ export default function App() {
             <Route path="/medications" element={<Medications />} />
             <Route path="/logs" element={<Logs />} />
             <Route path="/cycle" element={<Cycle />} />
+            <Route path="/budget" element={<BudgetPage />} />
             <Route path="/routines" element={<Routines />} />
             <Route path="/insights" element={<Insights />} />
             <Route path="/calendar" element={<Calendar />} />

@@ -24,6 +24,7 @@ export interface Task {
 export interface UserProfile {
   userId: string;
   heightCm?: number;
+  monthlyBudget?: number;
   updatedAt: string;
 }
 
@@ -194,6 +195,37 @@ export interface RoutineStepLog {
   stepIndex: number;
   status: RoutineStepStatus;
   source: RoutineStepSource;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ExpenseCategory =
+  | "food"
+  | "groceries"
+  | "transport"
+  | "shopping"
+  | "bills"
+  | "entertainment"
+  | "health"
+  | "rent"
+  | "other";
+
+export interface Expense {
+  userId: string;
+  expenseId: string;
+  category: ExpenseCategory;
+  amount: number;
+  note?: string;
+  date: string;
+  source: "manual" | "ai-journal";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Budget {
+  userId: string;
+  category: ExpenseCategory;
+  monthlyLimit: number;
   createdAt: string;
   updatedAt: string;
 }

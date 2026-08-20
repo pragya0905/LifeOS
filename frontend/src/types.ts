@@ -142,6 +142,37 @@ export interface Insights {
   suggestions: string[];
 }
 
+export type ExpenseCategory =
+  | "food"
+  | "groceries"
+  | "transport"
+  | "shopping"
+  | "bills"
+  | "entertainment"
+  | "health"
+  | "rent"
+  | "other";
+
+export interface Expense {
+  userId: string;
+  expenseId: string;
+  category: ExpenseCategory;
+  amount: number;
+  note?: string;
+  date: string;
+  source: "manual" | "ai-journal";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Budget {
+  userId: string;
+  category: ExpenseCategory;
+  monthlyLimit: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type GoalMetric = "water" | "exercise" | "steps";
 
 export interface Goal {
@@ -154,6 +185,7 @@ export interface Goal {
 export interface UserProfile {
   userId: string;
   heightCm?: number;
+  monthlyBudget?: number;
   updatedAt?: string;
 }
 

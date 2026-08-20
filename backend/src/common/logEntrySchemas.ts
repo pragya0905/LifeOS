@@ -36,6 +36,9 @@ const CallSchema = z.object({
   note: z.string().trim().optional(),
 });
 
+// Superseded by the dedicated Expenses table (see common/expenseCategories.ts) — kept only
+// so any pre-existing logType: "expense" LogEntry rows remain type-checkable/readable.
+// Nothing writes new "expense" LogEntries anymore.
 const ExpenseSchema = z.object({
   category: z.string().trim().min(1),
   note: z.string().trim().optional(),

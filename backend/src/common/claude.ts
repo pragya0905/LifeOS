@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { SSMClient, GetParameterCommand } from "@aws-sdk/client-ssm";
 import { z } from "zod";
+import { EXPENSE_CATEGORIES } from "./expenseCategories";
 
 const JournalExtractionSchema = z.object({
   waterMl: z.number().nullable(),
@@ -26,7 +27,11 @@ const JournalExtractionSchema = z.object({
     }),
   ),
   expenses: z.array(
-    z.object({ category: z.string(), amount: z.number().nullable(), note: z.string().nullable() }),
+    z.object({
+      category: z.enum(EXPENSE_CATEGORIES as [string, ...string[]]),
+      amount: z.number().nullable(),
+      note: z.string().nullable(),
+    }),
   ),
 });
 
@@ -53,8 +58,9 @@ function buildJournalSystemPrompt(
       "mentioned, else null.",
     "- calls: list of { personName, durationMinutes, note } for each phone call mentioned " +
       "(durationMinutes null if not stated).",
-    "- expenses: list of { category, amount, note } for each expense/purchase mentioned " +
-      "(amount null if not stated).",
+    `- expenses: list of { category, amount, note } for each expense/purchase mentioned ` +
+      `(amount null if not stated). category must be exactly one of: ${EXPENSE_CATEGORIES.join(", ")} ` +
+      `— pick the closest match (use 'other' if nothing fits).`,
   ];
 
   if (activeMedicationNames.length > 0) {

@@ -17,6 +17,7 @@ const MORE_GROUPS = [
       { to: "/calendar", label: "Calendar" },
       { to: "/medications", label: "Medications" },
       { to: "/logs", label: "Logs" },
+      { to: "/budget", label: "Budget" },
       { to: "/cycle", label: "Cycle" },
       { to: "/routines", label: "Routines" },
       { to: "/insights", label: "Insights" },

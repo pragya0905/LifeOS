@@ -20,19 +20,38 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
   ) {
     return errorResponse(400, "heightCm must be a positive number");
   }
-  if (body.heightCm === undefined) {
+  if (
+    body.monthlyBudget !== undefined &&
+    (typeof body.monthlyBudget !== "number" || !Number.isFinite(body.monthlyBudget) || body.monthlyBudget <= 0)
+  ) {
+    return errorResponse(400, "monthlyBudget must be a positive number");
+  }
+  if (body.heightCm === undefined && body.monthlyBudget === undefined) {
     return errorResponse(400, "No updatable fields provided");
+  }
+
+  const names: Record<string, string> = {};
+  const values: Record<string, unknown> = { ":updatedAt": new Date().toISOString() };
+  const setClauses = ["updatedAt = :updatedAt"];
+
+  if (body.heightCm !== undefined) {
+    names["#heightCm"] = "heightCm";
+    values[":heightCm"] = body.heightCm;
+    setClauses.push("#heightCm = :heightCm");
+  }
+  if (body.monthlyBudget !== undefined) {
+    names["#monthlyBudget"] = "monthlyBudget";
+    values[":monthlyBudget"] = body.monthlyBudget;
+    setClauses.push("#monthlyBudget = :monthlyBudget");
   }
 
   const result = await ddb.send(
     new UpdateCommand({
       TableName: process.env.USER_PROFILE_TABLE_NAME,
       Key: { userId },
-      UpdateExpression: "SET heightCm = :heightCm, updatedAt = :updatedAt",
-      ExpressionAttributeValues: {
-        ":heightCm": body.heightCm,
-        ":updatedAt": new Date().toISOString(),
-      },
+      UpdateExpression: `SET ${setClauses.join(", ")}`,
+      ExpressionAttributeNames: names,
+      ExpressionAttributeValues: values,
       ReturnValues: "ALL_NEW",
     }),
   );

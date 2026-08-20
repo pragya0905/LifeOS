@@ -24,6 +24,8 @@ const TABLES: { envVar: string; sortKeyName: string }[] = [
   { envVar: "GOALS_TABLE_NAME", sortKeyName: "metric" },
   { envVar: "PUSH_SUBSCRIPTIONS_TABLE_NAME", sortKeyName: "endpoint" },
   { envVar: "WISHES_TABLE_NAME", sortKeyName: "wishId" },
+  { envVar: "EXPENSES_TABLE_NAME", sortKeyName: "expenseId" },
+  { envVar: "BUDGETS_TABLE_NAME", sortKeyName: "category" },
 ];
 
 // All of a user's wish images live under a userId/ prefix in the bucket (see

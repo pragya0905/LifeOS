@@ -93,9 +93,7 @@ export default function TodayHabits() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<
-    Partial<
-      Record<"water" | "exercise" | "steps" | "callDuration" | "weight" | "bodyFat" | "expenseAmount", string>
-    >
+    Partial<Record<"water" | "exercise" | "steps" | "callDuration" | "weight" | "bodyFat", string>>
   >({});
 
   const [waterDraft, setWaterDraft] = useState("");
@@ -126,11 +124,6 @@ export default function TodayHabits() {
   const [moodRating, setMoodRating] = useState<number | null>(null);
   const [moodNote, setMoodNote] = useState("");
 
-  const [expenseLogId, setExpenseLogId] = useState<string | null>(null);
-  const [expenseCategory, setExpenseCategory] = useState("");
-  const [expenseAmount, setExpenseAmount] = useState("");
-  const [expenseNote, setExpenseNote] = useState("");
-
   const [journaledToday, setJournaledToday] = useState(false);
 
   const [goalDrafts, setGoalDrafts] = useState<Partial<Record<GoalMetric, string>>>({});
@@ -143,7 +136,7 @@ export default function TodayHabits() {
       setLoading(true);
       setError(null);
       try {
-        const [habitsData, sleepData, callData, weightData, bodyFatData, moodData, expenseData, journalData, goalsData] =
+        const [habitsData, sleepData, callData, weightData, bodyFatData, moodData, journalData, goalsData] =
           await Promise.all([
             request<{ habits: HabitLog[] }>(`/habits/${date}`),
             request<{ entries: LogEntry[] }>(`/logs?logType=sleep&from=${date}&to=${date}`),
@@ -151,7 +144,6 @@ export default function TodayHabits() {
             request<{ entries: LogEntry[] }>(`/logs?logType=weight&from=${date}&to=${date}`),
             request<{ entries: LogEntry[] }>(`/logs?logType=bodyFat&from=${date}&to=${date}`),
             request<{ entries: LogEntry[] }>(`/logs?logType=mood&from=${date}&to=${date}`),
-            request<{ entries: LogEntry[] }>(`/logs?logType=expense&from=${date}&to=${date}`),
             request<{ entries: JournalEntry[] }>(`/journal?from=${date}&to=${date}`),
             request<{ goals: Goal[] }>("/goals"),
           ]);
@@ -212,14 +204,6 @@ export default function TodayHabits() {
           setMoodNote((mood.data.note as string) ?? "");
         }
 
-        const expense = expenseData.entries[0];
-        if (expense) {
-          setExpenseLogId(expense.logId);
-          setExpenseCategory((expense.data.category as string) ?? "");
-          setExpenseAmount(expense.data.amount !== undefined ? String(expense.data.amount) : "");
-          setExpenseNote((expense.data.note as string) ?? "");
-        }
-
         setJournaledToday(journalData.entries.length > 0);
       } catch (err) {
         if (ignore) return;
@@ -246,7 +230,6 @@ export default function TodayHabits() {
     const duration = parseNonNegative(callDuration);
     const weight = parseNonNegative(weightDraft);
     const bodyFat = parseNonNegative(bodyFatDraft);
-    const expenseAmt = parseNonNegative(expenseAmount);
 
     const nextFieldErrors: typeof fieldErrors = {};
     if (Number.isNaN(water)) nextFieldErrors.water = "Enter a non-negative number";
@@ -255,7 +238,6 @@ export default function TodayHabits() {
     if (Number.isNaN(duration)) nextFieldErrors.callDuration = "Enter a non-negative number";
     if (Number.isNaN(weight)) nextFieldErrors.weight = "Enter a non-negative number";
     if (Number.isNaN(bodyFat)) nextFieldErrors.bodyFat = "Enter a non-negative number";
-    if (Number.isNaN(expenseAmt)) nextFieldErrors.expenseAmount = "Enter a non-negative number";
     setFieldErrors(nextFieldErrors);
     if (Object.keys(nextFieldErrors).length > 0) return;
 
@@ -345,22 +327,6 @@ export default function TodayHabits() {
               }),
         );
       }
-      if (expenseCategory.trim() !== "") {
-        const data = {
-          category: expenseCategory.trim(),
-          amount: expenseAmt ?? undefined,
-          note: expenseNote.trim() || undefined,
-        };
-        tasks.push(
-          expenseLogId
-            ? request(`/logs/${expenseLogId}`, { method: "PATCH", body: JSON.stringify({ data }) })
-            : request("/logs", {
-                method: "POST",
-                body: JSON.stringify({ logType: "expense", date, data }),
-              }),
-        );
-      }
-
       await Promise.all(tasks);
       setHabitSource((prev) => {
         const next = { ...prev };
@@ -705,46 +671,6 @@ export default function TodayHabits() {
                         aria-label="Mood note"
                         className={`w-full max-w-[220px] py-1 ${input}`}
                       />
-                    </div>
-                  </td>
-                </tr>
-                <tr className="border-b border-stone/40 dark:border-stone-dark/40">
-                  <td className={rowLabelClass}>Expense</td>
-                  <td className={detailCellClass}>
-                    <DoneCheck done={expenseCategory.trim() !== ""} label="Expense" />
-                  </td>
-                  <td className={detailCellClass}>
-                    <div className="flex flex-col gap-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <input
-                          type="text"
-                          placeholder="Category"
-                          value={expenseCategory}
-                          onChange={(e) => setExpenseCategory(e.target.value)}
-                          aria-label="Expense category"
-                          className={`w-28 py-1 ${input}`}
-                        />
-                        <input
-                          type="number"
-                          min={0}
-                          placeholder="0"
-                          value={expenseAmount}
-                          onChange={(e) => setExpenseAmount(e.target.value)}
-                          aria-label="Expense amount"
-                          className={`w-20 py-1 ${input}`}
-                        />
-                        <input
-                          type="text"
-                          placeholder="Note (optional)"
-                          value={expenseNote}
-                          onChange={(e) => setExpenseNote(e.target.value)}
-                          aria-label="Expense note"
-                          className={`w-28 py-1 ${input}`}
-                        />
-                      </div>
-                      {fieldErrors.expenseAmount && (
-                        <p className={errorText}>{fieldErrors.expenseAmount}</p>
-                      )}
                     </div>
                   </td>
                 </tr>
