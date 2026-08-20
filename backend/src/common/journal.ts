@@ -17,7 +17,7 @@ import type {
 const HABIT_UNIT: Record<HabitType, HabitUnit> = {
   water: "ml",
   exercise: "minutes",
-  meditation: "minutes",
+  steps: "steps",
 };
 
 async function writeAiHabitLog(
@@ -327,8 +327,8 @@ export async function applyJournalExtraction(
     if (extraction.exerciseMinutes !== null) {
       writes.push(writeAiHabitLog(userId, date, "exercise", extraction.exerciseMinutes));
     }
-    if (extraction.meditationMinutes !== null) {
-      writes.push(writeAiHabitLog(userId, date, "meditation", extraction.meditationMinutes));
+    if (extraction.stepsCount !== null) {
+      writes.push(writeAiHabitLog(userId, date, "steps", extraction.stepsCount));
     }
     if (extraction.food !== null) {
       writes.push(writeAiLogEntry(userId, date, "food", { description: extraction.food }));

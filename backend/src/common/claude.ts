@@ -6,7 +6,7 @@ import { z } from "zod";
 const JournalExtractionSchema = z.object({
   waterMl: z.number().nullable(),
   exerciseMinutes: z.number().nullable(),
-  meditationMinutes: z.number().nullable(),
+  stepsCount: z.number().nullable(),
   food: z.string().nullable(),
   sleep: z
     .object({ bedTime: z.string().nullable(), wakeTime: z.string().nullable() })
@@ -42,7 +42,7 @@ function buildJournalSystemPrompt(
       "empty when a category isn't mentioned at all. Never invent values.",
     "- waterMl: water intake in milliliters (convert other units — a glass is about 250ml).",
     "- exerciseMinutes: exercise duration in minutes (convert other units).",
-    "- meditationMinutes: meditation duration in minutes (convert other units).",
+    "- stepsCount: number of steps walked, if a step count or distance walked is mentioned.",
     "- food: a short free-text description of food/meals mentioned, or null.",
     "- sleep: { bedTime, wakeTime } as HH:MM 24-hour times. Either field can be null if only " +
       "one was mentioned (e.g. just a wake-up time). The whole object is null if neither is " +

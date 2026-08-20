@@ -6,11 +6,11 @@ import { jsonResponse, errorResponse } from "../../common/http";
 import type { HabitType, HabitUnit } from "../../common/types";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const HABIT_TYPES: HabitType[] = ["water", "exercise", "meditation"];
+const HABIT_TYPES: HabitType[] = ["water", "exercise", "steps"];
 const HABIT_UNIT: Record<HabitType, HabitUnit> = {
   water: "ml",
   exercise: "minutes",
-  meditation: "minutes",
+  steps: "steps",
 };
 
 export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) => {

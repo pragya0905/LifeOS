@@ -88,7 +88,7 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
       lines.push(`- ${h.date}: ${h.habitType} ${h.value ?? 0}${h.unit ?? ""} (${h.status})`);
     }
   } else {
-    lines.push("No water/exercise/meditation logged in this period.");
+    lines.push("No water/exercise/steps logged in this period.");
   }
 
   if (medicationLogs.length > 0) {

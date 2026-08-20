@@ -20,7 +20,7 @@ export const WISH_PROGRESS_MODES: WishProgressMode[] = [
 ];
 
 export const WISH_STATUSES: WishStatus[] = ["active", "completed", "abandoned"];
-export const WISH_HABIT_TYPES: WishHabitType[] = ["water", "exercise", "meditation"];
+export const WISH_HABIT_TYPES: WishHabitType[] = ["water", "exercise", "steps"];
 
 export function isValidMilestones(value: unknown): value is WishMilestone[] {
   if (!Array.isArray(value)) return false;
