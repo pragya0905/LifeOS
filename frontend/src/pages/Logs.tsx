@@ -11,6 +11,9 @@ import {
   mutedText,
   page,
   pageTitle,
+  pillButton,
+  pillButtonDone,
+  pillButtonInactive,
   primaryButton,
   secondaryButton,
   sectionLabel,
@@ -26,7 +29,7 @@ interface FieldConfig {
 
 const LOG_TYPE_CONFIG: Record<LogType, { label: string; fields: FieldConfig[] }> = {
   food: {
-    label: "Food",
+    label: "🍔 Food",
     fields: [
       { key: "description", label: "Description", type: "text" },
       {
@@ -61,7 +64,7 @@ const LOG_TYPE_CONFIG: Record<LogType, { label: string; fields: FieldConfig[] }>
     ],
   },
   call: {
-    label: "Call",
+    label: "📞 Call",
     fields: [
       { key: "personName", label: "Person", type: "text" },
       { key: "note", label: "Note", type: "text", optional: true },
@@ -89,10 +92,13 @@ const LOG_TYPE_CONFIG: Record<LogType, { label: string; fields: FieldConfig[] }>
   },
 };
 
-// Weight, body fat %, mood, and expense are logged from Today's Habits on the Dashboard
-// instead — kept out of Quick Log's create form, filters, and list entirely so there's one
-// place to log each of them, not two.
-const HIDDEN_LOG_TYPES: LogType[] = ["weight", "bodyFat", "mood", "expense"];
+// Every one of these types has its own proper home elsewhere — weight, body fat %, mood,
+// and sleep are logged from Today's Habits on the Dashboard; expense has its own Budget
+// page; cycle has its own Cycle page with phase estimation and reminders. Kept out of
+// Quick Log's create form, filters, and list entirely so there's one place to log each of
+// them, not two. Quick Log is left as the catch-all for the two types that have no other
+// home: food and call.
+const HIDDEN_LOG_TYPES: LogType[] = ["weight", "bodyFat", "mood", "expense", "sleep", "cycle"];
 const LOG_TYPES = (Object.keys(LOG_TYPE_CONFIG) as LogType[]).filter(
   (t) => !HIDDEN_LOG_TYPES.includes(t),
 );
@@ -301,7 +307,12 @@ export default function Logs() {
 
   return (
     <div className={page}>
-      <h1 className={pageTitle}>Quick Log</h1>
+      <h1 className={pageTitle}>📝 Quick Log</h1>
+      <p className={`mb-6 ${mutedText}`}>
+        A catch-all for the odds and ends that don't have their own page — food and calls.
+        Everything else (sleep, weight, mood, expenses, cycle events) has moved to a proper
+        home: Today's Habits on the Dashboard, the Budget page, or the Cycle page.
+      </p>
 
       <form onSubmit={handleCreate} className={`mb-8 flex flex-wrap items-end gap-3 ${card}`}>
         <div>
@@ -341,21 +352,25 @@ export default function Logs() {
       {error && <p className={`mb-4 ${errorText}`}>{error}</p>}
 
       {entries.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-end gap-3">
-          <div>
-            <label className={label}>Filter by type</label>
-            <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value as LogType | "all")}
-              className={input}
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              onClick={() => setFilterType("all")}
+              className={`${pillButton} px-3 py-1 ${filterType === "all" ? pillButtonDone : pillButtonInactive}`}
             >
-              <option value="all">All types</option>
-              {LOG_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {LOG_TYPE_CONFIG[t].label}
-                </option>
-              ))}
-            </select>
+              All
+            </button>
+            {LOG_TYPES.map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setFilterType(t)}
+                className={`${pillButton} px-3 py-1 ${filterType === t ? pillButtonDone : pillButtonInactive}`}
+              >
+                {LOG_TYPE_CONFIG[t].label}
+              </button>
+            ))}
           </div>
           <input
             type="search"

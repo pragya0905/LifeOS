@@ -75,7 +75,15 @@ const SECTIONS: Section[] = [
   },
   {
     title: "Logs",
-    body: "A generic log for anything that doesn't fit elsewhere: food, sleep, weight, body fat %, mood, calls, cycle events. Filterable by type and searchable.",
+    body: "",
+    intro: "Quick Log is the catch-all for the couple of things that don't have their own page — food and calls. Everything else has a proper home now: sleep, weight, body fat %, and mood are logged from Today's Habits on the Dashboard, expenses have the Budget page, and cycle events have the Cycle page.",
+    bullets: [
+      "🍔 Log what you ate — description plus an optional meal type (breakfast/lunch/dinner/snack).",
+      "📞 Log a call — who it was with, plus an optional note.",
+      "🔍 Filter by type with one tap, and search entries by text.",
+      "📅 Entries are grouped by date (Today, Yesterday, then the date) so recent activity is easy to scan.",
+      "✏️ Edit or delete any entry inline, right from its card.",
+    ],
   },
   {
     title: "Budget",
