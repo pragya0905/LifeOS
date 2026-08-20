@@ -37,7 +37,16 @@ const SECTIONS: Section[] = [
   },
   {
     title: "Calendar",
-    body: "A month view of your tasks by due date, for a wider-lens view than the flat Tasks list. Saturdays and Sundays are shaded so the week's shape is obvious at a glance, and Indian public holidays/festivals are marked directly on their date.",
+    body: "",
+    intro: "A month-grid view of your tasks by due date — the wider-lens companion to the flat Tasks list.",
+    bullets: [
+      "🗓️ Each day shows up to 3 tasks due that day, color-coded by priority, with a \"+N more\" count if there are more.",
+      "🎉 Indian public holidays and major festivals for 2026 are marked directly on their date.",
+      "🟠 Saturdays and Sundays are tinted so the week's shape is obvious at a glance.",
+      "◎ Today's cell gets a ring outline so you can find it instantly on a busy month.",
+      "◀️▶️ Prev / Today / Next move you month to month — Today always jumps straight back to now.",
+      "👉 Manage tasks at the bottom drops you back into the full Tasks list to actually edit anything.",
+    ],
   },
   {
     title: "Medications",
