@@ -1,6 +1,13 @@
 import { card, mutedText, page, pageTitle, sectionLabel } from "../components/ui";
 
-const SECTIONS: { title: string; body: string }[] = [
+interface Section {
+  title: string;
+  body: string;
+  intro?: string;
+  bullets?: string[];
+}
+
+const SECTIONS: Section[] = [
   {
     title: "Dashboard",
     body: "Your daily snapshot: at-a-glance progress rings for water/sleep/exercise/steps (with streaks and trend vs. yesterday), today's scheduled tasks, today's habit table, the Extraction Ledger, and a preview of upcoming tasks.",
@@ -11,11 +18,26 @@ const SECTIONS: { title: string; body: string }[] = [
   },
   {
     title: "Tasks",
-    body: "To-dos with priority, due date/time, and an optional AI priority suggestion that automatically escalates to High once there isn't enough time left before the deadline to fit the estimated effort. Includes search and one-click duplication for repeat tasks.",
+    body: "",
+    intro:
+      "Your to-do list, organized so the urgent stuff finds you instead of the other way around.",
+    bullets: [
+      "🔥 Sections do the sorting for you — Overdue, Today, Upcoming, No due date, and Done, each ordered soonest-first so you never have to hunt.",
+      "⚡ Quick add: type a title, hit ➕ Add task. Everything else — due date, estimate, priority — is optional at that point.",
+      "🎤 Don't want to type? Tap Voice input on either Title or Description and dictate instead — both fields listen independently.",
+      "📅 Due date is required and defaults to a raw date picker, but the Today / Tomorrow / Next week chips underneath set it in one tap.",
+      "🤖 Suggest with AI is on by default — Claude reads the title, description, due date, and estimate together to pick Low/Medium/High. Pick a priority yourself and it switches off automatically, since that's you overriding it on purpose.",
+      "⏱️ Est. hours matters more than it looks — if the time left before your deadline can't fit that many hours, priority is forced to High automatically, no AI call needed.",
+      "◔ The small ring next to each task's title is a glance-only deadline meter — the more it's filled, the less slack you have left.",
+      "○ Tap the status pill to cycle To do → In progress → Done — no dropdown hunting.",
+      "👉 On your phone, swipe a task right to mark it done instantly.",
+      "🔁 Duplicate clones a task's title, description, priority, and estimate — handy for anything you do on repeat.",
+      "🔍 The search box filters by title as you type once you've got more than a couple of tasks.",
+    ],
   },
   {
     title: "Calendar",
-    body: "A month view of your tasks by due date, for a wider-lens view than the flat Tasks list.",
+    body: "A month view of your tasks by due date, for a wider-lens view than the flat Tasks list. Saturdays and Sundays are shaded so the week's shape is obvious at a glance, and Indian public holidays/festivals are marked directly on their date.",
   },
   {
     title: "Medications",
@@ -56,7 +78,22 @@ export default function Help() {
         {SECTIONS.map((section) => (
           <div key={section.title} className={card}>
             <h2 className={`mb-1 ${sectionLabel}`}>{section.title}</h2>
-            <p className="text-sm text-ink dark:text-paper">{section.body}</p>
+            {section.bullets ? (
+              <>
+                {section.intro && (
+                  <p className="mb-2 text-sm text-ink dark:text-paper">{section.intro}</p>
+                )}
+                <ul className="flex flex-col gap-1.5">
+                  {section.bullets.map((bullet, i) => (
+                    <li key={i} className="text-sm text-ink dark:text-paper">
+                      {bullet}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <p className="text-sm text-ink dark:text-paper">{section.body}</p>
+            )}
           </div>
         ))}
       </div>
