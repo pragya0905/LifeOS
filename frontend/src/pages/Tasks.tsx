@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type TouchEvent as ReactTouchEvent } from "react";
 import { useApi } from "../api/useApi";
 import { useSpeechToText } from "../hooks/useSpeechToText";
-import { todayLocal } from "../lib/date";
+import { todayLocal, toLocalDateStr } from "../lib/date";
 import type { Task, TaskPriority, TaskStatus } from "../types";
 import {
   badge,
@@ -33,6 +33,18 @@ function joinText(base: string, addition: string): string {
   if (!base) return addition;
   return base.endsWith(" ") ? base + addition : `${base} ${addition}`;
 }
+
+function dateOffsetDays(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return toLocalDateStr(d);
+}
+
+const DATE_PRESETS: { label: string; days: number }[] = [
+  { label: "Today", days: 0 },
+  { label: "Tomorrow", days: 1 },
+  { label: "Next week", days: 7 },
+];
 
 // The browser is the only place that actually knows the user's timezone — computed here
 // (not on the server) so the reminder scheduler can compare due times in UTC without
@@ -403,6 +415,23 @@ function TaskCard({
                 onChange={(e) => setEditDueDate(e.target.value)}
                 className={input}
               />
+              <div className="mt-1.5 flex gap-1.5">
+                {DATE_PRESETS.map((preset) => {
+                  const presetDate = dateOffsetDays(preset.days);
+                  return (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => setEditDueDate(presetDate)}
+                      className={`${pillButton} ${
+                        editDueDate === presetDate ? "border-bloom bg-bloom text-paper-card" : pillButtonInactive
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             <div>
               <label className={label}>Due time</label>
@@ -746,6 +775,23 @@ export default function Tasks() {
             onChange={(e) => setDueDate(e.target.value)}
             className={input}
           />
+          <div className="mt-1.5 flex gap-1.5">
+            {DATE_PRESETS.map((preset) => {
+              const presetDate = dateOffsetDays(preset.days);
+              return (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => setDueDate(presetDate)}
+                  className={`${pillButton} ${
+                    dueDate === presetDate ? "border-bloom bg-bloom text-paper-card" : pillButtonInactive
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
         <div>
           <label className={label}>Est. hours</label>
