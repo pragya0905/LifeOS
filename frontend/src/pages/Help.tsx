@@ -14,7 +14,19 @@ const SECTIONS: Section[] = [
   },
   {
     title: "Journal",
-    body: "Write or dictate a free-text entry for any date. Claude reads it and automatically fills in matching fields elsewhere — water intake, exercise, sleep, mood, medications taken, routine steps, calls, expenses, cycle events. A manually-entered value always takes priority over one Claude extracted, so nothing you type gets silently overwritten. Includes mood picker, prompt starters, and search.",
+    body: "",
+    intro:
+      "Write freely, and let Claude do the tedious work of filling in the rest of the app for you.",
+    bullets: [
+      "✍️ One entry per day — pick a date, and if it already has an entry, the form loads it for editing instead of letting you create a duplicate.",
+      "🎤 Voice input dictates straight into the entry box, independent of typing — stop and start it anytime, on Android or desktop.",
+      "🤖 Claude reads what you wrote and quietly fills in matching fields elsewhere — water, exercise, steps, sleep times, weight, mood, expenses, medications taken, routine steps, calls, cycle events. Nothing you typed manually is ever overwritten by what Claude extracted.",
+      "😊 The Mood picker (1–5) sits right on the form, and 4 starter prompts are one tap away if you're staring at a blank page.",
+      "📖 Past entries show a mood emoji, a Voice badge if dictated, and truncate past 280 characters with a Show more/less toggle so the list stays scannable.",
+      "✏️ Tap Edit on any past entry to jump straight back into editing it — no manually hunting for the right date.",
+      "🔍 Search filters your entries by text as you type.",
+      "📋 The Extraction Ledger on the Dashboard shows exactly what Claude picked up from your latest entry — nothing runs silently in the background.",
+    ],
   },
   {
     title: "Tasks",
