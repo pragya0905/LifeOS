@@ -239,7 +239,7 @@ export default function Routines() {
                 ).length;
                 return (
                 <li key={routine.routineId} className={card}>
-                  <div className="mb-2 flex items-center justify-between">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                     <p className="text-sm font-medium text-ink dark:text-paper">
                       {routine.name}{" "}
                       <span className="font-normal text-ink-muted dark:text-mist-muted">
@@ -263,7 +263,7 @@ export default function Routines() {
                       const key = `${routine.routineId}#${index}`;
                       const status = stepStatuses[key];
                       return (
-                        <li key={key} className="flex items-center justify-between gap-3">
+                        <li key={key} className="flex flex-wrap items-center justify-between gap-3">
                           <span className="text-sm text-ink-muted dark:text-mist-muted">{step}</span>
                           <div className="flex gap-1.5">
                             <button

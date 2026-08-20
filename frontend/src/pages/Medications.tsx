@@ -227,7 +227,7 @@ export default function Medications() {
               {activeMedications.map((medication) => {
                 const status = logStatuses[medication.medicationId];
                 return (
-                  <li key={medication.medicationId} className={`flex items-center justify-between gap-3 ${card}`}>
+                  <li key={medication.medicationId} className={`flex flex-wrap items-center justify-between gap-3 ${card}`}>
                     <span className="text-sm font-medium text-ink dark:text-paper">
                       {medication.name}
                     </span>
@@ -272,29 +272,25 @@ export default function Medications() {
                   today(),
                 );
                 return (
-                  <li key={medication.medicationId} className={`flex items-center justify-between gap-3 ${card}`}>
+                  <li key={medication.medicationId} className={`flex flex-wrap items-center justify-between gap-3 ${card}`}>
                     <div>
                       <p className="text-sm font-medium text-ink dark:text-paper">{medication.name}</p>
                       <p className="text-xs text-ink-muted dark:text-mist-muted">
                         {medication.startDate} → {medication.endDate} ({medication.durationDays} days)
-                        {adherence !== null && (
-                          <>
-                            {" · "}
-                            <span
-                              className={
-                                adherence >= 80
-                                  ? "text-bloom"
-                                  : adherence >= 50
-                                    ? "text-amber-ink dark:text-amber-ink-dark"
-                                    : "text-alert"
-                              }
-                            >
-                              {adherence}% adherence
-                            </span>{" "}
-                            (last {ADHERENCE_WINDOW_DAYS}d)
-                          </>
-                        )}
                       </p>
+                      {adherence !== null && (
+                        <span
+                          className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                            adherence >= 80
+                              ? "bg-bloom-soft text-bloom dark:bg-bloom-soft-dark dark:text-bloom-light"
+                              : adherence >= 50
+                                ? "bg-amber-soft text-amber-ink dark:bg-amber-soft-dark dark:text-amber-ink-dark"
+                                : "bg-alert-soft text-alert dark:bg-alert-soft-dark dark:text-alert-light"
+                          }`}
+                        >
+                          {adherence}% adherence (last {ADHERENCE_WINDOW_DAYS}d)
+                        </span>
+                      )}
                     </div>
                     <button
                       type="button"

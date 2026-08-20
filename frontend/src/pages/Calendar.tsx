@@ -84,7 +84,7 @@ export default function Calendar() {
     <div className={page}>
       <h1 className={pageTitle}>Calendar</h1>
 
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => shiftMonth(-1)} className={`${secondaryButton} px-3 py-1 text-xs`}>
             ← Prev
