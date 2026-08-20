@@ -1,6 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useApi } from "../api/useApi";
-import WeightTrend from "../components/WeightTrend";
 import { todayLocal, toLocalDateStr } from "../lib/date";
 import type { LogEntry, LogType } from "../types";
 import {
@@ -90,7 +89,13 @@ const LOG_TYPE_CONFIG: Record<LogType, { label: string; fields: FieldConfig[] }>
   },
 };
 
-const LOG_TYPES = Object.keys(LOG_TYPE_CONFIG) as LogType[];
+// Weight, body fat %, mood, and expense are logged from Today's Habits on the Dashboard
+// instead — kept out of Quick Log's create form, filters, and list entirely so there's one
+// place to log each of them, not two.
+const HIDDEN_LOG_TYPES: LogType[] = ["weight", "bodyFat", "mood", "expense"];
+const LOG_TYPES = (Object.keys(LOG_TYPE_CONFIG) as LogType[]).filter(
+  (t) => !HIDDEN_LOG_TYPES.includes(t),
+);
 
 function today(): string {
   return todayLocal();
@@ -194,7 +199,11 @@ export default function Logs() {
       try {
         const data = await request<{ entries: LogEntry[] }>("/logs");
         if (ignore) return;
-        setEntries(data.entries.slice().sort((a, b) => (a.date < b.date ? 1 : -1)));
+        setEntries(
+          data.entries
+            .filter((e) => !HIDDEN_LOG_TYPES.includes(e.logType))
+            .sort((a, b) => (a.date < b.date ? 1 : -1)),
+        );
       } catch (err) {
         if (ignore) return;
         setError(err instanceof Error ? err.message : "Failed to load log entries");
@@ -293,8 +302,6 @@ export default function Logs() {
   return (
     <div className={page}>
       <h1 className={pageTitle}>Quick Log</h1>
-
-      <WeightTrend entries={entries} />
 
       <form onSubmit={handleCreate} className={`mb-8 flex flex-wrap items-end gap-3 ${card}`}>
         <div>
