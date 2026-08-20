@@ -21,7 +21,7 @@ export interface Task {
 export interface JournalEntryExtraction {
   waterMl: number | null;
   exerciseMinutes: number | null;
-  meditationMinutes: number | null;
+  stepsCount: number | null;
   food: string | null;
   sleep: { bedTime: string | null; wakeTime: string | null } | null;
   weightKg: number | null;
@@ -43,9 +43,9 @@ export interface JournalEntry {
   updatedAt: string;
 }
 
-export type HabitType = "water" | "exercise" | "meditation";
+export type HabitType = "water" | "exercise" | "steps";
 export type HabitStatus = "done" | "missed" | "skipped";
-export type HabitUnit = "ml" | "minutes";
+export type HabitUnit = "ml" | "minutes" | "steps";
 
 export interface HabitLog {
   userId: string;
@@ -142,7 +142,7 @@ export interface Insights {
   suggestions: string[];
 }
 
-export type GoalMetric = "water" | "exercise" | "meditation";
+export type GoalMetric = "water" | "exercise" | "steps";
 
 export interface Goal {
   userId: string;
@@ -169,7 +169,7 @@ export type WishType =
 
 export type WishProgressMode = "percentage" | "milestone" | "habit_linked" | "time_based" | "quantity";
 export type WishStatus = "active" | "completed" | "abandoned";
-export type WishHabitType = "water" | "exercise" | "meditation";
+export type WishHabitType = "water" | "exercise" | "steps";
 
 export interface WishMilestone {
   id: string;

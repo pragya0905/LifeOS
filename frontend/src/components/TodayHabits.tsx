@@ -94,18 +94,18 @@ export default function TodayHabits() {
   const [saved, setSaved] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<
     Partial<
-      Record<"water" | "exercise" | "meditation" | "callDuration" | "weight" | "bodyFat" | "expenseAmount", string>
+      Record<"water" | "exercise" | "steps" | "callDuration" | "weight" | "bodyFat" | "expenseAmount", string>
     >
   >({});
 
   const [waterDraft, setWaterDraft] = useState("");
   const [exerciseDraft, setExerciseDraft] = useState("");
-  const [meditationDraft, setMeditationDraft] = useState("");
+  const [stepsDraft, setStepsDraft] = useState("");
   // Tracks whether each habit's current value came from journal AI extraction (vs a manual
   // save), so the UI can show where a number actually came from — the same "manual always
   // wins" precedence guarantee the backend enforces.
   const [habitSource, setHabitSource] = useState<
-    Partial<Record<"water" | "exercise" | "meditation", "manual" | "ai-journal">>
+    Partial<Record<"water" | "exercise" | "steps", "manual" | "ai-journal">>
   >({});
 
   const [sleepLogId, setSleepLogId] = useState<string | null>(null);
@@ -162,11 +162,11 @@ export default function TodayHabits() {
           const value = String(habit.value ?? "");
           if (habit.habitType === "water") setWaterDraft(value);
           if (habit.habitType === "exercise") setExerciseDraft(value);
-          if (habit.habitType === "meditation") setMeditationDraft(value);
+          if (habit.habitType === "steps") setStepsDraft(value);
           if (
             habit.habitType === "water" ||
             habit.habitType === "exercise" ||
-            habit.habitType === "meditation"
+            habit.habitType === "steps"
           ) {
             sourceNext[habit.habitType] = habit.source;
           }
@@ -242,7 +242,7 @@ export default function TodayHabits() {
 
     const water = parseNonNegative(waterDraft);
     const exercise = parseNonNegative(exerciseDraft);
-    const meditation = parseNonNegative(meditationDraft);
+    const steps = parseNonNegative(stepsDraft);
     const duration = parseNonNegative(callDuration);
     const weight = parseNonNegative(weightDraft);
     const bodyFat = parseNonNegative(bodyFatDraft);
@@ -251,7 +251,7 @@ export default function TodayHabits() {
     const nextFieldErrors: typeof fieldErrors = {};
     if (Number.isNaN(water)) nextFieldErrors.water = "Enter a non-negative number";
     if (Number.isNaN(exercise)) nextFieldErrors.exercise = "Enter a non-negative number";
-    if (Number.isNaN(meditation)) nextFieldErrors.meditation = "Enter a non-negative number";
+    if (Number.isNaN(steps)) nextFieldErrors.steps = "Enter a non-negative number";
     if (Number.isNaN(duration)) nextFieldErrors.callDuration = "Enter a non-negative number";
     if (Number.isNaN(weight)) nextFieldErrors.weight = "Enter a non-negative number";
     if (Number.isNaN(bodyFat)) nextFieldErrors.bodyFat = "Enter a non-negative number";
@@ -279,11 +279,11 @@ export default function TodayHabits() {
           }),
         );
       }
-      if (meditation !== null) {
+      if (steps !== null) {
         tasks.push(
-          request(`/habits/${date}/meditation`, {
+          request(`/habits/${date}/steps`, {
             method: "PATCH",
-            body: JSON.stringify({ value: meditation }),
+            body: JSON.stringify({ value: steps }),
           }),
         );
       }
@@ -366,7 +366,7 @@ export default function TodayHabits() {
         const next = { ...prev };
         if (water !== null) next.water = "manual";
         if (exercise !== null) next.exercise = "manual";
-        if (meditation !== null) next.meditation = "manual";
+        if (steps !== null) next.steps = "manual";
         return next;
       });
       setSaved(true);
@@ -589,9 +589,9 @@ export default function TodayHabits() {
                   </td>
                 </tr>
                 <tr className="border-b border-stone/40 dark:border-stone-dark/40">
-                  <td className={rowLabelClass}>Meditation</td>
+                  <td className={rowLabelClass}>Steps</td>
                   <td className={detailCellClass}>
-                    <DoneCheck done={Number(meditationDraft) > 0} label="Meditation" />
+                    <DoneCheck done={Number(stepsDraft) > 0} label="Steps" />
                   </td>
                   <td className={detailCellClass}>
                     <div className="flex flex-col gap-1">
@@ -600,27 +600,27 @@ export default function TodayHabits() {
                           type="number"
                           min={0}
                           placeholder="0"
-                          value={meditationDraft}
-                          onChange={(e) => setMeditationDraft(e.target.value)}
-                          aria-label="Meditation duration in minutes"
+                          value={stepsDraft}
+                          onChange={(e) => setStepsDraft(e.target.value)}
+                          aria-label="Step count"
                           className={`w-24 py-1 ${input}`}
                         />
-                        <span className={mutedText}>minutes</span>
-                        {habitSource.meditation === "ai-journal" && (
+                        <span className={mutedText}>steps</span>
+                        {habitSource.steps === "ai-journal" && (
                           <span className={badge} title="Populated from your journal entry">
                             from journal
                           </span>
                         )}
                         <GoalTarget
-                          value={goalDrafts.meditation ?? ""}
-                          onChange={(v) => updateGoalDraft("meditation", v)}
-                          onBlur={() => saveGoal("meditation")}
-                          disabled={savingGoal === "meditation"}
-                          habitLabel="Meditation"
+                          value={goalDrafts.steps ?? ""}
+                          onChange={(v) => updateGoalDraft("steps", v)}
+                          onBlur={() => saveGoal("steps")}
+                          disabled={savingGoal === "steps"}
+                          habitLabel="Steps"
                         />
                       </div>
-                      {fieldErrors.meditation && (
-                        <p className={errorText}>{fieldErrors.meditation}</p>
+                      {fieldErrors.steps && (
+                        <p className={errorText}>{fieldErrors.steps}</p>
                       )}
                     </div>
                   </td>

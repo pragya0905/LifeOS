@@ -41,7 +41,7 @@ const PROGRESS_MODES = Object.keys(PROGRESS_MODE_LABEL) as WishProgressMode[];
 const HABIT_TYPE_LABEL: Record<WishHabitType, string> = {
   water: "Water",
   exercise: "Exercise",
-  meditation: "Meditation",
+  steps: "Steps",
 };
 const HABIT_TYPES = Object.keys(HABIT_TYPE_LABEL) as WishHabitType[];
 

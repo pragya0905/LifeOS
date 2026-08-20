@@ -53,7 +53,7 @@ export default function Achievements() {
 
         // Reconstruct the last 30 days in order (oldest first) since the range
         // endpoint returns items unordered, then take the best run of consecutive
-        // logged days across water/exercise/meditation combined.
+        // logged days across water/exercise/steps combined.
         const dates = Array.from({ length: STREAK_LOOKBACK_DAYS }, (_, i) =>
           dateOffset(STREAK_LOOKBACK_DAYS - 1 - i),
         );

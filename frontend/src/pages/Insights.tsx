@@ -37,7 +37,7 @@ export default function Insights() {
   const [trendLoading, setTrendLoading] = useState(true);
   const [waterTrend, setWaterTrend] = useState<{ date: string; value: number }[]>([]);
   const [exerciseTrend, setExerciseTrend] = useState<{ date: string; value: number }[]>([]);
-  const [meditationTrend, setMeditationTrend] = useState<{ date: string; value: number }[]>([]);
+  const [stepsTrend, setStepsTrend] = useState<{ date: string; value: number }[]>([]);
   const [weightEntries, setWeightEntries] = useState<LogEntry[]>([]);
 
   useEffect(() => {
@@ -60,7 +60,7 @@ export default function Insights() {
             .sort((a, b) => (a.date < b.date ? -1 : 1));
         setWaterTrend(byType("water"));
         setExerciseTrend(byType("exercise"));
-        setMeditationTrend(byType("meditation"));
+        setStepsTrend(byType("steps"));
         setWeightEntries([...weightData.entries, ...bodyFatData.entries]);
       } catch {
         // Trend charts are a bonus view — the on-demand AI insights below still work.
@@ -95,7 +95,7 @@ export default function Insights() {
         Generate an AI summary of your recent activity, on demand — nothing runs automatically.
       </p>
 
-      {!trendLoading && (waterTrend.length > 0 || exerciseTrend.length > 0 || meditationTrend.length > 0) && (
+      {!trendLoading && (waterTrend.length > 0 || exerciseTrend.length > 0 || stepsTrend.length > 0) && (
         <div className={`mb-6 flex flex-col gap-4 sm:flex-row ${card}`}>
           {waterTrend.length > 0 && (
             <div className="flex-1">
@@ -109,10 +109,10 @@ export default function Insights() {
               <LineChart points={exerciseTrend} color="stroke-alert" formatValue={(v) => `${v}min`} />
             </div>
           )}
-          {meditationTrend.length > 0 && (
+          {stepsTrend.length > 0 && (
             <div className="flex-1">
-              <h2 className={`mb-2 ${sectionLabel}`}>Meditation ({TREND_DAYS}d)</h2>
-              <LineChart points={meditationTrend} color="stroke-amber" formatValue={(v) => `${v}min`} />
+              <h2 className={`mb-2 ${sectionLabel}`}>Steps ({TREND_DAYS}d)</h2>
+              <LineChart points={stepsTrend} color="stroke-amber" formatValue={(v) => v.toLocaleString()} />
             </div>
           )}
         </div>

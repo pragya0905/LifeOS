@@ -57,16 +57,16 @@ export default function TodaySummaryRings() {
   const [loading, setLoading] = useState(true);
   const [water, setWater] = useState(0);
   const [exercise, setExercise] = useState(0);
-  const [meditation, setMeditation] = useState(0);
+  const [steps, setSteps] = useState(0);
   const [sleepMinutes, setSleepMinutes] = useState<number | null>(null);
   const [goals, setGoals] = useState<Partial<Record<string, number>>>({});
   const [yWater, setYWater] = useState<number | null>(null);
   const [yExercise, setYExercise] = useState<number | null>(null);
-  const [yMeditation, setYMeditation] = useState<number | null>(null);
+  const [ySteps, setYSteps] = useState<number | null>(null);
   const [ySleepMinutes, setYSleepMinutes] = useState<number | null>(null);
   const [waterStreak, setWaterStreak] = useState(0);
   const [exerciseStreak, setExerciseStreak] = useState(0);
-  const [meditationStreak, setMeditationStreak] = useState(0);
+  const [stepsStreak, setStepsStreak] = useState(0);
 
   useEffect(() => {
     let ignore = false;
@@ -93,16 +93,16 @@ export default function TodaySummaryRings() {
 
         setWater(byDate(date, "water"));
         setExercise(byDate(date, "exercise"));
-        setMeditation(byDate(date, "meditation"));
+        setSteps(byDate(date, "steps"));
         setYWater(byDate(yDate, "water"));
         setYExercise(byDate(yDate, "exercise"));
-        setYMeditation(byDate(yDate, "meditation"));
+        setYSteps(byDate(yDate, "steps"));
 
         const valuesByType = (type: HabitLog["habitType"]) =>
           last7Dates.map((d) => byDate(d, type));
         setWaterStreak(computeStreak(valuesByType("water")));
         setExerciseStreak(computeStreak(valuesByType("exercise")));
-        setMeditationStreak(computeStreak(valuesByType("meditation")));
+        setStepsStreak(computeStreak(valuesByType("steps")));
 
         const sleep = sleepData.entries[0];
         if (sleep) {
@@ -185,13 +185,13 @@ export default function TodaySummaryRings() {
       </div>
       <div className={tileClass}>
         <Ring
-          label="Meditation"
-          value={meditation}
-          target={goals.meditation ?? 10}
-          displayValue={`${meditation} min`}
-          sublabel={`/ ${goals.meditation ?? 10} min`}
-          trend={trendOf(meditation, yMeditation)}
-          streakDays={meditationStreak}
+          label="Steps"
+          value={steps}
+          target={goals.steps ?? 10000}
+          displayValue={steps.toLocaleString()}
+          sublabel={`/ ${(goals.steps ?? 10000).toLocaleString()}`}
+          trend={trendOf(steps, ySteps)}
+          streakDays={stepsStreak}
         />
       </div>
     </div>

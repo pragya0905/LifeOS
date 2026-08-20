@@ -3,7 +3,7 @@ import { card, mutedText, page, pageTitle, sectionLabel } from "../components/ui
 const SECTIONS: { title: string; body: string }[] = [
   {
     title: "Dashboard",
-    body: "Your daily snapshot: at-a-glance progress rings for water/sleep/exercise/meditation (with streaks and trend vs. yesterday), today's scheduled tasks, today's habit table, the Extraction Ledger, and a preview of upcoming tasks.",
+    body: "Your daily snapshot: at-a-glance progress rings for water/sleep/exercise/steps (with streaks and trend vs. yesterday), today's scheduled tasks, today's habit table, the Extraction Ledger, and a preview of upcoming tasks.",
   },
   {
     title: "Journal",
