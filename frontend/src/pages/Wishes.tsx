@@ -29,6 +29,17 @@ const WISH_TYPE_LABEL: Record<WishType, string> = {
 };
 const WISH_TYPES = Object.keys(WISH_TYPE_LABEL) as WishType[];
 
+const WISH_TYPE_EMOJI: Record<WishType, string> = {
+  learning: "📚",
+  travel: "✈️",
+  savings: "💰",
+  health: "💪",
+  shopping: "🛍️",
+  creative: "🎨",
+  personal_growth: "🌱",
+  achievement: "🏆",
+};
+
 const PROGRESS_MODE_LABEL: Record<WishProgressMode, string> = {
   percentage: "Percentage",
   milestone: "Milestones",
@@ -96,7 +107,9 @@ function WishCard({
             {wish.title}
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            <span className={badge}>{WISH_TYPE_LABEL[wish.type]}</span>
+            <span className={badge}>
+              {WISH_TYPE_EMOJI[wish.type]} {WISH_TYPE_LABEL[wish.type]}
+            </span>
             {wish.targetDate && (
               <span className="text-xs text-ink-muted dark:text-mist-muted">
                 Due {wish.targetDate}
@@ -237,6 +250,7 @@ export default function Wishes() {
   const [linkedHabitType, setLinkedHabitType] = useState<WishHabitType>("water");
   const [habitLinkTargetValue, setHabitLinkTargetValue] = useState("");
   const [creating, setCreating] = useState(false);
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     let ignore = false;
@@ -326,8 +340,19 @@ export default function Wishes() {
     }
   }
 
-  const activeWishes = wishes.filter((w) => w.status === "active");
-  const otherWishes = wishes.filter((w) => w.status !== "active");
+  const filteredWishes = search.trim()
+    ? wishes.filter((w) => w.title.toLowerCase().includes(search.trim().toLowerCase()))
+    : wishes;
+
+  const activeWishes = filteredWishes.filter((w) => w.status === "active");
+  const otherWishes = filteredWishes.filter((w) => w.status !== "active");
+
+  // Closest deadline first; wishes with no target date have nothing to sort by, so they
+  // get their own group at the end rather than being scattered arbitrarily among dated ones.
+  const datedActiveWishes = activeWishes
+    .filter((w): w is Wish & { targetDate: string } => Boolean(w.targetDate))
+    .sort((a, b) => (a.targetDate < b.targetDate ? -1 : 1));
+  const undatedActiveWishes = activeWishes.filter((w) => !w.targetDate);
 
   return (
     <div className={page}>
@@ -356,7 +381,7 @@ export default function Wishes() {
             <select value={type} onChange={(e) => setType(e.target.value as WishType)} className={input}>
               {WISH_TYPES.map((t) => (
                 <option key={t} value={t}>
-                  {WISH_TYPE_LABEL[t]}
+                  {WISH_TYPE_EMOJI[t]} {WISH_TYPE_LABEL[t]}
                 </option>
               ))}
             </select>
@@ -450,26 +475,69 @@ export default function Wishes() {
 
       {error && <p className={`mb-4 ${errorText}`}>{error}</p>}
 
+      {wishes.length > 0 && (
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search wishes..."
+          aria-label="Search wishes"
+          className={`mb-4 w-full ${input}`}
+        />
+      )}
+
       {loading ? (
         <p className={mutedText}>Loading wishes...</p>
       ) : wishes.length === 0 ? (
         <p className={mutedText}>No wishes yet — add one above.</p>
+      ) : filteredWishes.length === 0 ? (
+        <p className={mutedText}>No wishes match "{search}".</p>
       ) : (
         <>
           <h2 className={`mb-2 ${sectionLabel}`}>Active</h2>
           {activeWishes.length === 0 ? (
             <p className={`mb-6 ${mutedText}`}>Nothing active.</p>
           ) : (
-            <ul className="mb-6 flex flex-col gap-3">
-              {activeWishes.map((wish) => (
-                <WishCard
-                  key={wish.wishId}
-                  wish={wish}
-                  onUpdate={(patch) => updateWish(wish.wishId, patch)}
-                  onDelete={() => deleteWish(wish.wishId)}
-                />
-              ))}
-            </ul>
+            <div className="mb-6 flex flex-col gap-4">
+              {datedActiveWishes.length > 0 && (
+                <div>
+                  {undatedActiveWishes.length > 0 && (
+                    <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-mist-muted">
+                      ⏰ Due soon
+                    </p>
+                  )}
+                  <ul className="flex flex-col gap-3">
+                    {datedActiveWishes.map((wish) => (
+                      <WishCard
+                        key={wish.wishId}
+                        wish={wish}
+                        onUpdate={(patch) => updateWish(wish.wishId, patch)}
+                        onDelete={() => deleteWish(wish.wishId)}
+                      />
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {undatedActiveWishes.length > 0 && (
+                <div>
+                  {datedActiveWishes.length > 0 && (
+                    <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-mist-muted">
+                      📌 No target date
+                    </p>
+                  )}
+                  <ul className="flex flex-col gap-3">
+                    {undatedActiveWishes.map((wish) => (
+                      <WishCard
+                        key={wish.wishId}
+                        wish={wish}
+                        onUpdate={(patch) => updateWish(wish.wishId, patch)}
+                        onDelete={() => deleteWish(wish.wishId)}
+                      />
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
           )}
 
           {otherWishes.length > 0 && (
