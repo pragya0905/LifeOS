@@ -1213,6 +1213,35 @@ Resources:
             Auth:
               Authorizer: CognitoAuthorizer
 
+  UpdateRoutineTemplateFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-update-routine-template-${Environment}"
+      CodeUri: src/functions/updateRoutineTemplate/
+      Handler: index.handler
+      Environment:
+        Variables:
+          ROUTINE_TEMPLATES_TABLE_NAME: !Ref RoutineTemplatesTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RoutineTemplatesTable
+      Events:
+        UpdateRoutineTemplate:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /routines/{id}
+            Method: PATCH
+            Auth:
+              Authorizer: CognitoAuthorizer
+
   UpdateRoutineStepLogFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -1267,6 +1296,35 @@ Resources:
           Properties:
             ApiId: !Ref HttpApi
             Path: /routine-logs/{date}
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  ListRoutineLogsForRangeFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-list-routine-logs-for-range-${Environment}"
+      CodeUri: src/functions/listRoutineLogsForRange/
+      Handler: index.handler
+      Environment:
+        Variables:
+          ROUTINE_LOGS_TABLE_NAME: !Ref RoutineLogsTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref RoutineLogsTable
+      Events:
+        ListRoutineLogsForRange:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /routine-logs
             Method: GET
             Auth:
               Authorizer: CognitoAuthorizer

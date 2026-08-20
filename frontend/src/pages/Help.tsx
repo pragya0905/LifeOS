@@ -106,7 +106,15 @@ const SECTIONS: Section[] = [
   },
   {
     title: "Routines",
-    body: "Multi-step checklists (e.g. AM/PM skincare) with a done/skipped state per step per day, and a few starter templates.",
+    body: "",
+    intro: "Multi-step checklists — AM/PM skincare, a morning routine, or anything else you do the same way daily.",
+    bullets: [
+      "📋 A few starter templates (AM/PM skincare, 30-30-30 morning) fill in the category, name, and steps for you — tweak before saving or use as-is.",
+      "✅ Mark each step Done or Skipped for today; a live count shows how much of the routine you've finished.",
+      "✏️ Edit a routine's name, category, or steps any time — no need to delete and recreate it to fix a typo or add a step.",
+      "🔥 A streak badge shows how many consecutive days you've completed every step — a single skipped or missing step breaks it, but today never breaks a streak just because it isn't finished yet.",
+      "🗑️ Delete a routine you no longer follow.",
+    ],
   },
   {
     title: "Insights",
