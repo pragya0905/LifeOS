@@ -91,7 +91,7 @@ export default function PwaSettings() {
       <div className="flex flex-col gap-3">
         {!installed && canInstall && (
           <div className="flex items-center justify-between">
-            <span className="text-sm text-ink dark:text-cream">Install LifeOs as an app</span>
+            <span className="text-sm text-ink dark:text-paper">Install LifeOs as an app</span>
             <button onClick={promptInstall} className={`${primaryButton} px-3 py-1.5 text-xs`}>
               Install
             </button>
@@ -104,7 +104,7 @@ export default function PwaSettings() {
         )}
         {permission === "default" && (
           <div className="flex items-center justify-between">
-            <span className="text-sm text-ink dark:text-cream">Enable notifications</span>
+            <span className="text-sm text-ink dark:text-paper">Enable notifications</span>
             <button
               onClick={requestPermission}
               className={`${secondaryButton} px-3 py-1.5 text-xs`}
@@ -121,7 +121,7 @@ export default function PwaSettings() {
         {permission === "granted" && (
           <>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-ink dark:text-cream">Notifications enabled</span>
+              <span className="text-sm text-ink dark:text-paper">Notifications enabled</span>
               <button
                 onClick={sendTestNotification}
                 className={`${secondaryButton} px-3 py-1.5 text-xs`}
@@ -130,7 +130,7 @@ export default function PwaSettings() {
               </button>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-ink dark:text-cream">
+              <span className="text-sm text-ink dark:text-paper">
                 {pushSubscribed ? "Task due-date reminders on" : "Task due-date reminders"}
               </span>
               {!pushSubscribed && (

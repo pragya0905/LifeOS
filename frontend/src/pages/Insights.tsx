@@ -99,13 +99,13 @@ export default function Insights() {
           {exerciseTrend.length > 0 && (
             <div className="flex-1">
               <h2 className={`mb-2 ${sectionLabel}`}>Exercise ({TREND_DAYS}d)</h2>
-              <LineChart points={exerciseTrend} color="stroke-terracotta" formatValue={(v) => `${v}min`} />
+              <LineChart points={exerciseTrend} color="stroke-alert" formatValue={(v) => `${v}min`} />
             </div>
           )}
           {meditationTrend.length > 0 && (
             <div className="flex-1">
               <h2 className={`mb-2 ${sectionLabel}`}>Meditation ({TREND_DAYS}d)</h2>
-              <LineChart points={meditationTrend} color="stroke-[#C79233]" formatValue={(v) => `${v}min`} />
+              <LineChart points={meditationTrend} color="stroke-amber" formatValue={(v) => `${v}min`} />
             </div>
           )}
         </div>
@@ -139,7 +139,7 @@ export default function Insights() {
         <div className="flex flex-col gap-6">
           <div className={card}>
             <h2 className={`mb-2 ${sectionLabel}`}>Summary</h2>
-            <p className="text-sm text-ink dark:text-cream">{insights.summary}</p>
+            <p className="text-sm text-ink dark:text-paper">{insights.summary}</p>
           </div>
 
           {insights.highlights.length > 0 && (
@@ -147,7 +147,7 @@ export default function Insights() {
               <h2 className={`mb-2 ${sectionLabel}`}>Highlights</h2>
               <ul className="flex flex-col gap-1.5">
                 {insights.highlights.map((h, i) => (
-                  <li key={i} className="text-sm text-ink dark:text-cream">
+                  <li key={i} className="text-sm text-ink dark:text-paper">
                     • {h}
                   </li>
                 ))}
@@ -160,7 +160,7 @@ export default function Insights() {
               <h2 className={`mb-2 ${sectionLabel}`}>Suggestions</h2>
               <ul className="flex flex-col gap-1.5">
                 {insights.suggestions.map((s, i) => (
-                  <li key={i} className="text-sm text-sage">
+                  <li key={i} className="text-sm text-bloom">
                     • {s}
                   </li>
                 ))}

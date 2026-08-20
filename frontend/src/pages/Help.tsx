@@ -56,7 +56,7 @@ export default function Help() {
         {SECTIONS.map((section) => (
           <div key={section.title} className={card}>
             <h2 className={`mb-1 ${sectionLabel}`}>{section.title}</h2>
-            <p className="text-sm text-ink dark:text-cream">{section.body}</p>
+            <p className="text-sm text-ink dark:text-paper">{section.body}</p>
           </div>
         ))}
       </div>

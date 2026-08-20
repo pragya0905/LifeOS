@@ -99,13 +99,13 @@ export default function Dashboard() {
           {!error && !tasks && <p className={mutedText}>Loading...</p>}
           {tasks && (
             <>
-              <p className="mb-2 text-sm text-ink dark:text-cream">
+              <p className="mb-2 text-sm text-ink dark:text-paper">
                 <span className="font-medium">{pending.length}</span> pending
                 {overdue.length > 0 && (
                   <>
                     {" "}
                     ·{" "}
-                    <span className="font-medium text-terracotta">
+                    <span className="font-medium text-alert">
                       {overdue.length} overdue
                     </span>
                   </>
@@ -117,11 +117,11 @@ export default function Dashboard() {
                     const isOverdue = Boolean(task.dueDate && task.dueDate < today());
                     return (
                       <li key={task.taskId} className="flex items-center justify-between gap-2 text-sm">
-                        <span className="truncate text-ink dark:text-cream">{task.title}</span>
+                        <span className="truncate text-ink dark:text-paper">{task.title}</span>
                         <span className="flex shrink-0 items-center gap-1.5">
                           {task.dueDate && (
                             <span
-                              className={`text-xs ${isOverdue ? "font-medium text-terracotta" : "text-ink-muted dark:text-fog-muted"}`}
+                              className={`text-xs ${isOverdue ? "font-medium text-alert" : "text-ink-muted dark:text-mist-muted"}`}
                             >
                               {task.dueDate}
                               {task.dueTime ? ` ${task.dueTime}` : ""}
@@ -140,7 +140,7 @@ export default function Dashboard() {
               )}
             </>
           )}
-          <Link to="/tasks" className="mt-1 inline-block text-xs text-sage hover:underline">
+          <Link to="/tasks" className="mt-1 inline-block text-xs text-bloom hover:underline">
             Manage tasks →
           </Link>
         </div>
@@ -148,7 +148,7 @@ export default function Dashboard() {
         <div className={`flex-1 ${card}`}>
           <h2 className={`mb-2 ${sectionLabel}`}>Insights</h2>
           <p className={mutedText}>See patterns and suggestions from your recent activity.</p>
-          <Link to="/insights" className="mt-1 inline-block text-xs text-sage hover:underline">
+          <Link to="/insights" className="mt-1 inline-block text-xs text-bloom hover:underline">
             View insights →
           </Link>
         </div>

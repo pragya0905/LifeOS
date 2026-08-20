@@ -141,7 +141,7 @@ export default function Cycle() {
         <div className={`mb-6 flex items-start justify-between gap-4 ${card}`}>
           <div>
             <span className={badge}>Private to you</span>
-            <p className="mt-2 text-sm text-ink dark:text-cream">
+            <p className="mt-2 text-sm text-ink dark:text-paper">
               Log period start/end dates and symptoms here to build a cycle-length prediction
               over time — the more start dates you log, the more accurate the estimate gets.
             </p>
@@ -167,7 +167,7 @@ export default function Cycle() {
             Log at least two period start dates to see a cycle-length prediction.
           </p>
         ) : (
-          <p className="text-sm text-ink dark:text-cream">
+          <p className="text-sm text-ink dark:text-paper">
             Average cycle length: <span className="font-medium">{avgCycleDays} days</span>
             <br />
             Next period predicted around: <span className="font-medium">{nextPredicted}</span>
@@ -226,8 +226,8 @@ export default function Cycle() {
           {entries.map((entry) => (
             <li key={entry.logId} className={`flex items-center justify-between gap-3 ${card}`}>
               <div>
-                <p className="text-xs font-medium text-ink-muted dark:text-fog-muted">{entry.date}</p>
-                <p className="text-sm text-ink dark:text-cream">
+                <p className="text-xs font-medium text-ink-muted dark:text-mist-muted">{entry.date}</p>
+                <p className="text-sm text-ink dark:text-paper">
                   {EVENT_LABEL[entry.data.event as CycleEvent]}
                   {entry.data.note ? ` — ${entry.data.note}` : ""}
                 </p>

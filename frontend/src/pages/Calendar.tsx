@@ -100,7 +100,7 @@ export default function Calendar() {
             Next →
           </button>
         </div>
-        <span className="font-display text-lg font-medium text-ink dark:text-cream">{monthLabel}</span>
+        <span className="font-display text-lg font-medium text-ink dark:text-paper">{monthLabel}</span>
       </div>
 
       {error && <p className={`mb-4 ${errorText}`}>{error}</p>}
@@ -112,7 +112,7 @@ export default function Calendar() {
             {WEEKDAY_LABELS.map((label) => (
               <div
                 key={label}
-                className="bg-cream-card px-2 py-1.5 text-center text-xs font-medium uppercase tracking-wide text-ink-muted dark:bg-charcoal-card dark:text-fog-muted"
+                className="bg-paper-card px-2 py-1.5 text-center text-xs font-medium uppercase tracking-wide text-ink-muted dark:bg-ink-bg-card dark:text-mist-muted"
               >
                 {label}
               </div>
@@ -124,11 +124,11 @@ export default function Calendar() {
               return (
                 <div
                   key={key}
-                  className={`min-h-[86px] bg-cream-card p-1.5 dark:bg-charcoal-card ${
+                  className={`min-h-[86px] bg-paper-card p-1.5 dark:bg-ink-bg-card ${
                     inMonth ? "" : "opacity-40"
-                  } ${key === todayKey ? "ring-1 ring-inset ring-sage" : ""}`}
+                  } ${key === todayKey ? "ring-1 ring-inset ring-bloom" : ""}`}
                 >
-                  <p className="mb-1 text-xs text-ink-muted dark:text-fog-muted">{day.getDate()}</p>
+                  <p className="mb-1 text-xs text-ink-muted dark:text-mist-muted">{day.getDate()}</p>
                   <div className="flex flex-col gap-0.5">
                     {dayTasks.slice(0, 3).map((task) => (
                       <span
@@ -140,7 +140,7 @@ export default function Calendar() {
                       </span>
                     ))}
                     {dayTasks.length > 3 && (
-                      <span className="text-[10px] text-ink-muted dark:text-fog-muted">
+                      <span className="text-[10px] text-ink-muted dark:text-mist-muted">
                         +{dayTasks.length - 3} more
                       </span>
                     )}
@@ -151,7 +151,7 @@ export default function Calendar() {
           </div>
         </div>
       )}
-      <Link to="/tasks" className="mt-3 inline-block text-xs text-sage hover:underline">
+      <Link to="/tasks" className="mt-3 inline-block text-xs text-bloom hover:underline">
         Manage tasks →
       </Link>
     </div>

@@ -48,7 +48,7 @@ function DoneCheck({ done, label }: { done: boolean; label: string }) {
       readOnly
       disabled
       aria-label={`${label}: ${done ? "done" : "not done"} today`}
-      className="h-4 w-4 rounded border-stone text-sage accent-sage disabled:opacity-100 dark:border-stone-dark"
+      className="h-4 w-4 rounded border-stone text-bloom accent-bloom disabled:opacity-100 dark:border-stone-dark"
     />
   );
 }
@@ -316,7 +316,7 @@ export default function TodayHabits() {
 
   const sleepDuration = computeSleepDuration(bedTime, wakeTime);
 
-  const rowLabelClass = "px-3 py-3 text-sm font-medium text-ink dark:text-cream";
+  const rowLabelClass = "px-3 py-3 text-sm font-medium text-ink dark:text-paper";
   const detailCellClass = "px-3 py-3";
 
   function updateGoalDraft(metric: GoalMetric, value: string) {
@@ -528,7 +528,7 @@ export default function TodayHabits() {
                     <DoneCheck done={journaledToday} label="Journal" />
                   </td>
                   <td className={detailCellClass}>
-                    <Link to="/journal" className="text-sm text-sage hover:underline">
+                    <Link to="/journal" className="text-sm text-bloom hover:underline">
                       {journaledToday ? "View today's entry" : "Write today's entry"} →
                     </Link>
                   </td>
@@ -545,7 +545,7 @@ export default function TodayHabits() {
             >
               {saving ? "Saving..." : "Save habits"}
             </button>
-            {saved && <span className="text-sm text-sage">Saved ✓</span>}
+            {saved && <span className="text-sm text-bloom">Saved ✓</span>}
           </div>
         </>
       )}

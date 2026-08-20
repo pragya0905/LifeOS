@@ -27,7 +27,7 @@ export default function SignUp() {
 
   return (
     <div className="mx-auto mt-20 w-full max-w-sm px-4">
-      <h1 className="font-display mb-8 text-3xl font-medium text-ink dark:text-cream">
+      <h1 className="font-display mb-8 text-3xl font-medium text-ink dark:text-paper">
         Create your LifeOs account
       </h1>
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -60,9 +60,9 @@ export default function SignUp() {
           {submitting ? "Creating account..." : "Sign up"}
         </button>
       </form>
-      <p className="mt-6 text-sm text-ink-muted dark:text-fog-muted">
+      <p className="mt-6 text-sm text-ink-muted dark:text-mist-muted">
         Already have an account?{" "}
-        <Link to="/login" className="text-sage hover:underline">
+        <Link to="/login" className="text-bloom hover:underline">
           Log in
         </Link>
       </p>

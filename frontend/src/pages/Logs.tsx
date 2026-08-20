@@ -356,11 +356,11 @@ export default function Logs() {
             <li key={entry.logId} className={`flex flex-col gap-3 ${card}`}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="flex items-center gap-2 text-xs font-medium text-ink-muted dark:text-fog-muted">
+                  <p className="flex items-center gap-2 text-xs font-medium text-ink-muted dark:text-mist-muted">
                     <span className={badge}>{LOG_TYPE_CONFIG[entry.logType].label}</span>
                     {entry.date}
                   </p>
-                  <p className="text-sm text-ink dark:text-cream">
+                  <p className="text-sm text-ink dark:text-paper">
                     {summarize(entry.logType, entry.data)}
                   </p>
                 </div>

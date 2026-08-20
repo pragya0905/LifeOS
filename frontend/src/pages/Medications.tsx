@@ -228,7 +228,7 @@ export default function Medications() {
                 const status = logStatuses[medication.medicationId];
                 return (
                   <li key={medication.medicationId} className={`flex items-center justify-between gap-3 ${card}`}>
-                    <span className="text-sm font-medium text-ink dark:text-cream">
+                    <span className="text-sm font-medium text-ink dark:text-paper">
                       {medication.name}
                     </span>
                     <div className="flex gap-1.5">
@@ -274,8 +274,8 @@ export default function Medications() {
                 return (
                   <li key={medication.medicationId} className={`flex items-center justify-between gap-3 ${card}`}>
                     <div>
-                      <p className="text-sm font-medium text-ink dark:text-cream">{medication.name}</p>
-                      <p className="text-xs text-ink-muted dark:text-fog-muted">
+                      <p className="text-sm font-medium text-ink dark:text-paper">{medication.name}</p>
+                      <p className="text-xs text-ink-muted dark:text-mist-muted">
                         {medication.startDate} → {medication.endDate} ({medication.durationDays} days)
                         {adherence !== null && (
                           <>
@@ -283,10 +283,10 @@ export default function Medications() {
                             <span
                               className={
                                 adherence >= 80
-                                  ? "text-sage"
+                                  ? "text-bloom"
                                   : adherence >= 50
-                                    ? "text-[#8A6A22] dark:text-[#E3C878]"
-                                    : "text-terracotta"
+                                    ? "text-amber-ink dark:text-amber-ink-dark"
+                                    : "text-alert"
                               }
                             >
                               {adherence}% adherence

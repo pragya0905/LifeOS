@@ -43,7 +43,7 @@ export default function ExtractionLedger() {
         <h2 className={sectionLabel}>Extraction ledger</h2>
         <span className={badge}>JSON patch</span>
       </div>
-      <p className="mb-2 text-sm font-medium text-ink dark:text-cream">
+      <p className="mb-2 text-sm font-medium text-ink dark:text-paper">
         What the model wrote to today
       </p>
       {loading ? (
@@ -60,7 +60,7 @@ export default function ExtractionLedger() {
       ) : (
         <ul className="flex flex-col gap-1">
           {parts.map((part, i) => (
-            <li key={i} className="text-sm text-ink-muted dark:text-fog-muted">
+            <li key={i} className="text-sm text-ink-muted dark:text-mist-muted">
               • {part}
             </li>
           ))}

@@ -30,11 +30,11 @@ export default function Login() {
 
   return (
     <div className="mx-auto mt-20 w-full max-w-sm px-4">
-      <h1 className="font-display mb-8 text-3xl font-medium text-ink dark:text-cream">
+      <h1 className="font-display mb-8 text-3xl font-medium text-ink dark:text-paper">
         Log in to LifeOs
       </h1>
       {justConfirmed && (
-        <p className="mb-4 text-sm text-sage">Email verified — you can log in now.</p>
+        <p className="mb-4 text-sm text-bloom">Email verified — you can log in now.</p>
       )}
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div>
@@ -62,9 +62,9 @@ export default function Login() {
           {submitting ? "Logging in..." : "Log in"}
         </button>
       </form>
-      <p className="mt-6 text-sm text-ink-muted dark:text-fog-muted">
+      <p className="mt-6 text-sm text-ink-muted dark:text-mist-muted">
         Don't have an account?{" "}
-        <Link to="/signup" className="text-sage hover:underline">
+        <Link to="/signup" className="text-bloom hover:underline">
           Sign up
         </Link>
       </p>

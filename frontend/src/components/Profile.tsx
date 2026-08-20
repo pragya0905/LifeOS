@@ -76,7 +76,7 @@ export default function Profile() {
               >
                 {saving ? "Saving..." : "Save"}
               </button>
-              {saved && <span className="text-sm text-sage">Saved ✓</span>}
+              {saved && <span className="text-sm text-bloom">Saved ✓</span>}
             </div>
           </div>
           {error && <p className={errorText}>{error}</p>}

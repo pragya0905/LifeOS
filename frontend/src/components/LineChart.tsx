@@ -11,7 +11,7 @@ export interface LineChartPoint {
 // pulling in a charting library for what's a handful of simple sparkline-style views.
 export default function LineChart({
   points,
-  color = "stroke-sage",
+  color = "stroke-bloom",
   formatValue = (v: number) => String(v),
 }: {
   points: LineChartPoint[];
@@ -19,7 +19,7 @@ export default function LineChart({
   formatValue?: (value: number) => string;
 }) {
   if (points.length === 0) {
-    return <p className="text-xs text-ink-muted dark:text-fog-muted">Not enough data yet.</p>;
+    return <p className="text-xs text-ink-muted dark:text-mist-muted">Not enough data yet.</p>;
   }
 
   const values = points.map((p) => p.value);
@@ -53,7 +53,7 @@ export default function LineChart({
           <circle key={i} cx={c.x} cy={c.y} r={2} className={color} />
         ))}
       </svg>
-      <div className="mt-1 flex justify-between text-[10px] text-ink-muted dark:text-fog-muted">
+      <div className="mt-1 flex justify-between text-[10px] text-ink-muted dark:text-mist-muted">
         <span>
           {first.date} · {formatValue(first.value)}
         </span>

@@ -5,31 +5,54 @@
    purely following the OS's prefers-color-scheme. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ---------------------------------------------------------------------------
+   "Ink & Bloom" — LifeOs's design system.
+
+   Neutrals read as ink on paper (a plum-tinted near-black on a warm
+   blush-white, inverted for dark mode) rather than the flat grey/cream most
+   apps default to. The one accent, "bloom" (coral), stands for the app's
+   central verb — you write in it, water it, keep it up — and never competes
+   with the two separate semantic colors (amber/alert) used for priority and
+   status, which stay distinct so "brand" and "warning" are never the same hue.
+--------------------------------------------------------------------------- */
 @theme {
-  --font-display: "Fraunces", ui-serif, serif;
+  --font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 
-  --color-cream: #f7f3ec;
-  --color-cream-card: #fffdf8;
-  --color-charcoal: #1b1815;
-  --color-charcoal-card: #252220;
+  /* surfaces */
+  --color-paper: #fbf7f6;
+  --color-paper-card: #ffffff;
+  --color-ink-bg: #191320;
+  --color-ink-bg-card: #221a2b;
 
-  --color-ink: #2a2620;
-  --color-ink-muted: #746b5c;
-  --color-fog: #b9b0a0;
-  --color-fog-muted: #8a8172;
+  /* text */
+  --color-ink: #241b2e;
+  --color-ink-muted: #6b5f72;
+  --color-mist: #f3eef0;
+  --color-mist-muted: #b3a6ba;
 
-  --color-stone: #e4ddcd;
-  --color-stone-dark: #3a3430;
+  /* borders */
+  --color-stone: #e7dee9;
+  --color-stone-dark: #332a3b;
 
-  --color-sage: #6b7a5e;
-  --color-sage-light: #93a183;
-  --color-sage-soft: #e7ebdf;
-  --color-sage-soft-dark: #333a2b;
+  /* brand accent — coral "bloom" */
+  --color-bloom: #ff6f5e;
+  --color-bloom-light: #ff8a7a;
+  --color-bloom-soft: #ffe4df;
+  --color-bloom-soft-dark: #4a2620;
 
-  --color-terracotta: #b0654a;
-  --color-terracotta-soft: #f3e2da;
-  --color-terracotta-soft-dark: #402a22;
+  /* semantic — danger / high priority */
+  --color-alert: #e2493a;
+  --color-alert-light: #ff9478;
+  --color-alert-soft: #fbe2de;
+  --color-alert-soft-dark: #3d211d;
+
+  /* semantic — warning / medium priority */
+  --color-amber: #d98b2b;
+  --color-amber-soft: #fbead1;
+  --color-amber-soft-dark: #3d2e12;
+  --color-amber-ink: #8a5a17;
+  --color-amber-ink-dark: #f0be72;
 
   --animate-fade-in-up: fade-in-up 0.35s ease-out both;
   --animate-pop: pop 0.25s ease-out both;
@@ -62,11 +85,11 @@
 
 body {
   font-family: var(--font-sans);
-  background-color: var(--color-cream);
+  background-color: var(--color-paper);
   color: var(--color-ink);
 }
 
 :root.dark body {
-  background-color: var(--color-charcoal);
-  color: var(--color-cream);
+  background-color: var(--color-ink-bg);
+  color: var(--color-mist);
 }

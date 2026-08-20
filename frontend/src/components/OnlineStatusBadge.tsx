@@ -7,9 +7,9 @@ export default function OnlineStatusBadge() {
   return (
     <span
       role="status"
-      className="flex items-center gap-1.5 rounded-full bg-terracotta-soft px-2.5 py-1 text-xs font-medium text-terracotta dark:bg-terracotta-soft-dark dark:text-[#D89478]"
+      className="flex items-center gap-1.5 rounded-full bg-alert-soft px-2.5 py-1 text-xs font-medium text-alert dark:bg-alert-soft-dark dark:text-alert-light"
     >
-      <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-terracotta" />
+      <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-alert" />
       Offline
     </span>
   );

@@ -123,12 +123,12 @@ export default function DataExport() {
         <head>
           <title>LifeOs export — ${todayLocal()}</title>
           <style>
-            body { font-family: system-ui, sans-serif; color: #2a2620; padding: 24px; }
+            body { font-family: system-ui, sans-serif; color: #241b2e; padding: 24px; }
             h1 { font-size: 20px; }
             h2 { font-size: 15px; margin-top: 28px; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
             table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
             th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #eee; vertical-align: top; }
-            th { color: #746b5c; font-weight: 600; }
+            th { color: #6b5f72; font-weight: 600; }
             @media print { h2 { break-before: auto; } tr { break-inside: avoid; } }
           </style>
         </head>

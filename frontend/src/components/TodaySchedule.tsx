@@ -6,9 +6,9 @@ import type { Schedule, TaskPriority } from "../types";
 import { card, errorText, mutedText, sectionLabel } from "./ui";
 
 const PRIORITY_BADGE: Record<TaskPriority, string> = {
-  Low: "bg-stone text-ink-muted dark:bg-stone-dark dark:text-fog-muted",
-  Medium: "bg-[#F0E4C8] text-[#8A6A22] dark:bg-[#4A3D1E] dark:text-[#E3C878]",
-  High: "bg-terracotta-soft text-terracotta dark:bg-terracotta-soft-dark dark:text-[#D89478]",
+  Low: "bg-stone text-ink-muted dark:bg-stone-dark dark:text-mist-muted",
+  Medium: "bg-amber-soft text-amber-ink dark:bg-amber-soft-dark dark:text-amber-ink-dark",
+  High: "bg-alert-soft text-alert dark:bg-alert-soft-dark dark:text-alert-light",
 };
 
 function today(): string {
@@ -50,7 +50,7 @@ export default function TodaySchedule() {
     <div className={card}>
       <div className="mb-3 flex items-center justify-between">
         <h2 className={sectionLabel}>Today's schedule ({today()})</h2>
-        <Link to="/tasks" className="text-xs text-sage hover:underline">
+        <Link to="/tasks" className="text-xs text-bloom hover:underline">
           Manage tasks
         </Link>
       </div>
@@ -68,13 +68,13 @@ export default function TodaySchedule() {
             >
               <div>
                 <p
-                  className={`text-sm font-medium text-ink dark:text-cream ${
+                  className={`text-sm font-medium text-ink dark:text-paper ${
                     task.status === "done" ? "line-through opacity-60" : ""
                   }`}
                 >
                   {task.title}
                 </p>
-                <p className="text-xs text-ink-muted dark:text-fog-muted">
+                <p className="text-xs text-ink-muted dark:text-mist-muted">
                   {task.scheduleTime ?? "No set time"}
                 </p>
               </div>

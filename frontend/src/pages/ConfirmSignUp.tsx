@@ -42,7 +42,7 @@ export default function ConfirmSignUp() {
 
   return (
     <div className="mx-auto mt-20 w-full max-w-sm px-4">
-      <h1 className="font-display mb-2 text-3xl font-medium text-ink dark:text-cream">
+      <h1 className="font-display mb-2 text-3xl font-medium text-ink dark:text-paper">
         Verify your email
       </h1>
       <p className={`mb-8 ${mutedText}`}>Enter the 6-digit code we sent to your email address.</p>
@@ -69,16 +69,16 @@ export default function ConfirmSignUp() {
           />
         </div>
         {error && <p className={errorText}>{error}</p>}
-        {info && <p className="text-sm text-sage">{info}</p>}
+        {info && <p className="text-sm text-bloom">{info}</p>}
         <button type="submit" disabled={submitting} className={`w-full ${primaryButton}`}>
           {submitting ? "Verifying..." : "Verify"}
         </button>
-        <button type="button" onClick={handleResend} className="text-sm text-sage hover:underline">
+        <button type="button" onClick={handleResend} className="text-sm text-bloom hover:underline">
           Resend code
         </button>
       </form>
-      <p className="mt-6 text-sm text-ink-muted dark:text-fog-muted">
-        <Link to="/login" className="text-sage hover:underline">
+      <p className="mt-6 text-sm text-ink-muted dark:text-mist-muted">
+        <Link to="/login" className="text-bloom hover:underline">
           Back to login
         </Link>
       </p>

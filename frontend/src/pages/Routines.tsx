@@ -48,8 +48,8 @@ const ROUTINE_TEMPLATES: { label: string; category: RoutineCategory; name: strin
   },
 ];
 
-const pillButtonDone = "border-sage bg-sage text-cream-card";
-const pillButtonSkipped = "border-fog-muted bg-fog-muted text-cream-card";
+const pillButtonDone = "border-bloom bg-bloom text-paper-card";
+const pillButtonSkipped = "border-mist-muted bg-mist-muted text-paper-card";
 
 function today(): string {
   return todayLocal();
@@ -240,9 +240,9 @@ export default function Routines() {
                 return (
                 <li key={routine.routineId} className={card}>
                   <div className="mb-2 flex items-center justify-between">
-                    <p className="text-sm font-medium text-ink dark:text-cream">
+                    <p className="text-sm font-medium text-ink dark:text-paper">
                       {routine.name}{" "}
-                      <span className="font-normal text-ink-muted dark:text-fog-muted">
+                      <span className="font-normal text-ink-muted dark:text-mist-muted">
                         ({CATEGORY_LABEL[routine.category]})
                       </span>{" "}
                       <span className={badge}>
@@ -264,7 +264,7 @@ export default function Routines() {
                       const status = stepStatuses[key];
                       return (
                         <li key={key} className="flex items-center justify-between gap-3">
-                          <span className="text-sm text-ink-muted dark:text-fog-muted">{step}</span>
+                          <span className="text-sm text-ink-muted dark:text-mist-muted">{step}</span>
                           <div className="flex gap-1.5">
                             <button
                               type="button"

@@ -92,13 +92,13 @@ function WishCard({
     <li className={`flex flex-col gap-3 ${card} ${wish.status !== "active" ? "opacity-60" : ""}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className={`font-medium text-ink dark:text-cream ${wish.status === "abandoned" ? "line-through" : ""}`}>
+          <p className={`font-medium text-ink dark:text-paper ${wish.status === "abandoned" ? "line-through" : ""}`}>
             {wish.title}
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <span className={badge}>{WISH_TYPE_LABEL[wish.type]}</span>
             {wish.targetDate && (
-              <span className="text-xs text-ink-muted dark:text-fog-muted">
+              <span className="text-xs text-ink-muted dark:text-mist-muted">
                 Due {wish.targetDate}
                 {daysUntil(wish.targetDate) >= 0
                   ? ` (${daysUntil(wish.targetDate)}d left)`
@@ -162,9 +162,9 @@ function WishCard({
                   type="checkbox"
                   checked={m.done}
                   onChange={() => toggleMilestone(m.id)}
-                  className="h-4 w-4 rounded border-stone text-sage accent-sage dark:border-stone-dark"
+                  className="h-4 w-4 rounded border-stone text-bloom accent-bloom dark:border-stone-dark"
                 />
-                <span className={`text-sm ${m.done ? "text-ink-muted line-through dark:text-fog-muted" : "text-ink dark:text-cream"}`}>
+                <span className={`text-sm ${m.done ? "text-ink-muted line-through dark:text-mist-muted" : "text-ink dark:text-paper"}`}>
                   {m.text}
                 </span>
               </li>

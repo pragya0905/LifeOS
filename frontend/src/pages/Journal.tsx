@@ -208,7 +208,7 @@ export default function Journal() {
             className={input}
           />
           {existingEntry && (
-            <p className="mt-1 text-xs text-sage">
+            <p className="mt-1 text-xs text-bloom">
               Editing the existing entry for this date — only one entry per day is allowed.
             </p>
           )}
@@ -224,7 +224,7 @@ export default function Journal() {
                 onClick={() => selectMood(rating)}
                 title={MOOD_LABELS[rating]}
                 className={`${pillButton} px-3 py-1 ${
-                  mood === rating ? "border-sage bg-sage text-cream-card" : pillButtonInactive
+                  mood === rating ? "border-bloom bg-bloom text-paper-card" : pillButtonInactive
                 }`}
               >
                 {rating}
@@ -256,14 +256,14 @@ export default function Journal() {
                 onClick={handleToggleVoice}
                 className={`${pillButton} px-3 py-1 ${
                   listening
-                    ? "border-terracotta bg-terracotta text-cream-card"
+                    ? "border-alert bg-alert text-paper-card"
                     : pillButtonInactive
                 }`}
               >
                 {listening ? "Stop listening" : "Voice input"}
               </button>
             ) : (
-              <span className="text-xs text-fog-muted">Voice input not supported in this browser</span>
+              <span className="text-xs text-mist-muted">Voice input not supported in this browser</span>
             )}
           </div>
           <textarea
@@ -274,7 +274,7 @@ export default function Journal() {
             placeholder="How did today go?"
             className={`w-full ${input}`}
           />
-          {listening && <p className="mt-1 text-xs text-terracotta">Listening...</p>}
+          {listening && <p className="mt-1 text-xs text-alert">Listening...</p>}
           {voiceError && <p className={`mt-1 text-xs ${errorText}`}>{voiceError}</p>}
         </div>
         <button type="submit" disabled={saving} className={`self-start ${primaryButton}`}>
@@ -305,18 +305,18 @@ export default function Journal() {
         <ul className="flex flex-col gap-3">
           {filteredEntries.map((entry) => (
             <li key={entry.date} className={card}>
-              <p className="mb-1 flex items-center gap-2 text-xs font-medium text-ink-muted dark:text-fog-muted">
+              <p className="mb-1 flex items-center gap-2 text-xs font-medium text-ink-muted dark:text-mist-muted">
                 {entry.date}
                 {entry.voiceInput && <span className={badge}>Voice</span>}
               </p>
-              <p className="mb-1 text-xs text-fog-muted">
+              <p className="mb-1 text-xs text-mist-muted">
                 Logged {new Date(entry.createdAt).toLocaleString()}
                 {entry.updatedAt !== entry.createdAt &&
                   ` · edited ${new Date(entry.updatedAt).toLocaleString()}`}
               </p>
-              <p className="whitespace-pre-wrap text-sm text-ink dark:text-cream">{entry.text}</p>
+              <p className="whitespace-pre-wrap text-sm text-ink dark:text-paper">{entry.text}</p>
               {formatDetection(entry.aiExtracted) && (
-                <p className="mt-1 text-xs text-sage">{formatDetection(entry.aiExtracted)}</p>
+                <p className="mt-1 text-xs text-bloom">{formatDetection(entry.aiExtracted)}</p>
               )}
             </li>
           ))}

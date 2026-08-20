@@ -26,7 +26,7 @@ export default function DeleteAccount() {
   }
 
   return (
-    <div className={`${card} border-terracotta/40`}>
+    <div className={`${card} border-alert/40`}>
       <h2 className={`mb-2 ${sectionLabel}`}>Danger zone</h2>
       {!open ? (
         <>
@@ -37,14 +37,14 @@ export default function DeleteAccount() {
           <button
             type="button"
             onClick={() => setOpen(true)}
-            className="rounded-full border border-terracotta px-3 py-1.5 text-xs font-medium text-terracotta transition-colors hover:bg-terracotta-soft dark:hover:bg-terracotta-soft-dark"
+            className="rounded-full border border-alert px-3 py-1.5 text-xs font-medium text-alert transition-colors hover:bg-alert-soft dark:hover:bg-alert-soft-dark"
           >
             Delete account
           </button>
         </>
       ) : (
         <div className="flex flex-col gap-3">
-          <p className="text-sm text-terracotta">
+          <p className="text-sm text-alert">
             This permanently deletes everything — there is no undo. Type{" "}
             <span className="font-mono font-semibold">{CONFIRM_TEXT}</span> to confirm.
           </p>
@@ -61,7 +61,7 @@ export default function DeleteAccount() {
               type="button"
               disabled={confirmText !== CONFIRM_TEXT || deleting}
               onClick={handleDelete}
-              className="rounded-full bg-terracotta px-4 py-1.5 text-xs font-medium text-cream-card transition-colors hover:opacity-90 disabled:opacity-50"
+              className="rounded-full bg-alert px-4 py-1.5 text-xs font-medium text-paper-card transition-colors hover:opacity-90 disabled:opacity-50"
             >
               {deleting ? "Deleting..." : "Permanently delete my account"}
             </button>
@@ -73,7 +73,7 @@ export default function DeleteAccount() {
                 setConfirmText("");
                 setError(null);
               }}
-              className="rounded-full border border-stone px-4 py-1.5 text-xs text-ink transition-colors hover:bg-stone/40 dark:border-stone-dark dark:text-cream dark:hover:bg-stone-dark/40"
+              className="rounded-full border border-stone px-4 py-1.5 text-xs text-ink transition-colors hover:bg-stone/40 dark:border-stone-dark dark:text-paper dark:hover:bg-stone-dark/40"
             >
               Cancel
             </button>

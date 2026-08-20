@@ -7,9 +7,9 @@ export type RingTrend = "up" | "down" | "flat";
 
 const TREND_GLYPH: Record<RingTrend, string> = { up: "↑", down: "↓", flat: "–" };
 const TREND_COLOR: Record<RingTrend, string> = {
-  up: "text-sage",
-  down: "text-terracotta",
-  flat: "text-ink-muted dark:text-fog-muted",
+  up: "text-bloom",
+  down: "text-alert",
+  flat: "text-ink-muted dark:text-mist-muted",
 };
 
 export default function Ring({
@@ -32,7 +32,7 @@ export default function Ring({
   const progress = target > 0 ? Math.min(value / target, 1) : 0;
   const offset = CIRCUMFERENCE * (1 - progress);
   const progressColorClass =
-    progress >= 0.67 ? "stroke-sage" : progress >= 0.34 ? "stroke-[#C79233]" : "stroke-terracotta";
+    progress >= 0.67 ? "stroke-bloom" : progress >= 0.34 ? "stroke-amber" : "stroke-alert";
   const percent = Math.round(progress * 100);
 
   return (
@@ -68,29 +68,29 @@ export default function Ring({
         </svg>
         <span
           aria-hidden="true"
-          className="absolute inset-0 flex items-center justify-center text-[9px] font-semibold text-ink-muted dark:text-fog-muted"
+          className="absolute inset-0 flex items-center justify-center text-[9px] font-semibold text-ink-muted dark:text-mist-muted"
         >
           {percent}%
         </span>
       </div>
       <div className="min-w-0">
-        <p className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-[0.14em] text-ink-muted dark:text-fog-muted">
+        <p className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-[0.14em] text-ink-muted dark:text-mist-muted">
           {label}
           {Boolean(streakDays && streakDays >= 2) && (
             <span
-              className="rounded-full bg-sage-soft px-1.5 py-px normal-case tracking-normal text-sage dark:bg-sage-soft-dark dark:text-sage-light"
+              className="rounded-full bg-bloom-soft px-1.5 py-px normal-case tracking-normal text-bloom dark:bg-bloom-soft-dark dark:text-bloom-light"
               title={`${streakDays}-day streak`}
             >
               {streakDays}d
             </span>
           )}
         </p>
-        <p className="truncate text-base font-semibold tracking-tight text-ink dark:text-cream">
+        <p className="truncate text-base font-semibold tracking-tight text-ink dark:text-paper">
           {displayValue}
         </p>
         <div className="flex items-center gap-1.5">
           {sublabel && (
-            <p className="truncate text-[11px] text-ink-muted dark:text-fog-muted">{sublabel}</p>
+            <p className="truncate text-[11px] text-ink-muted dark:text-mist-muted">{sublabel}</p>
           )}
           {trend && (
             <span

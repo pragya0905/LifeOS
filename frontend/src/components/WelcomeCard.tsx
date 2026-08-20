@@ -20,10 +20,10 @@ export default function WelcomeCard() {
     <div className={`mb-6 flex items-start justify-between gap-4 ${card}`}>
       <div>
         <span className={badge}>Welcome</span>
-        <p className="mt-2 text-sm text-ink dark:text-cream">
+        <p className="mt-2 text-sm text-ink dark:text-paper">
           LifeOs tracks habits, tasks, and journal entries in one place. There are two ways to
           log something: type or dictate it in{" "}
-          <Link to="/journal" className="text-sage hover:underline">
+          <Link to="/journal" className="text-bloom hover:underline">
             Journal
           </Link>{" "}
           and AI fills in the matching fields automatically, or edit values directly in

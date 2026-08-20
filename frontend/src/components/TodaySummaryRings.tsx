@@ -137,7 +137,7 @@ export default function TodaySummaryRings() {
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-stone bg-cream-card p-4 shadow-sm dark:border-stone-dark dark:bg-charcoal-card">
+      <div className="rounded-2xl border border-stone bg-paper-card p-4 shadow-sm dark:border-stone-dark dark:bg-ink-bg-card">
         <p className={mutedText}>Loading...</p>
       </div>
     );
@@ -150,7 +150,7 @@ export default function TodaySummaryRings() {
     "flex items-center gap-3 px-4 py-3 border-stone dark:border-stone-dark sm:border-r last:border-r-0 border-b sm:border-b-0 last:border-b-0";
 
   return (
-    <div className="grid grid-cols-2 rounded-2xl border border-stone bg-cream-card shadow-sm dark:border-stone-dark dark:bg-charcoal-card sm:grid-cols-4">
+    <div className="grid grid-cols-2 rounded-2xl border border-stone bg-paper-card shadow-sm dark:border-stone-dark dark:bg-ink-bg-card sm:grid-cols-4">
       <div className={tileClass}>
         <Ring
           label="Water"

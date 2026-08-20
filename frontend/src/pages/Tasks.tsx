@@ -75,30 +75,30 @@ function TaskTimeline({ task }: { task: Task }) {
     <div className="flex flex-col gap-1">
       <div className="relative h-1.5 overflow-visible rounded-full bg-stone dark:bg-stone-dark">
         <div
-          className="absolute inset-y-0 left-0 rounded-full bg-sage/50"
+          className="absolute inset-y-0 left-0 rounded-full bg-bloom/50"
           style={{ width: `${triggerPct}%` }}
         />
         <div
-          className="absolute -top-[3px] h-3 w-0.5 rounded-sm bg-[#C79233]"
+          className="absolute -top-[3px] h-3 w-0.5 rounded-sm bg-amber"
           style={{ left: `${triggerPct}%` }}
           title="Priority forced High from here"
         />
         <div
-          className="absolute -top-[3px] right-0 h-3 w-0.5 rounded-sm bg-terracotta"
+          className="absolute -top-[3px] right-0 h-3 w-0.5 rounded-sm bg-alert"
           title="Due"
         />
       </div>
-      <div className="flex justify-between text-[10px] uppercase tracking-[0.1em] text-fog-muted">
+      <div className="flex justify-between text-[10px] uppercase tracking-[0.1em] text-mist-muted">
         <span>Now</span>
         <span>Due {dueLabel}</span>
       </div>
       {forced && !staleForced && (
-        <p className="mt-1 rounded-lg border border-[#E3C878]/50 bg-[#F0E4C8]/40 px-2.5 py-1.5 text-xs text-[#8A6A22] dark:border-[#4A3D1E] dark:bg-[#4A3D1E]/40 dark:text-[#E3C878]">
+        <p className="mt-1 rounded-lg border border-amber/50 bg-amber-soft/40 px-2.5 py-1.5 text-xs text-amber-ink dark:border-amber-soft-dark dark:bg-amber-soft-dark/40 dark:text-amber-ink-dark">
           Forced to High — {task.estimatedHours}h of work no longer fits before {dueLabel}
         </p>
       )}
       {staleForced && (
-        <p className="mt-1 rounded-lg border border-stone bg-stone/30 px-2.5 py-1.5 text-xs text-ink-muted dark:border-stone-dark dark:bg-stone-dark/30 dark:text-fog-muted">
+        <p className="mt-1 rounded-lg border border-stone bg-stone/30 px-2.5 py-1.5 text-xs text-ink-muted dark:border-stone-dark dark:bg-stone-dark/30 dark:text-mist-muted">
           {task.estimatedHours}h of work no longer fits before {dueLabel} — priority is still{" "}
           {task.priority} since it hasn't been re-suggested since this deadline got close.
         </p>
@@ -114,9 +114,9 @@ const STATUS_CYCLE: Record<TaskStatus, TaskStatus> = {
 };
 
 const PRIORITY_DOT_COLOR: Record<TaskPriority, string> = {
-  Low: "bg-fog-muted",
-  Medium: "bg-[#C79233]",
-  High: "bg-terracotta",
+  Low: "bg-mist-muted",
+  Medium: "bg-amber",
+  High: "bg-alert",
 };
 
 // A single click-to-cycle control (todo -> in_progress -> done -> todo) instead of a
@@ -127,7 +127,7 @@ function StatusToggle({ status, onCycle }: { status: TaskStatus; onCycle: () => 
       type="button"
       onClick={onCycle}
       title={`Status: ${STATUS_LABEL[status]} — click to advance`}
-      className="group flex items-center gap-1.5 rounded-full border border-stone py-1 pl-1 pr-2.5 text-xs font-medium text-ink transition-colors hover:bg-stone/40 dark:border-stone-dark dark:text-cream dark:hover:bg-stone-dark/40"
+      className="group flex items-center gap-1.5 rounded-full border border-stone py-1 pl-1 pr-2.5 text-xs font-medium text-ink transition-colors hover:bg-stone/40 dark:border-stone-dark dark:text-paper dark:hover:bg-stone-dark/40"
     >
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
         <circle
@@ -137,10 +137,10 @@ function StatusToggle({ status, onCycle }: { status: TaskStatus; onCycle: () => 
           fill={status === "done" ? "currentColor" : "none"}
           className={
             status === "done"
-              ? "text-sage"
+              ? "text-bloom"
               : status === "in_progress"
-                ? "text-[#C79233]"
-                : "text-fog-muted"
+                ? "text-amber"
+                : "text-mist-muted"
           }
           strokeWidth={status === "done" ? 0 : 1.75}
           stroke="currentColor"
@@ -149,7 +149,7 @@ function StatusToggle({ status, onCycle }: { status: TaskStatus; onCycle: () => 
         {status === "done" && (
           <path
             d="M5 8.2l2 2 4-4.4"
-            stroke="var(--color-cream-card)"
+            stroke="var(--color-paper-card)"
             strokeWidth="1.6"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -185,7 +185,7 @@ function DeadlineRing({ task }: { task: Task }) {
   const RADIUS = (SIZE - STROKE) / 2;
   const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
   const offset = CIRCUMFERENCE * (1 - fraction);
-  const colorClass = fraction >= 0.67 ? "stroke-terracotta" : fraction >= 0.34 ? "stroke-[#C79233]" : "stroke-sage";
+  const colorClass = fraction >= 0.67 ? "stroke-alert" : fraction >= 0.34 ? "stroke-amber" : "stroke-bloom";
 
   return (
     <div
@@ -286,7 +286,7 @@ function TaskCard({
   return (
     <li className="relative animate-fade-in-up overflow-hidden rounded-2xl">
       <div
-        className="absolute inset-0 flex items-center gap-2 rounded-2xl bg-sage px-5 text-cream-card"
+        className="absolute inset-0 flex items-center gap-2 rounded-2xl bg-bloom px-5 text-paper-card"
         aria-hidden="true"
         style={{ opacity: Math.min(swipeX / SWIPE_THRESHOLD, 1) }}
       >
@@ -312,10 +312,10 @@ function TaskCard({
         }}
         className={`relative flex flex-col gap-3 border-l-4 transition-shadow hover:shadow-md ${card} ${
           task.priority === "High"
-            ? "border-l-terracotta"
+            ? "border-l-alert"
             : task.priority === "Medium"
-              ? "border-l-[#C79233]"
-              : "border-l-fog-muted"
+              ? "border-l-amber"
+              : "border-l-mist-muted"
         }`}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -323,18 +323,18 @@ function TaskCard({
             <DeadlineRing task={task} />
             <div className="min-w-0">
               <p
-                className={`font-medium text-ink dark:text-cream ${
+                className={`font-medium text-ink dark:text-paper ${
                   task.status === "done" ? "line-through opacity-60" : ""
                 }`}
               >
                 {task.title}
               </p>
               {task.description && (
-                <p className="mt-0.5 max-w-md text-sm text-ink-muted dark:text-fog-muted">
+                <p className="mt-0.5 max-w-md text-sm text-ink-muted dark:text-mist-muted">
                   {task.description}
                 </p>
               )}
-              <p className="text-xs text-ink-muted dark:text-fog-muted">
+              <p className="text-xs text-ink-muted dark:text-mist-muted">
                 {task.dueDate ?? "No due date"}
                 {task.dueTime ? ` ${task.dueTime}` : ""}
                 {task.estimatedHours !== undefined ? ` · ~${task.estimatedHours}h` : ""}
@@ -429,7 +429,7 @@ function TaskCard({
                 type="checkbox"
                 checked={editSuggestPriority}
                 onChange={(e) => setEditSuggestPriority(e.target.checked)}
-                className="rounded border-stone text-sage focus:ring-sage dark:border-stone-dark"
+                className="rounded border-stone text-bloom focus:ring-bloom dark:border-stone-dark"
               />
               Re-suggest priority with AI
             </label>
@@ -621,7 +621,7 @@ export default function Tasks() {
   }
 
   const selectClass =
-    "rounded-xl border border-stone bg-cream-card px-2 py-1 text-xs text-ink focus:border-sage focus:outline-none dark:border-stone-dark dark:bg-charcoal-card dark:text-cream";
+    "rounded-xl border border-stone bg-paper-card px-2 py-1 text-xs text-ink focus:border-bloom focus:outline-none dark:border-stone-dark dark:bg-ink-bg-card dark:text-paper";
 
   const filteredTasks = search.trim()
     ? tasks.filter((t) => t.title.toLowerCase().includes(search.trim().toLowerCase()))
@@ -661,7 +661,7 @@ export default function Tasks() {
                 onClick={handleToggleVoice}
                 className={`${pillButton} ${
                   listening
-                    ? "border-terracotta bg-terracotta text-cream-card"
+                    ? "border-alert bg-alert text-paper-card"
                     : pillButtonInactive
                 }`}
               >
@@ -746,7 +746,7 @@ export default function Tasks() {
             type="checkbox"
             checked={suggestPriority}
             onChange={(e) => setSuggestPriority(e.target.checked)}
-            className="rounded border-stone text-sage focus:ring-sage dark:border-stone-dark"
+            className="rounded border-stone text-bloom focus:ring-bloom dark:border-stone-dark"
           />
           Suggest with AI
         </label>
@@ -779,7 +779,7 @@ export default function Tasks() {
           {GROUP_ORDER.filter((g) => groupedTasks[g].length > 0).map((group) => (
             <div key={group}>
               <p className={`mb-2 ${sectionLabel}`}>
-                {group} <span className="normal-case text-fog-muted">({groupedTasks[group].length})</span>
+                {group} <span className="normal-case text-mist-muted">({groupedTasks[group].length})</span>
               </p>
               <ul className="flex flex-col gap-3">
                 {groupedTasks[group].map((task) => (

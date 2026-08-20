@@ -55,7 +55,7 @@ export default function WeightTrend({ entries }: { entries: LogEntry[] }) {
       {bodyFatPoints.length > 0 && (
         <div className="flex-1">
           <h2 className={`mb-2 ${sectionLabel}`}>Body fat %</h2>
-          <LineChart points={bodyFatPoints} color="stroke-terracotta" formatValue={(v) => `${v}%`} />
+          <LineChart points={bodyFatPoints} color="stroke-alert" formatValue={(v) => `${v}%`} />
         </div>
       )}
     </div>

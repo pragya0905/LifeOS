@@ -21,7 +21,7 @@ export default function ThemeToggle() {
             onClick={() => setTheme(opt.value)}
             className={`${pillButton} px-3 py-1 ${
               theme === opt.value
-                ? "border-sage bg-sage text-cream-card"
+                ? "border-bloom bg-bloom text-paper-card"
                 : pillButtonInactive
             }`}
           >

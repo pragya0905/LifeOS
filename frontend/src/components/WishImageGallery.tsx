@@ -92,7 +92,7 @@ export default function WishImageGallery({ wishId }: { wishId: string }) {
                   type="button"
                   onClick={() => handleDelete(img.key)}
                   title="Remove image"
-                  className="absolute -right-1.5 -top-1.5 hidden h-5 w-5 items-center justify-center rounded-full bg-terracotta text-xs text-cream-card group-hover:flex"
+                  className="absolute -right-1.5 -top-1.5 hidden h-5 w-5 items-center justify-center rounded-full bg-alert text-xs text-paper-card group-hover:flex"
                 >
                   ×
                 </button>
