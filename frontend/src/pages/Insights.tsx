@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useApi } from "../api/useApi";
 import LineChart from "../components/LineChart";
+import WeightTrend from "../components/WeightTrend";
 import { toLocalDateStr } from "../lib/date";
-import type { HabitLog, Insights as InsightsData } from "../types";
+import type { HabitLog, Insights as InsightsData, LogEntry } from "../types";
 import {
   card,
   errorText,
@@ -37,6 +38,7 @@ export default function Insights() {
   const [waterTrend, setWaterTrend] = useState<{ date: string; value: number }[]>([]);
   const [exerciseTrend, setExerciseTrend] = useState<{ date: string; value: number }[]>([]);
   const [meditationTrend, setMeditationTrend] = useState<{ date: string; value: number }[]>([]);
+  const [weightEntries, setWeightEntries] = useState<LogEntry[]>([]);
 
   useEffect(() => {
     let ignore = false;
@@ -45,16 +47,21 @@ export default function Insights() {
       try {
         const from = dateOffset(TREND_DAYS - 1);
         const to = dateOffset(0);
-        const data = await request<{ habits: HabitLog[] }>(`/habits?from=${from}&to=${to}`);
+        const [habitsData, weightData, bodyFatData] = await Promise.all([
+          request<{ habits: HabitLog[] }>(`/habits?from=${from}&to=${to}`),
+          request<{ entries: LogEntry[] }>(`/logs?logType=weight&from=${from}&to=${to}`),
+          request<{ entries: LogEntry[] }>(`/logs?logType=bodyFat&from=${from}&to=${to}`),
+        ]);
         if (ignore) return;
         const byType = (type: HabitLog["habitType"]) =>
-          data.habits
+          habitsData.habits
             .filter((h) => h.habitType === type)
             .map((h) => ({ date: h.date, value: h.value ?? 0 }))
             .sort((a, b) => (a.date < b.date ? -1 : 1));
         setWaterTrend(byType("water"));
         setExerciseTrend(byType("exercise"));
         setMeditationTrend(byType("meditation"));
+        setWeightEntries([...weightData.entries, ...bodyFatData.entries]);
       } catch {
         // Trend charts are a bonus view — the on-demand AI insights below still work.
       } finally {
@@ -110,6 +117,8 @@ export default function Insights() {
           )}
         </div>
       )}
+
+      {!trendLoading && <WeightTrend entries={weightEntries} />}
 
       <div className={`mb-6 flex flex-wrap items-center gap-3 ${card}`}>
         <div className="flex gap-1.5">
