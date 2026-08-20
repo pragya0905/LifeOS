@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useApi } from "../api/useApi";
 import WeightTrend from "../components/WeightTrend";
-import { todayLocal } from "../lib/date";
+import { todayLocal, toLocalDateStr } from "../lib/date";
 import type { LogEntry, LogType } from "../types";
 import {
   badge,
@@ -14,6 +14,7 @@ import {
   pageTitle,
   primaryButton,
   secondaryButton,
+  sectionLabel,
 } from "../components/ui";
 
 interface FieldConfig {
@@ -93,6 +94,14 @@ const LOG_TYPES = Object.keys(LOG_TYPE_CONFIG) as LogType[];
 
 function today(): string {
   return todayLocal();
+}
+
+function dateGroupLabel(date: string): string {
+  if (date === todayLocal()) return "Today";
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (date === toLocalDateStr(yesterday)) return "Yesterday";
+  return date;
 }
 
 function buildData(fields: FieldConfig[], raw: Record<string, string>): Record<string, unknown> {
@@ -213,6 +222,14 @@ export default function Logs() {
         !search.trim() ||
         summarize(e.logType, e.data).toLowerCase().includes(search.trim().toLowerCase()),
     );
+
+  // Already sorted date-descending, so grouping just needs to bucket consecutive same-date runs.
+  const entriesByDate: { date: string; entries: LogEntry[] }[] = [];
+  for (const entry of filteredEntries) {
+    const lastGroup = entriesByDate[entriesByDate.length - 1];
+    if (lastGroup && lastGroup.date === entry.date) lastGroup.entries.push(entry);
+    else entriesByDate.push({ date: entry.date, entries: [entry] });
+  }
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
@@ -351,57 +368,61 @@ export default function Logs() {
       ) : filteredEntries.length === 0 ? (
         <p className={mutedText}>No matching entries.</p>
       ) : (
-        <ul className="flex flex-col gap-3">
-          {filteredEntries.map((entry) => (
-            <li key={entry.logId} className={`flex flex-col gap-3 ${card}`}>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="flex items-center gap-2 text-xs font-medium text-ink-muted dark:text-mist-muted">
-                    <span className={badge}>{LOG_TYPE_CONFIG[entry.logType].label}</span>
-                    {entry.date}
-                  </p>
-                  <p className="text-sm text-ink dark:text-paper">
-                    {summarize(entry.logType, entry.data)}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => (editingId === entry.logId ? setEditingId(null) : startEdit(entry))}
-                    className={`${secondaryButton} px-2 py-1 text-xs`}
-                  >
-                    {editingId === entry.logId ? "Cancel" : "Edit"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(entry.logId)}
-                    className={`${secondaryButton} px-2 py-1 text-xs`}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
+        <div className="flex flex-col gap-5">
+          {entriesByDate.map((group) => (
+            <div key={group.date}>
+              <p className={`mb-2 ${sectionLabel}`}>{dateGroupLabel(group.date)}</p>
+              <ul className="flex flex-col gap-3">
+                {group.entries.map((entry) => (
+                  <li key={entry.logId} className={`flex flex-col gap-3 ${card}`}>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <span className={badge}>{LOG_TYPE_CONFIG[entry.logType].label}</span>
+                        <p className="mt-1 text-sm text-ink dark:text-paper">
+                          {summarize(entry.logType, entry.data)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => (editingId === entry.logId ? setEditingId(null) : startEdit(entry))}
+                          className={`${secondaryButton} px-2 py-1 text-xs`}
+                        >
+                          {editingId === entry.logId ? "Cancel" : "Edit"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(entry.logId)}
+                          className={`${secondaryButton} px-2 py-1 text-xs`}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
 
-              {editingId === entry.logId && (
-                <div className="flex flex-wrap items-end gap-3 border-t border-stone/60 pt-3 dark:border-stone-dark/60">
-                  <FieldInputs
-                    fields={LOG_TYPE_CONFIG[entry.logType].fields}
-                    values={editValues}
-                    onChange={(key, value) => setEditValues((prev) => ({ ...prev, [key]: value }))}
-                  />
-                  <button
-                    type="button"
-                    disabled={savingEdit}
-                    onClick={() => saveEdit(entry)}
-                    className={primaryButton}
-                  >
-                    {savingEdit ? "Saving..." : "Save"}
-                  </button>
-                </div>
-              )}
-            </li>
+                    {editingId === entry.logId && (
+                      <div className="flex flex-wrap items-end gap-3 border-t border-stone/60 pt-3 dark:border-stone-dark/60">
+                        <FieldInputs
+                          fields={LOG_TYPE_CONFIG[entry.logType].fields}
+                          values={editValues}
+                          onChange={(key, value) => setEditValues((prev) => ({ ...prev, [key]: value }))}
+                        />
+                        <button
+                          type="button"
+                          disabled={savingEdit}
+                          onClick={() => saveEdit(entry)}
+                          className={primaryButton}
+                        >
+                          {savingEdit ? "Saving..." : "Save"}
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
     </div>
   );
