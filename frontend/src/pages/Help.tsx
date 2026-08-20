@@ -64,7 +64,14 @@ const SECTIONS: Section[] = [
   },
   {
     title: "Medications",
-    body: "Track active medications and mark each as taken/missed per day, with a 14-day adherence percentage.",
+    body: "",
+    intro: "Track active medications and stay on top of actually taking them, not just logging them.",
+    bullets: [
+      "💊 Add a medication with an optional dosage (e.g. \"500mg\") and notes (e.g. \"take with food\") alongside its name and duration.",
+      "🔔 Set a daily reminder time and you'll get a push notification around that time each day the medication is active — skipped automatically if you've already marked it taken.",
+      "✅ Mark each active medication Taken or Missed for today with one tap.",
+      "📊 A 14-day adherence percentage shows on every medication in the full list, color-coded so a slipping streak is obvious at a glance.",
+    ],
   },
   {
     title: "Logs",

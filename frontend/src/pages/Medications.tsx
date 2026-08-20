@@ -71,6 +71,9 @@ export default function Medications() {
   const [error, setError] = useState<string | null>(null);
 
   const [name, setName] = useState("");
+  const [dosage, setDosage] = useState("");
+  const [notes, setNotes] = useState("");
+  const [timeOfDay, setTimeOfDay] = useState("");
   const [durationDays, setDurationDays] = useState(7);
   const [saving, setSaving] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
@@ -120,10 +123,20 @@ export default function Medications() {
     try {
       const medication = await request<Medication>("/medications", {
         method: "POST",
-        body: JSON.stringify({ name: name.trim(), durationDays }),
+        body: JSON.stringify({
+          name: name.trim(),
+          durationDays,
+          dosage: dosage.trim() || undefined,
+          notes: notes.trim() || undefined,
+          timeOfDay: timeOfDay || undefined,
+          timezoneOffsetMinutes: timeOfDay ? new Date().getTimezoneOffset() : undefined,
+        }),
       });
       setMedications((prev) => [medication, ...prev]);
       setName("");
+      setDosage("");
+      setNotes("");
+      setTimeOfDay("");
       setDurationDays(7);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add medication");
@@ -183,6 +196,37 @@ export default function Medications() {
             className={`w-full ${input}`}
           />
         </div>
+        <div className="flex flex-wrap gap-3">
+          <div>
+            <label className={label}>Dosage (optional)</label>
+            <input
+              type="text"
+              value={dosage}
+              onChange={(e) => setDosage(e.target.value)}
+              placeholder="e.g. 500mg"
+              className={`w-32 ${input}`}
+            />
+          </div>
+          <div>
+            <label className={label}>Reminder time (optional)</label>
+            <input
+              type="time"
+              value={timeOfDay}
+              onChange={(e) => setTimeOfDay(e.target.value)}
+              className={input}
+            />
+          </div>
+        </div>
+        <div>
+          <label className={label}>Notes (optional)</label>
+          <input
+            type="text"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="e.g. take with food"
+            className={`w-full ${input}`}
+          />
+        </div>
         <div>
           <label className={label}>Duration</label>
           <div className="flex items-center gap-2">
@@ -208,6 +252,12 @@ export default function Medications() {
             <span className={mutedText}>days</span>
           </div>
         </div>
+        {timeOfDay && (
+          <p className={mutedText}>
+            🔔 You'll get a push reminder around {timeOfDay} each day this medication is active,
+            unless you've already marked it taken.
+          </p>
+        )}
         <button type="submit" disabled={saving} className={`self-start ${primaryButton}`}>
           {saving ? "Adding..." : "Add medication"}
         </button>
@@ -230,6 +280,12 @@ export default function Medications() {
                   <li key={medication.medicationId} className={`flex flex-wrap items-center justify-between gap-3 ${card}`}>
                     <span className="text-sm font-medium text-ink dark:text-paper">
                       {medication.name}
+                      {medication.dosage && (
+                        <span className={`ml-1.5 font-normal ${mutedText}`}>{medication.dosage}</span>
+                      )}
+                      {medication.timeOfDay && (
+                        <span className={`ml-1.5 font-normal ${mutedText}`}>🔔 {medication.timeOfDay}</span>
+                      )}
                     </span>
                     <div className="flex gap-1.5">
                       <button
@@ -274,10 +330,21 @@ export default function Medications() {
                 return (
                   <li key={medication.medicationId} className={`flex flex-wrap items-center justify-between gap-3 ${card}`}>
                     <div>
-                      <p className="text-sm font-medium text-ink dark:text-paper">{medication.name}</p>
+                      <p className="text-sm font-medium text-ink dark:text-paper">
+                        {medication.name}
+                        {medication.dosage && (
+                          <span className={`ml-1.5 font-normal ${mutedText}`}>{medication.dosage}</span>
+                        )}
+                      </p>
                       <p className="text-xs text-ink-muted dark:text-mist-muted">
                         {medication.startDate} → {medication.endDate} ({medication.durationDays} days)
+                        {medication.timeOfDay && ` · 🔔 ${medication.timeOfDay}`}
                       </p>
+                      {medication.notes && (
+                        <p className="mt-0.5 text-xs italic text-ink-muted dark:text-mist-muted">
+                          {medication.notes}
+                        </p>
+                      )}
                       {adherence !== null && (
                         <span
                           className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${

@@ -71,6 +71,9 @@ export interface Medication {
   userId: string;
   medicationId: string;
   name: string;
+  dosage?: string;
+  notes?: string;
+  timeOfDay?: string;
   startDate: string;
   durationDays: number;
   endDate: string;

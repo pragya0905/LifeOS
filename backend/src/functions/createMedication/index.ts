@@ -8,6 +8,7 @@ import { computeEndDate } from "../../common/medications";
 import type { Medication } from "../../common/types";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_RE = /^\d{2}:\d{2}$/;
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -34,10 +35,25 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     return errorResponse(400, "durationDays must be a positive integer");
   }
 
+  if (body.timeOfDay !== undefined && (typeof body.timeOfDay !== "string" || !TIME_RE.test(body.timeOfDay))) {
+    return errorResponse(400, "timeOfDay must be in HH:MM format");
+  }
+  if (
+    body.timeOfDay !== undefined &&
+    (body.timezoneOffsetMinutes === undefined || typeof body.timezoneOffsetMinutes !== "number")
+  ) {
+    return errorResponse(400, "timezoneOffsetMinutes is required alongside timeOfDay");
+  }
+
   const medication: Medication = {
     userId,
     medicationId: randomUUID(),
     name,
+    dosage: typeof body.dosage === "string" && body.dosage.trim() ? body.dosage.trim() : undefined,
+    notes: typeof body.notes === "string" && body.notes.trim() ? body.notes.trim() : undefined,
+    timeOfDay: typeof body.timeOfDay === "string" ? body.timeOfDay : undefined,
+    timezoneOffsetMinutes:
+      typeof body.timezoneOffsetMinutes === "number" ? body.timezoneOffsetMinutes : undefined,
     startDate,
     durationDays,
     createdAt: new Date().toISOString(),

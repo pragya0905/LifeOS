@@ -131,6 +131,16 @@ export interface Medication {
   userId: string;
   medicationId: string;
   name: string;
+  dosage?: string;
+  notes?: string;
+  // "HH:MM" in the timezone the medication was created in, paired with
+  // timezoneOffsetMinutes (JS getTimezoneOffset() convention) so the reminder scheduler
+  // can compute today's target UTC instant without guessing the user's timezone.
+  timeOfDay?: string;
+  timezoneOffsetMinutes?: number;
+  // YYYY-MM-DD of the last date a reminder was sent for this medication — prevents
+  // re-sending within the same day across scheduler runs.
+  lastReminderSentDate?: string;
   startDate: string;
   durationDays: number;
   createdAt: string;

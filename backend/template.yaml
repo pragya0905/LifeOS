@@ -2135,6 +2135,45 @@ Resources:
             Auth:
               Authorizer: CognitoAuthorizer
 
+  MedicationReminderSchedulerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-medication-reminder-scheduler-${Environment}"
+      CodeUri: src/functions/medicationReminderScheduler/
+      Handler: index.handler
+      Timeout: 60
+      Environment:
+        Variables:
+          MEDICATIONS_TABLE_NAME: !Ref MedicationsTable
+          MEDICATION_LOGS_TABLE_NAME: !Ref MedicationLogsTable
+          PUSH_SUBSCRIPTIONS_TABLE_NAME: !Ref PushSubscriptionsTable
+          PUSH_VAPID_PRIVATE_KEY_PARAM: !Sub "/lifeos/${Environment}/push-vapid-private-key"
+          PUSH_VAPID_PUBLIC_KEY: !Ref PushVapidPublicKey
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MedicationsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref MedicationLogsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref PushSubscriptionsTable
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifeos/${Environment}/push-vapid-private-key"
+      Events:
+        Schedule:
+          Type: Schedule
+          Properties:
+            Schedule: "rate(15 minutes)"
+            Enabled: true
+
   CycleReminderSchedulerFunction:
     Type: AWS::Serverless::Function
     Metadata:
