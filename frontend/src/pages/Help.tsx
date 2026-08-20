@@ -84,7 +84,17 @@ const SECTIONS: Section[] = [
   },
   {
     title: "Wishes",
-    body: "Goals and dreams with real progress tracking — a percentage slider, a milestone checklist, tied to how much of a daily habit you've logged since creating the wish, a countdown to a date, or a quantity target. Attach photos as a small vision board. You'll get a push reminder as a deadline approaches, a one-time nudge if you're falling behind schedule, and a celebration when every milestone is checked off.",
+    body: "",
+    intro: "Goals and dreams, tracked however actually fits the goal — not one rigid format for all of them.",
+    bullets: [
+      "🎯 Pick a tracking style per wish: a percentage slider, a milestone checklist, tied to how much of a daily habit (water/exercise/steps) you've logged since creating it, a countdown to a date, or a quantity target.",
+      "📚✈️💰 Each wish gets a type (Learning, Travel, Savings, Health, Shopping, Creative, Personal growth, Achievement) shown as an emoji badge, set from the Type dropdown when you create it.",
+      "⏰ Active wishes sort by closest target date first — a Due soon group up top, and a separate No target date group for the ones without a deadline.",
+      "🔍 Search filters your wishes by title.",
+      "🖼️ Attach photos to any wish as a small vision board.",
+      "🔔 You'll get a push reminder as a deadline approaches, a one-time nudge if you're falling behind schedule, and a celebration the moment every milestone is checked off.",
+      "🗂️ Wishes that are completed or abandoned move to their own section below, out of the way but not deleted.",
+    ],
   },
   {
     title: "Settings",
