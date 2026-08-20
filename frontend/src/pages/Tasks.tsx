@@ -58,7 +58,11 @@ function TaskTimeline({ task }: { task: Task }) {
   const remaining = hoursUntilDue(task, now);
   if (remaining === null) return null;
 
+  // "forced" is a live recomputation against the current clock — it can go true well after
+  // the task was created/last suggested, so it must never claim priority IS High unless that's
+  // actually the stored value; otherwise it visibly contradicts the priority badge above it.
   const forced = remaining <= task.estimatedHours;
+  const staleForced = forced && task.priority !== "High";
   const dueLabel = task.dueTime ? `${task.dueDate} ${task.dueTime}` : task.dueDate;
 
   // Bar spans now (0%) to due (100%); the trigger marker sits at due - estimate,
@@ -88,9 +92,15 @@ function TaskTimeline({ task }: { task: Task }) {
         <span>Now</span>
         <span>Due {dueLabel}</span>
       </div>
-      {forced && (
+      {forced && !staleForced && (
         <p className="mt-1 rounded-lg border border-[#E3C878]/50 bg-[#F0E4C8]/40 px-2.5 py-1.5 text-xs text-[#8A6A22] dark:border-[#4A3D1E] dark:bg-[#4A3D1E]/40 dark:text-[#E3C878]">
           Forced to High — {task.estimatedHours}h of work no longer fits before {dueLabel}
+        </p>
+      )}
+      {staleForced && (
+        <p className="mt-1 rounded-lg border border-stone bg-stone/30 px-2.5 py-1.5 text-xs text-ink-muted dark:border-stone-dark dark:bg-stone-dark/30 dark:text-fog-muted">
+          {task.estimatedHours}h of work no longer fits before {dueLabel} — priority is still{" "}
+          {task.priority} since it hasn't been re-suggested since this deadline got close.
         </p>
       )}
     </div>
