@@ -468,7 +468,7 @@ export default function Tasks() {
   const [estimatedHours, setEstimatedHours] = useState("");
   const [priority, setPriority] = useState<TaskPriority>("Medium");
   const [scheduleTime, setScheduleTime] = useState("");
-  const [suggestPriority, setSuggestPriority] = useState(false);
+  const [suggestPriority, setSuggestPriority] = useState(true);
   const [creating, setCreating] = useState(false);
   const [usedVoice, setUsedVoice] = useState(false);
   const [showMoreOptions, setShowMoreOptions] = useState(false);
@@ -581,7 +581,7 @@ export default function Tasks() {
       setEstimatedHours("");
       setScheduleTime("");
       setPriority("Medium");
-      setSuggestPriority(false);
+      setSuggestPriority(true);
       setUsedVoice(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create task");
@@ -730,26 +730,65 @@ export default function Tasks() {
             <p className={`mt-1 text-xs ${errorText}`}>{descriptionVoiceError}</p>
           )}
         </div>
+        <div>
+          <label className={label}>Due date</label>
+          <input
+            type="date"
+            required
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+            className={input}
+          />
+        </div>
+        <div>
+          <label className={label}>Est. hours</label>
+          <input
+            type="number"
+            min={0}
+            step="0.5"
+            value={estimatedHours}
+            onChange={(e) => setEstimatedHours(e.target.value)}
+            className={`w-20 ${input}`}
+          />
+        </div>
+        <div>
+          <label className={label}>Priority</label>
+          <select
+            value={priority}
+            disabled={suggestPriority}
+            onChange={(e) => {
+              setPriority(e.target.value as TaskPriority);
+              setSuggestPriority(false);
+            }}
+            className={`${input} disabled:opacity-50`}
+          >
+            {PRIORITIES.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        </div>
+        <label className={`flex items-center gap-1.5 pb-2 ${label}`}>
+          <input
+            type="checkbox"
+            checked={suggestPriority}
+            onChange={(e) => setSuggestPriority(e.target.checked)}
+            className="rounded border-stone text-bloom focus:ring-bloom dark:border-stone-dark"
+          />
+          Suggest with AI
+        </label>
 
         <button
           type="button"
           onClick={() => setShowMoreOptions((v) => !v)}
           className="w-full pb-1 text-left text-xs font-medium text-bloom hover:underline"
         >
-          {showMoreOptions ? "Fewer options ▴" : "Due date, priority, more ▾"}
+          {showMoreOptions ? "Fewer options ▴" : "Due time, schedule time ▾"}
         </button>
 
         {showMoreOptions && (
           <>
-            <div>
-              <label className={label}>Due date</label>
-              <input
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className={input}
-              />
-            </div>
             <div>
               <label className={label}>Due time</label>
               <input
@@ -757,17 +796,6 @@ export default function Tasks() {
                 value={dueTime}
                 onChange={(e) => setDueTime(e.target.value)}
                 className={input}
-              />
-            </div>
-            <div>
-              <label className={label}>Est. hours</label>
-              <input
-                type="number"
-                min={0}
-                step="0.5"
-                value={estimatedHours}
-                onChange={(e) => setEstimatedHours(e.target.value)}
-                className={`w-20 ${input}`}
               />
             </div>
             <div>
@@ -779,30 +807,6 @@ export default function Tasks() {
                 className={input}
               />
             </div>
-            <div>
-              <label className={label}>Priority</label>
-              <select
-                value={priority}
-                disabled={suggestPriority}
-                onChange={(e) => setPriority(e.target.value as TaskPriority)}
-                className={`${input} disabled:opacity-50`}
-              >
-                {PRIORITIES.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <label className={`flex items-center gap-1.5 pb-2 ${label}`}>
-              <input
-                type="checkbox"
-                checked={suggestPriority}
-                onChange={(e) => setSuggestPriority(e.target.checked)}
-                className="rounded border-stone text-bloom focus:ring-bloom dark:border-stone-dark"
-              />
-              Suggest with AI
-            </label>
           </>
         )}
 
