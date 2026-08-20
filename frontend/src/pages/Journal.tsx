@@ -43,6 +43,16 @@ const MOOD_LABELS: Record<number, string> = {
   5: "Very good",
 };
 
+const MOOD_EMOJI: Record<number, string> = {
+  1: "😞",
+  2: "🙁",
+  3: "😐",
+  4: "🙂",
+  5: "😄",
+};
+
+const ENTRY_TRUNCATE_LENGTH = 280;
+
 export default function Journal() {
   const { request } = useApi();
   const [entries, setEntries] = useState<JournalEntry[]>([]);
@@ -58,6 +68,8 @@ export default function Journal() {
   const [moodLogId, setMoodLogId] = useState<string | null>(null);
   const [mood, setMood] = useState<number | null>(null);
   const [savingMood, setSavingMood] = useState(false);
+  const [moodByDate, setMoodByDate] = useState<Record<string, number>>({});
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
 
   const baseTextRef = useRef("");
 
@@ -96,6 +108,36 @@ export default function Journal() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // One batched fetch covering every entry's date, rather than a request per entry, so the
+  // list can show each entry's mood alongside it.
+  useEffect(() => {
+    if (entries.length === 0) return;
+    let ignore = false;
+    async function loadMoodRange() {
+      try {
+        const dates = entries.map((e) => e.date).sort();
+        const from = dates[0];
+        const to = dates[dates.length - 1];
+        const data = await request<{ entries: LogEntry[] }>(
+          `/logs?logType=mood&from=${from}&to=${to}`,
+        );
+        if (ignore) return;
+        const next: Record<string, number> = {};
+        for (const log of data.entries) {
+          if (typeof log.data.rating === "number") next[log.date] = log.data.rating;
+        }
+        setMoodByDate(next);
+      } catch {
+        // Mood badges are a bonus view on the list — best-effort, not worth surfacing an error for.
+      }
+    }
+    loadMoodRange();
+    return () => {
+      ignore = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entries]);
 
   const existingEntry = entries.find((entry) => entry.date === date);
   const filteredEntries = search.trim()
@@ -157,6 +199,20 @@ export default function Journal() {
 
   function insertPrompt(prompt: string) {
     setText((prev) => joinText(prev, prompt));
+  }
+
+  function toggleExpanded(entryDate: string) {
+    setExpandedDates((prev) => {
+      const next = new Set(prev);
+      if (next.has(entryDate)) next.delete(entryDate);
+      else next.add(entryDate);
+      return next;
+    });
+  }
+
+  function editEntry(entryDate: string) {
+    setDate(entryDate);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function handleToggleVoice() {
@@ -303,23 +359,51 @@ export default function Journal() {
         <p className={mutedText}>No entries match "{search}".</p>
       ) : (
         <ul className="flex flex-col gap-3">
-          {filteredEntries.map((entry) => (
-            <li key={entry.date} className={card}>
-              <p className="mb-1 flex items-center gap-2 text-xs font-medium text-ink-muted dark:text-mist-muted">
-                {entry.date}
-                {entry.voiceInput && <span className={badge}>Voice</span>}
-              </p>
-              <p className="mb-1 text-xs text-mist-muted">
-                Logged {new Date(entry.createdAt).toLocaleString()}
-                {entry.updatedAt !== entry.createdAt &&
-                  ` · edited ${new Date(entry.updatedAt).toLocaleString()}`}
-              </p>
-              <p className="whitespace-pre-wrap text-sm text-ink dark:text-paper">{entry.text}</p>
-              {formatDetection(entry.aiExtracted) && (
-                <p className="mt-1 text-xs text-bloom">{formatDetection(entry.aiExtracted)}</p>
-              )}
-            </li>
-          ))}
+          {filteredEntries.map((entry) => {
+            const entryMood = moodByDate[entry.date];
+            const isLong = entry.text.length > ENTRY_TRUNCATE_LENGTH;
+            const isExpanded = expandedDates.has(entry.date);
+            const displayText =
+              isLong && !isExpanded ? `${entry.text.slice(0, ENTRY_TRUNCATE_LENGTH).trimEnd()}…` : entry.text;
+            return (
+              <li key={entry.date} className={card}>
+                <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                  <p className="flex items-center gap-2 text-xs font-medium text-ink-muted dark:text-mist-muted">
+                    {entry.date}
+                    {entry.voiceInput && <span className={badge}>Voice</span>}
+                    {entryMood && (
+                      <span title={MOOD_LABELS[entryMood]}>{MOOD_EMOJI[entryMood]}</span>
+                    )}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => editEntry(entry.date)}
+                    className="text-xs font-medium text-bloom hover:underline"
+                  >
+                    ✏️ Edit
+                  </button>
+                </div>
+                <p className="mb-1 text-xs text-mist-muted">
+                  Logged {new Date(entry.createdAt).toLocaleString()}
+                  {entry.updatedAt !== entry.createdAt &&
+                    ` · edited ${new Date(entry.updatedAt).toLocaleString()}`}
+                </p>
+                <p className="whitespace-pre-wrap text-sm text-ink dark:text-paper">{displayText}</p>
+                {isLong && (
+                  <button
+                    type="button"
+                    onClick={() => toggleExpanded(entry.date)}
+                    className="mt-1 text-xs font-medium text-bloom hover:underline"
+                  >
+                    {isExpanded ? "Show less" : "Show more"}
+                  </button>
+                )}
+                {formatDetection(entry.aiExtracted) && (
+                  <p className="mt-1 text-xs text-bloom">{formatDetection(entry.aiExtracted)}</p>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
