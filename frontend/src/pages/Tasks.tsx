@@ -471,6 +471,7 @@ export default function Tasks() {
   const [suggestPriority, setSuggestPriority] = useState(false);
   const [creating, setCreating] = useState(false);
   const [usedVoice, setUsedVoice] = useState(false);
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
 
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editDescription, setEditDescription] = useState("");
@@ -490,6 +491,19 @@ export default function Tasks() {
     stop: stopListening,
   } = useSpeechToText((transcript, isFinal) => {
     setTitle(joinText(baseTitleRef.current, transcript));
+    if (isFinal) setUsedVoice(true);
+  });
+
+  const baseDescriptionRef = useRef("");
+
+  const {
+    supported: descriptionVoiceSupported,
+    listening: descriptionListening,
+    error: descriptionVoiceError,
+    start: startDescriptionListening,
+    stop: stopDescriptionListening,
+  } = useSpeechToText((transcript, isFinal) => {
+    setDescription(joinText(baseDescriptionRef.current, transcript));
     if (isFinal) setUsedVoice(true);
   });
 
@@ -527,10 +541,20 @@ export default function Tasks() {
     startListening();
   }
 
+  function handleToggleDescriptionVoice() {
+    if (descriptionListening) {
+      stopDescriptionListening();
+      return;
+    }
+    baseDescriptionRef.current = description;
+    startDescriptionListening();
+  }
+
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
     if (!title.trim()) return;
     if (listening) stopListening();
+    if (descriptionListening) stopDescriptionListening();
     setCreating(true);
     setError(null);
     try {
@@ -679,7 +703,22 @@ export default function Tasks() {
           {voiceError && <p className={`mt-1 text-xs ${errorText}`}>{voiceError}</p>}
         </div>
         <div className="min-w-[200px] flex-1">
-          <label className={label}>Description (optional)</label>
+          <div className="mb-1 flex items-center justify-between">
+            <label className={label}>Description (optional)</label>
+            {descriptionVoiceSupported && (
+              <button
+                type="button"
+                onClick={handleToggleDescriptionVoice}
+                className={`${pillButton} ${
+                  descriptionListening
+                    ? "border-alert bg-alert text-paper-card"
+                    : pillButtonInactive
+                }`}
+              >
+                {descriptionListening ? "Stop" : "Voice input"}
+              </button>
+            )}
+          </div>
           <input
             type="text"
             value={description}
@@ -687,69 +726,86 @@ export default function Tasks() {
             placeholder="Notes, links, anything you'll want later"
             className={`w-full ${input}`}
           />
+          {descriptionVoiceError && (
+            <p className={`mt-1 text-xs ${errorText}`}>{descriptionVoiceError}</p>
+          )}
         </div>
-        <div>
-          <label className={label}>Due date</label>
-          <input
-            type="date"
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-            className={input}
-          />
-        </div>
-        <div>
-          <label className={label}>Due time</label>
-          <input
-            type="time"
-            value={dueTime}
-            onChange={(e) => setDueTime(e.target.value)}
-            className={input}
-          />
-        </div>
-        <div>
-          <label className={label}>Est. hours</label>
-          <input
-            type="number"
-            min={0}
-            step="0.5"
-            value={estimatedHours}
-            onChange={(e) => setEstimatedHours(e.target.value)}
-            className={`w-20 ${input}`}
-          />
-        </div>
-        <div>
-          <label className={label}>Schedule time</label>
-          <input
-            type="time"
-            value={scheduleTime}
-            onChange={(e) => setScheduleTime(e.target.value)}
-            className={input}
-          />
-        </div>
-        <div>
-          <label className={label}>Priority</label>
-          <select
-            value={priority}
-            disabled={suggestPriority}
-            onChange={(e) => setPriority(e.target.value as TaskPriority)}
-            className={`${input} disabled:opacity-50`}
-          >
-            {PRIORITIES.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        </div>
-        <label className={`flex items-center gap-1.5 pb-2 ${label}`}>
-          <input
-            type="checkbox"
-            checked={suggestPriority}
-            onChange={(e) => setSuggestPriority(e.target.checked)}
-            className="rounded border-stone text-bloom focus:ring-bloom dark:border-stone-dark"
-          />
-          Suggest with AI
-        </label>
+
+        <button
+          type="button"
+          onClick={() => setShowMoreOptions((v) => !v)}
+          className="w-full pb-1 text-left text-xs font-medium text-bloom hover:underline"
+        >
+          {showMoreOptions ? "Fewer options ▴" : "Due date, priority, more ▾"}
+        </button>
+
+        {showMoreOptions && (
+          <>
+            <div>
+              <label className={label}>Due date</label>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className={input}
+              />
+            </div>
+            <div>
+              <label className={label}>Due time</label>
+              <input
+                type="time"
+                value={dueTime}
+                onChange={(e) => setDueTime(e.target.value)}
+                className={input}
+              />
+            </div>
+            <div>
+              <label className={label}>Est. hours</label>
+              <input
+                type="number"
+                min={0}
+                step="0.5"
+                value={estimatedHours}
+                onChange={(e) => setEstimatedHours(e.target.value)}
+                className={`w-20 ${input}`}
+              />
+            </div>
+            <div>
+              <label className={label}>Schedule time</label>
+              <input
+                type="time"
+                value={scheduleTime}
+                onChange={(e) => setScheduleTime(e.target.value)}
+                className={input}
+              />
+            </div>
+            <div>
+              <label className={label}>Priority</label>
+              <select
+                value={priority}
+                disabled={suggestPriority}
+                onChange={(e) => setPriority(e.target.value as TaskPriority)}
+                className={`${input} disabled:opacity-50`}
+              >
+                {PRIORITIES.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <label className={`flex items-center gap-1.5 pb-2 ${label}`}>
+              <input
+                type="checkbox"
+                checked={suggestPriority}
+                onChange={(e) => setSuggestPriority(e.target.checked)}
+                className="rounded border-stone text-bloom focus:ring-bloom dark:border-stone-dark"
+              />
+              Suggest with AI
+            </label>
+          </>
+        )}
+
         <button type="submit" disabled={creating} className={primaryButton}>
           {creating ? "Adding..." : "Add task"}
         </button>
