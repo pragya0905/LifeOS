@@ -138,6 +138,30 @@ function estimatePhase(
   return { cycleDay, phase, isFertile: cycleDay >= fertileStart && cycleDay <= fertileEnd };
 }
 
+// Attributes each symptom entry to the phase of the cycle it fell in, based on the most
+// recent period_start on or before that entry's date — so patterns reflect actual logged
+// history, not just today's estimate.
+function computeSymptomPhaseCounts(
+  entries: LogEntry[],
+  avgCycleDays: number,
+  avgPeriodDays: number,
+): Record<Phase, number> {
+  const starts = entries.filter((e) => e.data.event === "period_start").map((e) => e.date).sort();
+  const symptoms = entries.filter((e) => e.data.event === "symptom");
+  const counts: Record<Phase, number> = { Menstrual: 0, Follicular: 0, Ovulation: 0, Luteal: 0 };
+
+  for (const symptom of symptoms) {
+    const start = starts.filter((s) => s <= symptom.date).at(-1);
+    if (!start) continue;
+    const cycleDay = daysBetween(start, symptom.date) + 1;
+    if (cycleDay < 1 || cycleDay > avgCycleDays + 7) continue;
+    const clampedDay = Math.min(cycleDay, avgCycleDays);
+    counts[phaseForCycleDay(clampedDay, avgCycleDays, avgPeriodDays)]++;
+  }
+
+  return counts;
+}
+
 interface CycleGroup {
   label: string;
   entries: LogEntry[];
@@ -271,6 +295,15 @@ export default function Cycle() {
       ? estimatePhase(phaseDate, lastPeriodStart, avgCycleDays, avgPeriodDays ?? 5)
       : null;
   const cycleGroups = groupByCycle(entries);
+  const symptomPhaseCounts =
+    avgCycleDays !== null ? computeSymptomPhaseCounts(entries, avgCycleDays, avgPeriodDays ?? 5) : null;
+  const totalSymptoms = symptomPhaseCounts
+    ? Object.values(symptomPhaseCounts).reduce((a, b) => a + b, 0)
+    : 0;
+  const topSymptomPhase =
+    symptomPhaseCounts && totalSymptoms > 0
+      ? (Object.entries(symptomPhaseCounts).sort((a, b) => b[1] - a[1])[0][0] as Phase)
+      : null;
 
   return (
     <div className={page}>
@@ -388,6 +421,40 @@ export default function Cycle() {
           </>
         )}
       </div>
+
+      {topSymptomPhase && (
+        <div className={`mb-6 ${card}`}>
+          <h2 className={`mb-2 ${sectionLabel}`}>Symptom patterns</h2>
+          <p className="text-sm text-ink dark:text-paper">
+            You've logged symptoms most often during your{" "}
+            <span className="font-medium">
+              {PHASE_INFO[topSymptomPhase].emoji} {topSymptomPhase}
+            </span>{" "}
+            phase.
+          </p>
+          <div className="mt-3 flex flex-col gap-1.5">
+            {(["Menstrual", "Follicular", "Ovulation", "Luteal"] as Phase[]).map((p) => {
+              const count = symptomPhaseCounts![p];
+              const widthPct = totalSymptoms > 0 ? (count / totalSymptoms) * 100 : 0;
+              return (
+                <div key={p} className="flex items-center gap-2 text-xs">
+                  <span className="w-20 shrink-0 text-ink-muted dark:text-mist-muted">
+                    {PHASE_INFO[p].emoji} {p}
+                  </span>
+                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-stone dark:bg-stone-dark">
+                    <div className={`h-full ${PHASE_INFO[p].bar}`} style={{ width: `${widthPct}%` }} />
+                  </div>
+                  <span className="w-4 shrink-0 text-right text-ink-muted dark:text-mist-muted">{count}</span>
+                </div>
+              );
+            })}
+          </div>
+          <p className={`mt-3 text-xs ${mutedText}`}>
+            Based on {totalSymptoms} logged symptom{totalSymptoms === 1 ? "" : "s"}, attributed to the
+            estimated phase of the cycle they fell in.
+          </p>
+        </div>
+      )}
 
       <form onSubmit={handleAdd} className={`mb-8 flex flex-wrap items-end gap-3 ${card}`}>
         <div>
