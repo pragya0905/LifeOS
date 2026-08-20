@@ -21,9 +21,9 @@ const INTRO_DISMISSED_KEY = "lifeos-cycle-intro-dismissed";
 type CycleEvent = "period_start" | "period_end" | "symptom";
 
 const EVENT_LABEL: Record<CycleEvent, string> = {
-  period_start: "Period start",
-  period_end: "Period end",
-  symptom: "Symptom",
+  period_start: "🩸 Period start",
+  period_end: "◻️ Period end",
+  symptom: "🌡️ Symptom",
 };
 
 const EVENT_BADGE: Record<CycleEvent, string> = {
@@ -77,11 +77,31 @@ function computeAvgPeriodDays(entries: LogEntry[]): number | null {
 
 type Phase = "Menstrual" | "Follicular" | "Ovulation" | "Luteal";
 
-const PHASE_INFO: Record<Phase, { emoji: string; description: string }> = {
-  Menstrual: { emoji: "🩸", description: "Your period. Energy is often lower here — a natural stretch to take it easier." },
-  Follicular: { emoji: "🌱", description: "Between your period and ovulation. Energy and mood tend to rise through this stretch." },
-  Ovulation: { emoji: "🥚", description: "Your estimated fertile window — ovulation is expected around now." },
-  Luteal: { emoji: "🌙", description: "After ovulation. PMS-type symptoms (mood, cramps, fatigue) are more common later in this phase." },
+const PHASE_INFO: Record<Phase, { emoji: string; description: string; badge: string; bar: string }> = {
+  Menstrual: {
+    emoji: "🩸",
+    description: "Your period. Energy is often lower here — a natural stretch to take it easier.",
+    badge: "bg-alert-soft text-alert dark:bg-alert-soft-dark dark:text-alert-light",
+    bar: "bg-alert",
+  },
+  Follicular: {
+    emoji: "🌱",
+    description: "Between your period and ovulation. Energy and mood tend to rise through this stretch.",
+    badge: "bg-stone text-ink-muted dark:bg-stone-dark dark:text-mist-muted",
+    bar: "bg-stone-dark dark:bg-mist-muted",
+  },
+  Ovulation: {
+    emoji: "🥚",
+    description: "Your estimated fertile window — ovulation is expected around now.",
+    badge: "bg-amber-soft text-amber-ink dark:bg-amber-soft-dark dark:text-amber-ink-dark",
+    bar: "bg-amber",
+  },
+  Luteal: {
+    emoji: "🌙",
+    description: "After ovulation. PMS-type symptoms (mood, cramps, fatigue) are more common later in this phase.",
+    badge: "bg-bloom-soft text-bloom dark:bg-bloom-soft-dark dark:text-bloom-light",
+    bar: "bg-bloom",
+  },
 };
 
 // Standard cycle-phase estimation (the same math apps like Clue use): the luteal phase is
@@ -89,6 +109,21 @@ const PHASE_INFO: Record<Phase, { emoji: string; description: string }> = {
 // counting back 14 days from the *next* predicted period rather than forward from this one —
 // this is an estimate assuming your logged cycles are a reasonable guide to this one, not a
 // medical prediction.
+function phaseBoundaries(avgCycleDays: number, avgPeriodDays: number) {
+  const ovulationDay = Math.max(avgCycleDays - 14, avgPeriodDays + 1);
+  const fertileStart = Math.max(ovulationDay - 5, avgPeriodDays + 1);
+  const fertileEnd = ovulationDay + 1;
+  return { periodEnd: avgPeriodDays, fertileStart, fertileEnd };
+}
+
+function phaseForCycleDay(cycleDay: number, avgCycleDays: number, avgPeriodDays: number): Phase {
+  const { periodEnd, fertileStart, fertileEnd } = phaseBoundaries(avgCycleDays, avgPeriodDays);
+  if (cycleDay <= periodEnd) return "Menstrual";
+  if (cycleDay < fertileStart) return "Follicular";
+  if (cycleDay <= fertileEnd) return "Ovulation";
+  return "Luteal";
+}
+
 function estimatePhase(
   targetDate: string,
   lastPeriodStart: string,
@@ -97,16 +132,8 @@ function estimatePhase(
 ): { cycleDay: number; phase: Phase; isFertile: boolean } {
   const daysSince = daysBetween(lastPeriodStart, targetDate);
   const cycleDay = (((daysSince % avgCycleDays) + avgCycleDays) % avgCycleDays) + 1;
-
-  const ovulationDay = Math.max(avgCycleDays - 14, avgPeriodDays + 1);
-  const fertileStart = Math.max(ovulationDay - 5, avgPeriodDays + 1);
-  const fertileEnd = ovulationDay + 1;
-
-  let phase: Phase;
-  if (cycleDay <= avgPeriodDays) phase = "Menstrual";
-  else if (cycleDay < fertileStart) phase = "Follicular";
-  else if (cycleDay <= fertileEnd) phase = "Ovulation";
-  else phase = "Luteal";
+  const { fertileStart, fertileEnd } = phaseBoundaries(avgCycleDays, avgPeriodDays);
+  const phase = phaseForCycleDay(cycleDay, avgCycleDays, avgPeriodDays);
 
   return { cycleDay, phase, isFertile: cycleDay >= fertileStart && cycleDay <= fertileEnd };
 }
@@ -128,7 +155,7 @@ function groupByCycle(entriesDesc: LogEntry[]): CycleGroup[] {
     if (entry.data.event === "period_start") {
       if (current.length > 0) groups.push({ label: currentLabel, entries: current });
       current = [];
-      currentLabel = `Cycle starting ${entry.date}`;
+      currentLabel = `🩸 Cycle starting ${entry.date}`;
     }
     current.push(entry);
   }
@@ -181,21 +208,40 @@ export default function Cycle() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  async function logEvent(eventType: CycleEvent, entryDate: string, entryNote?: string) {
+    const entry = await request<LogEntry>("/logs", {
+      method: "POST",
+      body: JSON.stringify({
+        logType: "cycle",
+        date: entryDate,
+        data: { event: eventType, note: entryNote || undefined },
+      }),
+    });
+    setEntries((prev) => [entry, ...prev].sort((a, b) => (a.date < b.date ? 1 : -1)));
+    return entry;
+  }
+
   async function handleAdd(e: FormEvent) {
     e.preventDefault();
     setSaving(true);
     setError(null);
     try {
-      const entry = await request<LogEntry>("/logs", {
-        method: "POST",
-        body: JSON.stringify({
-          logType: "cycle",
-          date,
-          data: { event, note: note.trim() || undefined },
-        }),
-      });
-      setEntries((prev) => [entry, ...prev].sort((a, b) => (a.date < b.date ? 1 : -1)));
+      await logEvent(event, date, note.trim());
       setNote("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save cycle entry");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const alreadyLoggedToday = entries.some((e) => e.date === today() && e.data.event === "period_start");
+
+  async function handleQuickLogToday() {
+    setSaving(true);
+    setError(null);
+    try {
+      await logEvent("period_start", today());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save cycle entry");
     } finally {
@@ -228,7 +274,16 @@ export default function Cycle() {
 
   return (
     <div className={page}>
-      <h1 className={pageTitle}>Menstrual Cycle</h1>
+      <h1 className={pageTitle}>🌸 Menstrual Cycle</h1>
+
+      <button
+        type="button"
+        onClick={handleQuickLogToday}
+        disabled={saving || alreadyLoggedToday}
+        className={`${primaryButton} mb-6 w-full`}
+      >
+        {alreadyLoggedToday ? "🩸 Logged as period start today" : "🩸 My period started today"}
+      </button>
 
       {!introDismissed && (
         <div className={`mb-6 flex items-start justify-between gap-4 ${card}`}>
@@ -253,58 +308,83 @@ export default function Cycle() {
         </div>
       )}
 
-      <div className={`mb-6 ${card}`}>
-        <h2 className={`mb-2 ${sectionLabel}`}>Prediction</h2>
-        {avgCycleDays === null ? (
-          <p className={mutedText}>
-            Log at least two period start dates to see a cycle-length prediction.
-          </p>
-        ) : (
-          <p className="text-sm text-ink dark:text-paper">
-            Average cycle length: <span className="font-medium">{avgCycleDays} days</span>
-            <br />
-            Next period predicted around: <span className="font-medium">{nextPredicted}</span>
-            {avgPeriodDays !== null && (
-              <>
-                <br />
-                Average period length: <span className="font-medium">{avgPeriodDays} days</span>
-              </>
-            )}
-          </p>
-        )}
-      </div>
-
-      <div className={`mb-6 ${card}`}>
-        <h2 className={`mb-2 ${sectionLabel}`}>How a day might feel</h2>
-        {phaseResult === null ? (
-          <p className={mutedText}>
-            Log at least two period start dates to estimate cycle phases for a given day.
-          </p>
+      <div
+        className={`mb-6 overflow-hidden rounded-2xl border border-stone bg-paper-card shadow-sm dark:border-stone-dark dark:bg-ink-bg-card`}
+      >
+        {avgCycleDays === null || phaseResult === null ? (
+          <div className="p-6">
+            <h2 className={`mb-2 ${sectionLabel}`}>Cycle overview</h2>
+            <p className={mutedText}>
+              Log at least two period start dates to see predictions and a phase estimate.
+            </p>
+          </div>
         ) : (
           <>
-            <div className="mb-3">
-              <label className={label}>Check a date</label>
-              <input
-                type="date"
-                value={phaseDate}
-                onChange={(e) => setPhaseDate(e.target.value)}
-                className={input}
-              />
+            <div className={`p-6 pb-5 ${PHASE_INFO[phaseResult.phase].badge}`}>
+              <h2 className="mb-3 text-xs font-medium uppercase tracking-wide opacity-80">
+                How this day might feel
+              </h2>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="font-display text-2xl font-medium">
+                    {PHASE_INFO[phaseResult.phase].emoji} {phaseResult.phase}
+                  </p>
+                  <p className="mt-1 text-sm opacity-90">
+                    Cycle day {phaseResult.cycleDay} of ~{avgCycleDays}
+                    {phaseResult.isFertile ? " · fertile window" : ""}
+                  </p>
+                </div>
+                <input
+                  type="date"
+                  value={phaseDate}
+                  onChange={(e) => setPhaseDate(e.target.value)}
+                  className="rounded-xl border border-current/20 bg-paper-card/70 px-3 py-2 text-sm text-ink dark:bg-ink-bg-card/70 dark:text-paper"
+                />
+              </div>
+
+              <div className="mt-4 flex h-2.5 w-full overflow-hidden rounded-full bg-paper-card/50 dark:bg-ink-bg-card/50">
+                {(["Menstrual", "Follicular", "Ovulation", "Luteal"] as Phase[]).map((p) => {
+                  const { periodEnd, fertileStart, fertileEnd } = phaseBoundaries(avgCycleDays, avgPeriodDays ?? 5);
+                  const spanByPhase: Record<Phase, number> = {
+                    Menstrual: periodEnd,
+                    Follicular: fertileStart - periodEnd,
+                    Ovulation: fertileEnd - fertileStart + 1,
+                    Luteal: avgCycleDays - fertileEnd,
+                  };
+                  const widthPct = (Math.max(spanByPhase[p], 0) / avgCycleDays) * 100;
+                  return (
+                    <div
+                      key={p}
+                      className={`${PHASE_INFO[p].bar} ${p === phaseResult.phase ? "opacity-100" : "opacity-40"} h-full`}
+                      style={{ width: `${widthPct}%` }}
+                      title={p}
+                    />
+                  );
+                })}
+              </div>
+
+              <p className="mt-3 text-sm opacity-90">{PHASE_INFO[phaseResult.phase].description}</p>
+              <p className="mt-2 text-xs opacity-70">
+                Estimated from your own averages, not a medical prediction — actual timing can vary.
+              </p>
             </div>
-            <p className="text-sm text-ink dark:text-paper">
-              <span className="text-base font-medium">
-                {PHASE_INFO[phaseResult.phase].emoji} {phaseResult.phase}
-              </span>{" "}
-              <span className={mutedText}>
-                — cycle day {phaseResult.cycleDay} of ~{avgCycleDays}
-                {phaseResult.isFertile ? ", estimated fertile window" : ""}
-              </span>
-            </p>
-            <p className={`mt-1 ${mutedText}`}>{PHASE_INFO[phaseResult.phase].description}</p>
-            <p className={`mt-2 text-xs ${mutedText}`}>
-              This is an estimate based on your average cycle, not a medical prediction — actual
-              timing can vary.
-            </p>
+
+            <div className="grid grid-cols-3 divide-x divide-stone border-t border-stone dark:divide-stone-dark dark:border-stone-dark">
+              <div className="p-4 text-center">
+                <p className={sectionLabel}>Avg cycle</p>
+                <p className="mt-1 text-sm font-medium text-ink dark:text-paper">{avgCycleDays} days</p>
+              </div>
+              <div className="p-4 text-center">
+                <p className={sectionLabel}>Next period</p>
+                <p className="mt-1 text-sm font-medium text-ink dark:text-paper">{nextPredicted}</p>
+              </div>
+              <div className="p-4 text-center">
+                <p className={sectionLabel}>Avg period</p>
+                <p className="mt-1 text-sm font-medium text-ink dark:text-paper">
+                  {avgPeriodDays !== null ? `${avgPeriodDays} days` : "—"}
+                </p>
+              </div>
+            </div>
           </>
         )}
       </div>
