@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useApi } from "../api/useApi";
 import { todayLocal } from "../lib/date";
+import { Skeleton } from "../components/Skeleton";
+import { EmptyState } from "../components/EmptyState";
 import type { RoutineCategory, RoutineStepLog, RoutineTemplate } from "../types";
 import {
   badge,
@@ -8,11 +10,12 @@ import {
   errorText,
   input,
   label,
-  mutedText,
   page,
   pageTitle,
   pillButton,
+  pillButtonDone,
   pillButtonInactive,
+  pillButtonSkipped,
   primaryButton,
   secondaryButton,
   sectionLabel,
@@ -47,9 +50,6 @@ const ROUTINE_TEMPLATES: { label: string; category: RoutineCategory; name: strin
     steps: ["30g protein within 30 minutes of waking", "30 minutes of low-intensity exercise"],
   },
 ];
-
-const pillButtonDone = "border-bloom bg-bloom text-paper-card";
-const pillButtonSkipped = "border-mist-muted bg-mist-muted text-paper-card";
 
 const STREAK_WINDOW_DAYS = 30;
 
@@ -91,6 +91,7 @@ function RoutineCard({
   stepStatuses,
   streak,
   pending,
+  removing,
   onSetStepStatus,
   onDelete,
   onSave,
@@ -99,6 +100,7 @@ function RoutineCard({
   stepStatuses: Record<string, RoutineStepLog["status"]>;
   streak: number;
   pending: string | null;
+  removing: boolean;
   onSetStepStatus: (routineId: string, stepIndex: number, status: RoutineStepLog["status"]) => void;
   onDelete: (routineId: string) => void;
   onSave: (routineId: string, patch: { name: string; category: RoutineCategory; steps: string[] }) => Promise<void>;
@@ -185,7 +187,9 @@ function RoutineCard({
   }
 
   return (
-    <li className={card}>
+    <li
+      className={`transition-all duration-200 ${card} ${removing ? "scale-[0.98] opacity-0" : "scale-100 opacity-100"}`}
+    >
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-medium text-ink dark:text-paper">
           {routine.name}{" "}
@@ -268,6 +272,7 @@ export default function Routines() {
   const [name, setName] = useState("");
   const [stepsText, setStepsText] = useState("");
   const [saving, setSaving] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
 
   useEffect(() => {
@@ -336,14 +341,17 @@ export default function Routines() {
 
   async function handleDelete(routineId: string) {
     setPending(routineId);
+    setRemovingId(routineId);
     setError(null);
+    const transitionDone = new Promise((resolve) => setTimeout(resolve, 200));
     try {
-      await request(`/routines/${routineId}`, { method: "DELETE" });
+      await Promise.all([request(`/routines/${routineId}`, { method: "DELETE" }), transitionDone]);
       setRoutines((prev) => prev.filter((r) => r.routineId !== routineId));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete routine");
     } finally {
       setPending(null);
+      setRemovingId(null);
     }
   }
 
@@ -454,12 +462,17 @@ export default function Routines() {
       {error && <p className={`mb-4 ${errorText}`}>{error}</p>}
 
       {loading ? (
-        <p className={mutedText}>Loading...</p>
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-12 w-full rounded-2xl" />
+          <Skeleton className="h-12 w-full rounded-2xl" />
+        </div>
       ) : (
         <>
           <h2 className={`mb-2 ${sectionLabel}`}>Today's checklist ({today()})</h2>
           {routines.length === 0 ? (
-            <p className={`mb-6 ${mutedText}`}>No routines yet — add one above.</p>
+            <div className="mb-6">
+              <EmptyState icon="🪞" title="No routines yet" hint="Add your first routine above." />
+            </div>
           ) : (
             <ul className="mb-6 flex flex-col gap-3">
               {routines.map((routine) => (
@@ -469,6 +482,7 @@ export default function Routines() {
                   stepStatuses={stepStatuses}
                   streak={computeStreak(routine, logsByDateStep)}
                   pending={pending}
+                  removing={removingId === routine.routineId}
                   onSetStepStatus={setStepStatus}
                   onDelete={handleDelete}
                   onSave={handleSaveEdit}

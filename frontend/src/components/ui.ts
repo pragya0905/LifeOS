@@ -15,7 +15,7 @@ export const card =
 export const label = "mb-1 block text-xs font-medium text-ink-muted dark:text-mist-muted";
 
 export const input =
-  "rounded-xl border border-stone bg-paper-card px-3 py-2 text-sm text-ink focus:border-bloom focus:outline-none dark:border-stone-dark dark:bg-ink-bg-card dark:text-paper";
+  "rounded-xl border border-stone bg-paper-card px-3 py-2 text-sm text-ink focus:border-bloom focus:outline-none focus-visible:ring-2 focus-visible:ring-bloom/40 focus-visible:ring-offset-1 focus-visible:ring-offset-paper-card dark:border-stone-dark dark:bg-ink-bg-card dark:text-paper dark:focus-visible:ring-offset-ink-bg-card";
 
 export const primaryButton =
   "rounded-full bg-bloom px-5 py-2 text-sm font-medium text-paper-card transition-colors hover:bg-bloom-light disabled:opacity-50";
@@ -31,6 +31,7 @@ export const pillButtonInactive =
 
 export const pillButtonDone = "border-bloom bg-bloom text-paper-card";
 export const pillButtonMissed = "border-alert bg-alert text-paper-card";
+export const pillButtonSkipped = "border-mist-muted bg-mist-muted text-paper-card";
 
 export const badge = "rounded-full bg-bloom-soft px-2 py-0.5 text-xs font-medium text-bloom dark:bg-bloom-soft-dark dark:text-bloom-light";
 

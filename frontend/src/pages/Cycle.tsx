@@ -11,6 +11,8 @@ import {
   predictNextCycle,
   type Phase,
 } from "../lib/cyclePhase";
+import { Skeleton } from "../components/Skeleton";
+import { EmptyState } from "../components/EmptyState";
 import type { LogEntry } from "../types";
 import {
   badge,
@@ -407,9 +409,12 @@ export default function Cycle() {
       {error && <p className={`mb-4 ${errorText}`}>{error}</p>}
 
       {loading ? (
-        <p className={mutedText}>Loading entries...</p>
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-12 w-full rounded-xl" />
+          <Skeleton className="h-12 w-full rounded-xl" />
+        </div>
       ) : entries.length === 0 ? (
-        <p className={mutedText}>No cycle entries yet.</p>
+        <EmptyState icon="🌸" title="No cycle entries yet" hint="Log your first entry above to start tracking." />
       ) : (
         <div className="flex flex-col gap-5">
           {cycleGroups.map((group, i) => (

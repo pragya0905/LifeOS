@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useApi } from "../api/useApi";
 import { todayLocal, toLocalDateStr } from "../lib/date";
+import { Skeleton } from "../components/Skeleton";
+import { EmptyState } from "../components/EmptyState";
 import type { LogEntry, LogType } from "../types";
 import {
   badge,
@@ -195,6 +197,7 @@ export default function Logs() {
 
   const [filterType, setFilterType] = useState<LogType | "all">("all");
   const [search, setSearch] = useState("");
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   useEffect(() => {
     let ignore = false;
@@ -297,11 +300,15 @@ export default function Logs() {
 
   async function handleDelete(logId: string) {
     setError(null);
+    setRemovingId(logId);
+    const transitionDone = new Promise((resolve) => setTimeout(resolve, 200));
     try {
-      await request(`/logs/${logId}`, { method: "DELETE" });
+      await Promise.all([request(`/logs/${logId}`, { method: "DELETE" }), transitionDone]);
       setEntries((prev) => prev.filter((e) => e.logId !== logId));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete log entry");
+    } finally {
+      setRemovingId(null);
     }
   }
 
@@ -384,9 +391,13 @@ export default function Logs() {
       )}
 
       {loading ? (
-        <p className={mutedText}>Loading entries...</p>
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-10 w-full rounded-xl" />
+          <Skeleton className="h-10 w-full rounded-xl" />
+          <Skeleton className="h-10 w-full rounded-xl" />
+        </div>
       ) : entries.length === 0 ? (
-        <p className={mutedText}>No log entries yet.</p>
+        <EmptyState icon="📋" title="No log entries yet" hint="Add your first entry above to start tracking." />
       ) : filteredEntries.length === 0 ? (
         <p className={mutedText}>No matching entries.</p>
       ) : (
@@ -396,7 +407,10 @@ export default function Logs() {
               <p className={`mb-2 ${sectionLabel}`}>{dateGroupLabel(group.date)}</p>
               <ul className="flex flex-col gap-3">
                 {group.entries.map((entry) => (
-                  <li key={entry.logId} className={`flex flex-col gap-3 ${card}`}>
+                  <li
+                    key={entry.logId}
+                    className={`flex flex-col gap-3 transition-all duration-200 ${card} ${removingId === entry.logId ? "scale-[0.98] opacity-0" : "scale-100 opacity-100"}`}
+                  >
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <span className={badge}>{LOG_TYPE_CONFIG[entry.logType].label}</span>

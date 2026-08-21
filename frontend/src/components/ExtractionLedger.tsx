@@ -3,6 +3,7 @@ import { useApi } from "../api/useApi";
 import type { JournalEntry } from "../types";
 import { extractionParts } from "../lib/formatExtraction";
 import { todayLocal } from "../lib/date";
+import { Skeleton } from "./Skeleton";
 import { badge, card, mutedText, sectionLabel } from "./ui";
 
 function today(): string {
@@ -47,7 +48,10 @@ export default function ExtractionLedger() {
         What the model wrote to today
       </p>
       {loading ? (
-        <p className={mutedText}>Loading...</p>
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-3/4" />
+        </div>
       ) : !entry ? (
         <p className={mutedText}>
           Nothing logged yet. Dictate a journal entry — "drank a glass of water, did my AM

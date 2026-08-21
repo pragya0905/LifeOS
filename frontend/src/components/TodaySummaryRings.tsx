@@ -3,7 +3,7 @@ import { useApi } from "../api/useApi";
 import { todayLocal, toLocalDateStr } from "../lib/date";
 import type { Goal, HabitLog, LogEntry } from "../types";
 import Ring, { type RingTrend } from "./Ring";
-import { mutedText } from "./ui";
+import { Skeleton } from "./Skeleton";
 
 function today(): string {
   return todayLocal();
@@ -137,8 +137,10 @@ export default function TodaySummaryRings() {
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-stone bg-paper-card p-4 shadow-sm dark:border-stone-dark dark:bg-ink-bg-card">
-        <p className={mutedText}>Loading...</p>
+      <div className="flex gap-4 rounded-2xl border border-stone bg-paper-card p-4 shadow-sm dark:border-stone-dark dark:bg-ink-bg-card">
+        <Skeleton className="h-16 w-16 rounded-full" />
+        <Skeleton className="h-16 w-16 rounded-full" />
+        <Skeleton className="h-16 w-16 rounded-full" />
       </div>
     );
   }

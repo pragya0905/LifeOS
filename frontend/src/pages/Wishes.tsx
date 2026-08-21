@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useApi } from "../api/useApi";
 import WishImageGallery from "../components/WishImageGallery";
 import { todayLocal } from "../lib/date";
+import { Skeleton } from "../components/Skeleton";
+import { EmptyState } from "../components/EmptyState";
 import type { Wish, WishHabitType, WishMilestone, WishProgressMode, WishType } from "../types";
 import {
   badge,
@@ -72,10 +74,12 @@ function WishCard({
   wish,
   onUpdate,
   onDelete,
+  removing,
 }: {
   wish: Wish;
   onUpdate: (patch: Record<string, unknown>) => void;
   onDelete: () => void;
+  removing: boolean;
 }) {
   const [percentDraft, setPercentDraft] = useState(wish.percentage ?? 0);
   const [quantityDraft, setQuantityDraft] = useState(String(wish.quantityCurrent ?? 0));
@@ -100,7 +104,9 @@ function WishCard({
   const totalMilestones = wish.milestones?.length ?? 0;
 
   return (
-    <li className={`flex flex-col gap-3 ${card} ${wish.status !== "active" ? "opacity-60" : ""}`}>
+    <li
+      className={`flex flex-col gap-3 transition-all duration-200 ${card} ${removing ? "scale-[0.98] opacity-0" : wish.status !== "active" ? "scale-100 opacity-60" : "scale-100 opacity-100"}`}
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className={`font-medium text-ink dark:text-paper ${wish.status === "abandoned" ? "line-through" : ""}`}>
@@ -240,6 +246,7 @@ export default function Wishes() {
   const [wishes, setWishes] = useState<Wish[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   const [title, setTitle] = useState("");
   const [type, setType] = useState<WishType>("learning");
@@ -332,11 +339,15 @@ export default function Wishes() {
 
   async function deleteWish(wishId: string) {
     setError(null);
+    setRemovingId(wishId);
+    const transitionDone = new Promise((resolve) => setTimeout(resolve, 200));
     try {
-      await request(`/wishes/${wishId}`, { method: "DELETE" });
+      await Promise.all([request(`/wishes/${wishId}`, { method: "DELETE" }), transitionDone]);
       setWishes((prev) => prev.filter((w) => w.wishId !== wishId));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete wish");
+    } finally {
+      setRemovingId(null);
     }
   }
 
@@ -487,9 +498,12 @@ export default function Wishes() {
       )}
 
       {loading ? (
-        <p className={mutedText}>Loading wishes...</p>
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-16 w-full rounded-2xl" />
+          <Skeleton className="h-16 w-full rounded-2xl" />
+        </div>
       ) : wishes.length === 0 ? (
-        <p className={mutedText}>No wishes yet — add one above.</p>
+        <EmptyState icon="🌟" title="No wishes yet" hint="Add your first wish above to get started." />
       ) : filteredWishes.length === 0 ? (
         <p className={mutedText}>No wishes match "{search}".</p>
       ) : (
@@ -513,6 +527,7 @@ export default function Wishes() {
                         wish={wish}
                         onUpdate={(patch) => updateWish(wish.wishId, patch)}
                         onDelete={() => deleteWish(wish.wishId)}
+                        removing={removingId === wish.wishId}
                       />
                     ))}
                   </ul>
@@ -532,6 +547,7 @@ export default function Wishes() {
                         wish={wish}
                         onUpdate={(patch) => updateWish(wish.wishId, patch)}
                         onDelete={() => deleteWish(wish.wishId)}
+                        removing={removingId === wish.wishId}
                       />
                     ))}
                   </ul>
@@ -550,6 +566,7 @@ export default function Wishes() {
                     wish={wish}
                     onUpdate={(patch) => updateWish(wish.wishId, patch)}
                     onDelete={() => deleteWish(wish.wishId)}
+                    removing={removingId === wish.wishId}
                   />
                 ))}
               </ul>

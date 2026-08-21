@@ -9,6 +9,7 @@ import TodayHabits from "../components/TodayHabits";
 import TodaySchedule from "../components/TodaySchedule";
 import TodaySummaryRings from "../components/TodaySummaryRings";
 import WelcomeCard from "../components/WelcomeCard";
+import { Skeleton } from "../components/Skeleton";
 import { todayLocal } from "../lib/date";
 import type { Task } from "../types";
 import {
@@ -108,7 +109,13 @@ export default function Dashboard() {
         <div className={`flex-1 ${card}`}>
           <h2 className={`mb-2 ${sectionLabel}`}>✅ Tasks</h2>
           {error && <p className={errorText}>{error}</p>}
-          {!error && !tasks && <p className={mutedText}>Loading...</p>}
+          {!error && !tasks && (
+            <div className="flex flex-col gap-2">
+              <Skeleton className="h-4 w-2/3" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-1/2" />
+            </div>
+          )}
           {tasks && (
             <>
               <p className="mb-2 text-sm text-ink dark:text-paper">

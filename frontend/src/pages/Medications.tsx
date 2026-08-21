@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useApi } from "../api/useApi";
 import { todayLocal, toLocalDateStr } from "../lib/date";
+import { Skeleton } from "../components/Skeleton";
+import { EmptyState } from "../components/EmptyState";
 import type { Medication, MedicationLog, MedicationLogStatus } from "../types";
 import {
   card,
@@ -78,6 +80,7 @@ export default function Medications() {
   const [saving, setSaving] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
   const [recentLogs, setRecentLogs] = useState<MedicationLog[]>([]);
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   useEffect(() => {
     let ignore = false;
@@ -147,14 +150,20 @@ export default function Medications() {
 
   async function handleDelete(medicationId: string) {
     setPending(medicationId);
+    setRemovingId(medicationId);
     setError(null);
+    const transitionDone = new Promise((resolve) => setTimeout(resolve, 200));
     try {
-      await request(`/medications/${medicationId}`, { method: "DELETE" });
+      await Promise.all([
+        request(`/medications/${medicationId}`, { method: "DELETE" }),
+        transitionDone,
+      ]);
       setMedications((prev) => prev.filter((m) => m.medicationId !== medicationId));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete medication");
     } finally {
       setPending(null);
+      setRemovingId(null);
     }
   }
 
@@ -266,7 +275,10 @@ export default function Medications() {
       {error && <p className={`mb-4 ${errorText}`}>{error}</p>}
 
       {loading ? (
-        <p className={mutedText}>Loading...</p>
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-12 w-full rounded-xl" />
+          <Skeleton className="h-12 w-full rounded-xl" />
+        </div>
       ) : (
         <>
           <h2 className={`mb-2 ${sectionLabel}`}>Today ({today()})</h2>
@@ -317,7 +329,7 @@ export default function Medications() {
 
           <h2 className={`mb-2 ${sectionLabel}`}>All medications</h2>
           {medications.length === 0 ? (
-            <p className={mutedText}>No medications added yet.</p>
+            <EmptyState icon="💊" title="No medications added yet" hint="Add your first medication above." />
           ) : (
             <ul className="flex flex-col gap-2">
               {medications.map((medication) => {
@@ -327,8 +339,12 @@ export default function Medications() {
                   daysAgo(ADHERENCE_WINDOW_DAYS - 1),
                   today(),
                 );
+                const isRemoving = removingId === medication.medicationId;
                 return (
-                  <li key={medication.medicationId} className={`flex flex-wrap items-center justify-between gap-3 ${card}`}>
+                  <li
+                    key={medication.medicationId}
+                    className={`flex flex-wrap items-center justify-between gap-3 transition-all duration-200 ${card} ${isRemoving ? "scale-[0.98] opacity-0" : "scale-100 opacity-100"}`}
+                  >
                     <div>
                       <p className="text-sm font-medium text-ink dark:text-paper">
                         {medication.name}

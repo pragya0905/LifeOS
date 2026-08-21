@@ -4,7 +4,8 @@ import { useApi } from "../api/useApi";
 import { todayLocal } from "../lib/date";
 import { formatINR } from "../lib/expenseCategories";
 import type { Expense, UserProfile } from "../types";
-import { card, mutedText, sectionLabel } from "./ui";
+import { Skeleton } from "./Skeleton";
+import { card, sectionLabel } from "./ui";
 
 function currentMonthRange(): { from: string; to: string } {
   const month = todayLocal().slice(0, 7);
@@ -53,7 +54,10 @@ export default function BudgetPreview() {
     <div className={`flex-1 ${card}`}>
       <h2 className={`mb-2 ${sectionLabel}`}>💰 Budget</h2>
       {totalSpent === null ? (
-        <p className={mutedText}>Loading...</p>
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-4 w-2/3" />
+          <Skeleton className="h-2 w-full rounded-full" />
+        </div>
       ) : monthlyBudget ? (
         <>
           <p className="text-sm text-ink dark:text-paper">

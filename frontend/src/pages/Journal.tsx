@@ -3,6 +3,8 @@ import { useApi } from "../api/useApi";
 import { useSpeechToText } from "../hooks/useSpeechToText";
 import { formatDetection } from "../lib/formatExtraction";
 import { todayLocal } from "../lib/date";
+import { Skeleton } from "../components/Skeleton";
+import { EmptyState } from "../components/EmptyState";
 import type { JournalEntry, LogEntry } from "../types";
 import {
   badge,
@@ -357,9 +359,12 @@ export default function Journal() {
       )}
 
       {loading ? (
-        <p className={mutedText}>Loading entries...</p>
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-16 w-full rounded-2xl" />
+          <Skeleton className="h-16 w-full rounded-2xl" />
+        </div>
       ) : entries.length === 0 ? (
-        <p className={mutedText}>No journal entries yet.</p>
+        <EmptyState icon="📓" title="No entries yet" hint="Write your first journal entry above." />
       ) : filteredEntries.length === 0 ? (
         <p className={mutedText}>No entries match "{search}".</p>
       ) : (

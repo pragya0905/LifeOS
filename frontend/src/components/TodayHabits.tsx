@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../api/useApi";
 import { toLocalDateStr, todayLocal } from "../lib/date";
 import type { Goal, GoalMetric, HabitLog, JournalEntry, LogEntry } from "../types";
+import { Skeleton } from "./Skeleton";
 import {
   badge,
   card,
@@ -50,6 +51,19 @@ function computeSleepDuration(bedTime: string, wakeTime: string): string | null 
 // element identity across re-renders — nesting these would remount the <input> on
 // every keystroke and silently drop focus before onBlur can fire.
 function DoneCheck({ done, label }: { done: boolean; label: string }) {
+  const prevDoneRef = useRef(done);
+  const [justCompleted, setJustCompleted] = useState(false);
+
+  useEffect(() => {
+    if (done && !prevDoneRef.current) {
+      setJustCompleted(true);
+      const timer = setTimeout(() => setJustCompleted(false), 300);
+      prevDoneRef.current = done;
+      return () => clearTimeout(timer);
+    }
+    prevDoneRef.current = done;
+  }, [done]);
+
   return (
     <input
       type="checkbox"
@@ -57,7 +71,7 @@ function DoneCheck({ done, label }: { done: boolean; label: string }) {
       readOnly
       disabled
       aria-label={`${label}: ${done ? "done" : "not done"}`}
-      className="h-4 w-4 rounded border-stone text-bloom accent-bloom disabled:opacity-100 dark:border-stone-dark"
+      className={`h-4 w-4 rounded border-stone text-bloom accent-bloom disabled:opacity-100 dark:border-stone-dark ${justCompleted ? "animate-pop" : ""}`}
     />
   );
 }
@@ -87,7 +101,7 @@ function GoalTarget({
         onBlur={onBlur}
         disabled={disabled}
         aria-label={`${habitLabel} daily goal`}
-        className={`w-20 py-0.5 text-xs ${input}`}
+        className={`w-14 py-0.5 text-xs sm:w-20 ${input}`}
       />
     </span>
   );
@@ -417,8 +431,8 @@ export default function TodayHabits() {
   const sleepDuration = computeSleepDuration(bedTime, wakeTime);
   const isToday = selectedDate === today();
 
-  const rowLabelClass = "px-3 py-3 text-sm font-medium text-ink dark:text-paper";
-  const detailCellClass = "px-3 py-3";
+  const rowLabelClass = "px-1.5 py-3 text-sm font-medium text-ink dark:text-paper sm:px-3";
+  const detailCellClass = "px-1.5 py-3 sm:px-3";
 
   function updateGoalDraft(metric: GoalMetric, value: string) {
     setGoalDrafts((prev) => ({ ...prev, [metric]: value }));
@@ -449,11 +463,16 @@ export default function TodayHabits() {
       </div>
       {error && <p className={`mb-2 ${errorText}`}>{error}</p>}
       {loading ? (
-        <p className={mutedText}>Loading...</p>
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-8 w-full" />
+        </div>
       ) : (
         <>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[520px] border-collapse text-left">
+            <table className="w-full border-collapse text-left">
               <thead>
                 <tr className="border-b border-stone/60 dark:border-stone-dark/60">
                   <th className={`${rowLabelClass} font-normal ${mutedText}`}>Habit</th>
@@ -469,7 +488,7 @@ export default function TodayHabits() {
                   </td>
                   <td className={detailCellClass}>
                     <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <input
                           type="number"
                           min={0}
@@ -477,7 +496,7 @@ export default function TodayHabits() {
                           value={waterDraft}
                           onChange={(e) => setWaterDraft(e.target.value)}
                           aria-label="Water intake in milliliters"
-                          className={`w-24 py-1 ${input}`}
+                          className={`w-14 py-1 sm:w-24 ${input}`}
                         />
                         <span className={mutedText}>ml</span>
                         {habitSource.water === "ai-journal" && (
@@ -552,7 +571,7 @@ export default function TodayHabits() {
                           value={callPerson}
                           onChange={(e) => setCallPerson(e.target.value)}
                           aria-label="Call: person's name"
-                          className={`w-28 py-1 ${input}`}
+                          className={`w-16 py-1 sm:w-28 ${input}`}
                         />
                         <input
                           type="number"
@@ -561,7 +580,7 @@ export default function TodayHabits() {
                           value={callDuration}
                           onChange={(e) => setCallDuration(e.target.value)}
                           aria-label="Call duration in minutes"
-                          className={`w-20 py-1 ${input}`}
+                          className={`w-12 py-1 sm:w-20 ${input}`}
                         />
                         <span className={mutedText}>min</span>
                       </div>
@@ -578,7 +597,7 @@ export default function TodayHabits() {
                   </td>
                   <td className={detailCellClass}>
                     <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <input
                           type="number"
                           min={0}
@@ -586,7 +605,7 @@ export default function TodayHabits() {
                           value={exerciseDraft}
                           onChange={(e) => setExerciseDraft(e.target.value)}
                           aria-label="Exercise duration in minutes"
-                          className={`w-24 py-1 ${input}`}
+                          className={`w-14 py-1 sm:w-24 ${input}`}
                         />
                         <span className={mutedText}>minutes</span>
                         {habitSource.exercise === "ai-journal" && (
@@ -613,7 +632,7 @@ export default function TodayHabits() {
                   </td>
                   <td className={detailCellClass}>
                     <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <input
                           type="number"
                           min={0}
@@ -621,7 +640,7 @@ export default function TodayHabits() {
                           value={stepsDraft}
                           onChange={(e) => setStepsDraft(e.target.value)}
                           aria-label="Step count"
-                          className={`w-24 py-1 ${input}`}
+                          className={`w-14 py-1 sm:w-24 ${input}`}
                         />
                         <span className={mutedText}>steps</span>
                         {habitSource.steps === "ai-journal" && (
@@ -650,7 +669,7 @@ export default function TodayHabits() {
                   </td>
                   <td className={detailCellClass}>
                     <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <input
                           type="number"
                           min={0}
@@ -659,7 +678,7 @@ export default function TodayHabits() {
                           value={weightDraft}
                           onChange={(e) => setWeightDraft(e.target.value)}
                           aria-label="Weight in kilograms"
-                          className={`w-24 py-1 ${input}`}
+                          className={`w-14 py-1 sm:w-24 ${input}`}
                         />
                         <span className={mutedText}>kg</span>
                       </div>
@@ -674,7 +693,7 @@ export default function TodayHabits() {
                   </td>
                   <td className={detailCellClass}>
                     <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <input
                           type="number"
                           min={0}
@@ -684,7 +703,7 @@ export default function TodayHabits() {
                           value={bodyFatDraft}
                           onChange={(e) => setBodyFatDraft(e.target.value)}
                           aria-label="Body fat percentage"
-                          className={`w-24 py-1 ${input}`}
+                          className={`w-14 py-1 sm:w-24 ${input}`}
                         />
                         <span className={mutedText}>%</span>
                       </div>

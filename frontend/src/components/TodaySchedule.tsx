@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useApi } from "../api/useApi";
 import { todayLocal } from "../lib/date";
 import type { Schedule, TaskPriority } from "../types";
+import { Skeleton } from "./Skeleton";
 import { card, errorText, mutedText, sectionLabel } from "./ui";
 
 const PRIORITY_BADGE: Record<TaskPriority, string> = {
@@ -56,7 +57,11 @@ export default function TodaySchedule() {
       </div>
       {error && <p className={errorText}>{error}</p>}
       {loading ? (
-        <p className={mutedText}>Loading...</p>
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-5 w-full" />
+          <Skeleton className="h-5 w-5/6" />
+          <Skeleton className="h-5 w-2/3" />
+        </div>
       ) : !schedule || schedule.tasks.length === 0 ? (
         <p className={mutedText}>Nothing due today.</p>
       ) : (

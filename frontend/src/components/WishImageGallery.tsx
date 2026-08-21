@@ -86,13 +86,15 @@ export default function WishImageGallery({ wishId }: { wishId: string }) {
                 <img
                   src={img.url}
                   alt=""
+                  loading="lazy"
                   className="h-16 w-16 rounded-lg border border-stone object-cover dark:border-stone-dark"
                 />
                 <button
                   type="button"
                   onClick={() => handleDelete(img.key)}
                   title="Remove image"
-                  className="absolute -right-1.5 -top-1.5 hidden h-5 w-5 items-center justify-center rounded-full bg-alert text-xs text-paper-card group-hover:flex"
+                  aria-label="Remove image"
+                  className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-alert text-xs text-paper-card opacity-80 transition-opacity hover:opacity-100"
                 >
                   ×
                 </button>

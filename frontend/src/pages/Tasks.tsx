@@ -3,6 +3,8 @@ import { useSearchParams } from "react-router-dom";
 import { useApi } from "../api/useApi";
 import { useSpeechToText } from "../hooks/useSpeechToText";
 import { todayLocal, toLocalDateStr } from "../lib/date";
+import { Skeleton } from "../components/Skeleton";
+import { EmptyState } from "../components/EmptyState";
 import type { Task, TaskPriority, TaskStatus } from "../types";
 import {
   badge,
@@ -259,7 +261,7 @@ function TaskCard({
   task: Task;
   isEditing: boolean;
   onToggleEdit: () => void;
-  onUpdate: (patch: Record<string, unknown>) => void;
+  onUpdate: (patch: Record<string, unknown>) => Promise<boolean>;
   onDuplicate: () => void;
   editDescription: string;
   setEditDescription: (v: string) => void;
@@ -289,8 +291,16 @@ function TaskCard({
     const dx = e.touches[0].clientX - startXRef.current;
     if (dx > 0) setSwipeX(Math.min(dx, 130));
   }
-  function onTouchEnd() {
-    if (swipeX > SWIPE_THRESHOLD) onUpdate({ status: "done" });
+  async function onTouchEnd() {
+    if (swipeX > SWIPE_THRESHOLD) {
+      // Hold the swipe position (don't snap back yet) while the PATCH is in flight — resetting
+      // immediately made the card look "unswiped and still not done" for the round-trip
+      // duration. On success the card leaves this section before the reset below is visible;
+      // on failure it snaps back, which is correct since nothing changed.
+      setSwipeX(SWIPE_THRESHOLD);
+      setSwiping(false);
+      await onUpdate({ status: "done" });
+    }
     setSwipeX(0);
     setSwiping(false);
     startXRef.current = null;
@@ -629,7 +639,7 @@ export default function Tasks() {
     }
   }
 
-  async function updateTask(taskId: string, patch: Record<string, unknown>) {
+  async function updateTask(taskId: string, patch: Record<string, unknown>): Promise<boolean> {
     setError(null);
     try {
       const updated = await request<Task>(`/tasks/${taskId}`, {
@@ -637,8 +647,10 @@ export default function Tasks() {
         body: JSON.stringify(patch),
       });
       setTasks((prev) => prev.map((t) => (t.taskId === taskId ? updated : t)));
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update task");
+      return false;
     }
   }
 
@@ -885,9 +897,13 @@ export default function Tasks() {
       )}
 
       {loading ? (
-        <p className={mutedText}>Loading tasks...</p>
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-14 w-full rounded-2xl" />
+          <Skeleton className="h-14 w-full rounded-2xl" />
+          <Skeleton className="h-14 w-full rounded-2xl" />
+        </div>
       ) : tasks.length === 0 ? (
-        <p className={mutedText}>No tasks yet — add one above. ✨</p>
+        <EmptyState icon="✅" title="No tasks yet" hint="Add your first task above to get started." />
       ) : filteredTasks.length === 0 ? (
         <p className={mutedText}>No tasks match "{search}". 🔍</p>
       ) : (

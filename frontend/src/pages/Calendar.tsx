@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../api/useApi";
+import { Skeleton } from "../components/Skeleton";
 import type { Task } from "../types";
 import {
   card,
@@ -168,72 +169,131 @@ export default function Calendar() {
 
       {error && <p className={`mb-4 ${errorText}`}>{error}</p>}
       {loading ? (
-        <p className={mutedText}>Loading...</p>
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-10 w-full rounded-xl" />
+          <Skeleton className="h-10 w-full rounded-xl" />
+          <Skeleton className="h-10 w-full rounded-xl" />
+        </div>
       ) : (
-        <div className={`${card} overflow-x-auto`}>
-          <div className="grid min-w-[640px] grid-cols-7 gap-px bg-stone dark:bg-stone-dark">
-            {WEEKDAY_LABELS.map((label, i) => (
-              <div
-                key={label}
-                className={`bg-paper-card px-2 py-1.5 text-center text-xs font-medium uppercase tracking-wide dark:bg-ink-bg-card ${
-                  i === 0 || i === 6 ? "text-bloom" : "text-ink-muted dark:text-mist-muted"
-                }`}
-              >
-                {label}
-              </div>
-            ))}
-            {days.map((day) => {
-              const key = toDateKey(day);
-              const inMonth = day.getMonth() === monthStart.getMonth();
-              const dayTasks = tasksByDate.get(key) ?? [];
-              const isWeekend = day.getDay() === 0 || day.getDay() === 6;
-              const holiday = HOLIDAYS_2026[key];
-              return (
-                <button
-                  type="button"
-                  key={key}
-                  onClick={() => setSelectedDay(key)}
-                  aria-label={`View ${key}${holiday ? `, ${holiday}` : ""}${dayTasks.length ? `, ${dayTasks.length} task${dayTasks.length === 1 ? "" : "s"}` : ""}`}
-                  className={`min-h-[86px] p-1.5 text-left transition-colors hover:brightness-95 dark:hover:brightness-125 ${
-                    isWeekend ? "bg-bloom-soft/40 dark:bg-bloom-soft-dark/30" : "bg-paper-card dark:bg-ink-bg-card"
-                  } ${inMonth ? "" : "opacity-40"} ${key === todayKey ? "ring-1 ring-inset ring-bloom" : ""}`}
+        <>
+          {/* Month grid — a 7-column grid can't fit a phone width no matter how much it's
+              shrunk, so it's desktop/tablet-only; phones get the agenda list below instead. */}
+          <div className={`hidden sm:block ${card} overflow-x-auto`}>
+            <div className="grid min-w-[640px] grid-cols-7 gap-px bg-stone dark:bg-stone-dark">
+              {WEEKDAY_LABELS.map((label, i) => (
+                <div
+                  key={label}
+                  className={`bg-paper-card px-2 py-1.5 text-center text-xs font-medium uppercase tracking-wide dark:bg-ink-bg-card ${
+                    i === 0 || i === 6 ? "text-bloom" : "text-ink-muted dark:text-mist-muted"
+                  }`}
                 >
-                  <p
-                    className={`mb-1 text-xs ${
-                      isWeekend ? "font-medium text-bloom" : "text-ink-muted dark:text-mist-muted"
+                  {label}
+                </div>
+              ))}
+              {days.map((day) => {
+                const key = toDateKey(day);
+                const inMonth = day.getMonth() === monthStart.getMonth();
+                const dayTasks = tasksByDate.get(key) ?? [];
+                const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+                const holiday = HOLIDAYS_2026[key];
+                return (
+                  <button
+                    type="button"
+                    key={key}
+                    onClick={() => setSelectedDay(key)}
+                    aria-label={`View ${key}${holiday ? `, ${holiday}` : ""}${dayTasks.length ? `, ${dayTasks.length} task${dayTasks.length === 1 ? "" : "s"}` : ""}`}
+                    className={`min-h-[86px] p-1.5 text-left transition-colors hover:brightness-95 dark:hover:brightness-125 ${
+                      isWeekend ? "bg-bloom-soft/40 dark:bg-bloom-soft-dark/30" : "bg-paper-card dark:bg-ink-bg-card"
+                    } ${inMonth ? "" : "opacity-40"} ${key === todayKey ? "ring-1 ring-inset ring-bloom" : ""}`}
+                  >
+                    <p
+                      className={`mb-1 text-xs ${
+                        isWeekend ? "font-medium text-bloom" : "text-ink-muted dark:text-mist-muted"
+                      }`}
+                    >
+                      {day.getDate()}
+                    </p>
+                    {holiday && (
+                      <p
+                        title={holiday}
+                        className="mb-1 truncate rounded bg-amber-soft px-1 py-0.5 text-[10px] font-medium text-amber-ink dark:bg-amber-soft-dark dark:text-amber-ink-dark"
+                      >
+                        🎉 {holiday}
+                      </p>
+                    )}
+                    <div className="flex flex-col gap-0.5">
+                      {dayTasks.slice(0, 3).map((task) => (
+                        <span
+                          key={task.taskId}
+                          title={task.title}
+                          className={`truncate rounded px-1 py-0.5 text-[10px] font-medium ${priorityBadgeClass[task.priority]}`}
+                        >
+                          {task.title}
+                        </span>
+                      ))}
+                      {dayTasks.length > 3 && (
+                        <span className="text-[10px] text-ink-muted dark:text-mist-muted">
+                          +{dayTasks.length - 3} more
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Agenda list — phone-width alternative to the month grid. Reuses the same
+              days/tasksByDate/holiday data; only in-month days are shown as rows. */}
+          <div className={`flex flex-col divide-y divide-stone sm:hidden dark:divide-stone-dark ${card} p-0`}>
+            {days
+              .filter((day) => day.getMonth() === monthStart.getMonth())
+              .map((day) => {
+                const key = toDateKey(day);
+                const dayTasks = tasksByDate.get(key) ?? [];
+                const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+                const holiday = HOLIDAYS_2026[key];
+                return (
+                  <button
+                    type="button"
+                    key={key}
+                    onClick={() => setSelectedDay(key)}
+                    aria-label={`View ${key}${holiday ? `, ${holiday}` : ""}${dayTasks.length ? `, ${dayTasks.length} task${dayTasks.length === 1 ? "" : "s"}` : ""}`}
+                    className={`flex items-center gap-3 px-3 py-2.5 text-left transition-colors hover:brightness-95 dark:hover:brightness-125 ${
+                      key === todayKey ? "bg-bloom-soft/40 dark:bg-bloom-soft-dark/30" : ""
                     }`}
                   >
-                    {day.getDate()}
-                  </p>
-                  {holiday && (
-                    <p
-                      title={holiday}
-                      className="mb-1 truncate rounded bg-amber-soft px-1 py-0.5 text-[10px] font-medium text-amber-ink dark:bg-amber-soft-dark dark:text-amber-ink-dark"
-                    >
-                      🎉 {holiday}
-                    </p>
-                  )}
-                  <div className="flex flex-col gap-0.5">
-                    {dayTasks.slice(0, 3).map((task) => (
-                      <span
-                        key={task.taskId}
-                        title={task.title}
-                        className={`truncate rounded px-1 py-0.5 text-[10px] font-medium ${priorityBadgeClass[task.priority]}`}
-                      >
-                        {task.title}
-                      </span>
-                    ))}
-                    {dayTasks.length > 3 && (
-                      <span className="text-[10px] text-ink-muted dark:text-mist-muted">
-                        +{dayTasks.length - 3} more
-                      </span>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
+                    <div className="w-10 shrink-0 text-center">
+                      <p className={`text-xs uppercase ${isWeekend ? "text-bloom" : "text-ink-muted dark:text-mist-muted"}`}>
+                        {WEEKDAY_LABELS[day.getDay()]}
+                      </p>
+                      <p className="text-sm font-medium text-ink dark:text-paper">{day.getDate()}</p>
+                    </div>
+                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      {holiday && (
+                        <span className="truncate text-xs font-medium text-amber-ink dark:text-amber-ink-dark">
+                          🎉 {holiday}
+                        </span>
+                      )}
+                      {dayTasks.slice(0, 3).map((task) => (
+                        <span key={task.taskId} className="truncate text-xs text-ink-muted dark:text-mist-muted">
+                          {task.title}
+                        </span>
+                      ))}
+                      {dayTasks.length > 3 && (
+                        <span className="text-xs text-ink-muted dark:text-mist-muted">
+                          +{dayTasks.length - 3} more
+                        </span>
+                      )}
+                      {!holiday && dayTasks.length === 0 && (
+                        <span className={mutedText}>—</span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
           </div>
-        </div>
+        </>
       )}
       <Link to="/tasks" className="mt-3 inline-block text-xs text-bloom hover:underline">
         Manage tasks →

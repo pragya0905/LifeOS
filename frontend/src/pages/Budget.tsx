@@ -8,6 +8,7 @@ import {
   EXPENSE_CATEGORY_LABEL,
   formatINR,
 } from "../lib/expenseCategories";
+import { Skeleton } from "../components/Skeleton";
 import type { Budget, Expense, ExpenseCategory, UserProfile } from "../types";
 import {
   badge,
@@ -555,7 +556,11 @@ export default function BudgetPage() {
       {error && <p className={`mb-4 ${errorText}`}>{error}</p>}
 
       {loading ? (
-        <p className={mutedText}>Loading expenses...</p>
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-10 w-full rounded-xl" />
+          <Skeleton className="h-10 w-full rounded-xl" />
+          <Skeleton className="h-10 w-full rounded-xl" />
+        </div>
       ) : expenses.length === 0 ? (
         <p className={mutedText}>No expenses logged for {monthLabel(month)}.</p>
       ) : (
