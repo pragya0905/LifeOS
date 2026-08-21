@@ -26,6 +26,7 @@ export interface UserProfile {
   heightCm?: number;
   monthlyBudget?: number;
   lastWeeklyDigestSentAt?: string;
+  onboardingCompletedAt?: string;
   updatedAt: string;
 }
 
@@ -241,7 +242,7 @@ export interface Budget {
   updatedAt: string;
 }
 
-export type GoalMetric = "water" | "exercise" | "steps";
+export type GoalMetric = "water" | "exercise" | "steps" | "weight";
 
 export interface Goal {
   userId: string;

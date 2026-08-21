@@ -26,12 +26,16 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
   ) {
     return errorResponse(400, "monthlyBudget must be a positive number");
   }
-  if (body.heightCm === undefined && body.monthlyBudget === undefined) {
+  if (body.onboardingCompleted !== undefined && body.onboardingCompleted !== true) {
+    return errorResponse(400, "onboardingCompleted must be true");
+  }
+  if (body.heightCm === undefined && body.monthlyBudget === undefined && body.onboardingCompleted === undefined) {
     return errorResponse(400, "No updatable fields provided");
   }
 
+  const now = new Date().toISOString();
   const names: Record<string, string> = {};
-  const values: Record<string, unknown> = { ":updatedAt": new Date().toISOString() };
+  const values: Record<string, unknown> = { ":updatedAt": now };
   const setClauses = ["updatedAt = :updatedAt"];
 
   if (body.heightCm !== undefined) {
@@ -43,6 +47,12 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     names["#monthlyBudget"] = "monthlyBudget";
     values[":monthlyBudget"] = body.monthlyBudget;
     setClauses.push("#monthlyBudget = :monthlyBudget");
+  }
+  if (body.onboardingCompleted === true) {
+    // Stamped server-side (not client-supplied) so it can't be forged/skewed by the client clock.
+    names["#onboardingCompletedAt"] = "onboardingCompletedAt";
+    values[":onboardingCompletedAt"] = now;
+    setClauses.push("#onboardingCompletedAt = :onboardingCompletedAt");
   }
 
   const result = await ddb.send(

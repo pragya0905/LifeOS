@@ -2,9 +2,11 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
 import ProtectedRoute from "./auth/ProtectedRoute";
 import Layout from "./components/Layout";
+import OnboardingGate from "./components/OnboardingGate";
 import SignUp from "./pages/SignUp";
 import ConfirmSignUp from "./pages/ConfirmSignUp";
 import Login from "./pages/Login";
+import Onboarding from "./pages/Onboarding";
 import Dashboard from "./pages/Dashboard";
 import Tasks from "./pages/Tasks";
 import Journal from "./pages/Journal";
@@ -29,9 +31,19 @@ export default function App() {
           <Route path="/confirm" element={<ConfirmSignUp />} />
           <Route path="/login" element={<Login />} />
           <Route
+            path="/onboarding"
             element={
               <ProtectedRoute>
-                <Layout />
+                <Onboarding />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            element={
+              <ProtectedRoute>
+                <OnboardingGate>
+                  <Layout />
+                </OnboardingGate>
               </ProtectedRoute>
             }
           >

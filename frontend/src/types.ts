@@ -176,7 +176,7 @@ export interface Budget {
   updatedAt: string;
 }
 
-export type GoalMetric = "water" | "exercise" | "steps";
+export type GoalMetric = "water" | "exercise" | "steps" | "weight";
 
 export interface Goal {
   userId: string;
@@ -189,6 +189,7 @@ export interface UserProfile {
   userId: string;
   heightCm?: number;
   monthlyBudget?: number;
+  onboardingCompletedAt?: string;
   updatedAt?: string;
 }
 

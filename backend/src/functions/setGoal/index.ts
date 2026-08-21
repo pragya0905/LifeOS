@@ -5,7 +5,7 @@ import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
 import type { GoalMetric } from "../../common/types";
 
-const METRICS: GoalMetric[] = ["water", "exercise", "steps"];
+const METRICS: GoalMetric[] = ["water", "exercise", "steps", "weight"];
 
 export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) => {
   const userId = getUserId(event);

@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { useApi } from "../api/useApi";
-import type { LogEntry, UserProfile } from "../types";
+import type { Goal, LogEntry, UserProfile } from "../types";
 import LineChart from "./LineChart";
 import { card, mutedText, sectionLabel } from "./ui";
 
 export default function WeightTrend({ entries }: { entries: LogEntry[] }) {
   const { request } = useApi();
   const [heightCm, setHeightCm] = useState<number | null>(null);
+  const [weightTarget, setWeightTarget] = useState<number | null>(null);
 
   useEffect(() => {
     let ignore = false;
@@ -16,6 +17,15 @@ export default function WeightTrend({ entries }: { entries: LogEntry[] }) {
       })
       .catch(() => {
         // BMI just won't show if this fails — not critical to the page.
+      });
+    request<{ goals: Goal[] }>("/goals")
+      .then((data) => {
+        if (ignore) return;
+        const goal = data.goals.find((g) => g.metric === "weight");
+        if (goal) setWeightTarget(goal.targetValue);
+      })
+      .catch(() => {
+        // The target line just won't show if this fails — not critical to the page.
       });
     return () => {
       ignore = true;
@@ -43,7 +53,12 @@ export default function WeightTrend({ entries }: { entries: LogEntry[] }) {
       {weightPoints.length > 0 && (
         <div className="flex-1">
           <h2 className={`mb-2 ${sectionLabel}`}>Weight</h2>
-          <LineChart points={weightPoints} formatValue={(v) => `${v}kg`} />
+          <LineChart
+            points={weightPoints}
+            formatValue={(v) => `${v}kg`}
+            targetValue={weightTarget ?? undefined}
+            targetLabel="Target"
+          />
           {bmi !== null && (
             <p className={`mt-1 ${mutedText}`}>BMI: {bmi.toFixed(1)}</p>
           )}
