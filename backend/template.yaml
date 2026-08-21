@@ -21,7 +21,7 @@ Globals:
     Runtime: nodejs20.x
     Architectures: [arm64]
     Timeout: 10
-    MemorySize: 128
+    MemorySize: 256
     Tracing: Active
     Environment:
       Variables:
@@ -624,6 +624,7 @@ Resources:
           ROUTINE_LOGS_TABLE_NAME: !Ref RoutineLogsTable
           LOG_ENTRIES_TABLE_NAME: !Ref LogEntriesTable
           EXPENSES_TABLE_NAME: !Ref ExpensesTable
+          USER_PROFILE_TABLE_NAME: !Ref UserProfileTable
           ANTHROPIC_API_KEY_PARAM: !Sub "/lifeos/${Environment}/anthropic-api-key"
       Policies:
         - DynamoDBCrudPolicy:
@@ -642,6 +643,8 @@ Resources:
             TableName: !Ref LogEntriesTable
         - DynamoDBCrudPolicy:
             TableName: !Ref ExpensesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref UserProfileTable
         - SSMParameterReadPolicy:
             ParameterName: !Sub "lifeos/${Environment}/anthropic-api-key"
       Events:
@@ -707,6 +710,7 @@ Resources:
           ROUTINE_LOGS_TABLE_NAME: !Ref RoutineLogsTable
           LOG_ENTRIES_TABLE_NAME: !Ref LogEntriesTable
           EXPENSES_TABLE_NAME: !Ref ExpensesTable
+          USER_PROFILE_TABLE_NAME: !Ref UserProfileTable
           ANTHROPIC_API_KEY_PARAM: !Sub "/lifeos/${Environment}/anthropic-api-key"
       Policies:
         - DynamoDBCrudPolicy:
@@ -725,6 +729,8 @@ Resources:
             TableName: !Ref LogEntriesTable
         - DynamoDBCrudPolicy:
             TableName: !Ref ExpensesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref UserProfileTable
         - SSMParameterReadPolicy:
             ParameterName: !Sub "lifeos/${Environment}/anthropic-api-key"
       Events:

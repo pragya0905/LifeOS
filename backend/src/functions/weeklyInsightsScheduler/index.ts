@@ -1,7 +1,7 @@
 import type { ScheduledHandler } from "aws-lambda";
-import { GetCommand, ScanCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb } from "../../common/dynamo";
-import { sendPushNotification } from "../../common/pushNotifications";
+import { scanAllPushSubscriptions, sendPushNotification } from "../../common/pushNotifications";
 import { generateInsightsForUser } from "../../common/insights";
 import type { PushSubscription, UserProfile } from "../../common/types";
 
@@ -13,10 +13,7 @@ const DIGEST_INTERVAL_DAYS = 7;
 const PUSH_BODY_MAX_LENGTH = 180;
 
 export const handler: ScheduledHandler = async () => {
-  const subsResult = await ddb.send(
-    new ScanCommand({ TableName: process.env.PUSH_SUBSCRIPTIONS_TABLE_NAME }),
-  );
-  const subscriptions = (subsResult.Items ?? []) as PushSubscription[];
+  const subscriptions = await scanAllPushSubscriptions();
   if (subscriptions.length === 0) return;
 
   const subsByUser = new Map<string, PushSubscription[]>();

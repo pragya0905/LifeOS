@@ -1,8 +1,26 @@
 import { SSMClient, GetParameterCommand } from "@aws-sdk/client-ssm";
 import webpush from "web-push";
-import { DeleteCommand } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb } from "./dynamo";
 import type { PushSubscription } from "./types";
+
+// Shared by every reminder scheduler. Paginates via LastEvaluatedKey so subscriptions
+// aren't silently dropped once the table's scan response exceeds DynamoDB's 1MB page size.
+export async function scanAllPushSubscriptions(): Promise<PushSubscription[]> {
+  const subscriptions: PushSubscription[] = [];
+  let lastKey: Record<string, unknown> | undefined;
+  do {
+    const result = await ddb.send(
+      new ScanCommand({
+        TableName: process.env.PUSH_SUBSCRIPTIONS_TABLE_NAME,
+        ExclusiveStartKey: lastKey,
+      }),
+    );
+    subscriptions.push(...((result.Items ?? []) as PushSubscription[]));
+    lastKey = result.LastEvaluatedKey;
+  } while (lastKey);
+  return subscriptions;
+}
 
 let cachedPrivateKey: string | undefined;
 let vapidConfigured = false;
