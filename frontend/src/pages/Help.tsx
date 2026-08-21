@@ -126,7 +126,13 @@ const SECTIONS: Section[] = [
   },
   {
     title: "Insights",
-    body: "On-demand AI-generated summary, highlights, and suggestions from your recent activity (today or this past week). Nothing runs automatically — you trigger it.",
+    body: "",
+    intro: "Trend charts for the last 14 days plus an on-demand AI summary of your recent activity — nothing runs automatically, you trigger it.",
+    bullets: [
+      "📈 14-day trend charts for water, exercise, steps, weight, mood, and spending — each only appears once you've logged enough of that type to plot.",
+      "🤖 Generate pulls together a summary, highlights, and suggestions from your activity for Today or This week, whichever you pick.",
+      "🔄 Nothing is saved or scheduled — each Generate is a fresh on-demand look, not a running history.",
+    ],
   },
   {
     title: "Wishes",

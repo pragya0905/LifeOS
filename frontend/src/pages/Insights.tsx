@@ -3,7 +3,8 @@ import { useApi } from "../api/useApi";
 import LineChart from "../components/LineChart";
 import WeightTrend from "../components/WeightTrend";
 import { toLocalDateStr } from "../lib/date";
-import type { HabitLog, Insights as InsightsData, LogEntry } from "../types";
+import { formatINR } from "../lib/expenseCategories";
+import type { Expense, HabitLog, Insights as InsightsData, LogEntry } from "../types";
 import {
   card,
   errorText,
@@ -39,6 +40,8 @@ export default function Insights() {
   const [exerciseTrend, setExerciseTrend] = useState<{ date: string; value: number }[]>([]);
   const [stepsTrend, setStepsTrend] = useState<{ date: string; value: number }[]>([]);
   const [weightEntries, setWeightEntries] = useState<LogEntry[]>([]);
+  const [moodTrend, setMoodTrend] = useState<{ date: string; value: number }[]>([]);
+  const [spendingTrend, setSpendingTrend] = useState<{ date: string; value: number }[]>([]);
 
   useEffect(() => {
     let ignore = false;
@@ -47,10 +50,12 @@ export default function Insights() {
       try {
         const from = dateOffset(TREND_DAYS - 1);
         const to = dateOffset(0);
-        const [habitsData, weightData, bodyFatData] = await Promise.all([
+        const [habitsData, weightData, bodyFatData, moodData, expensesData] = await Promise.all([
           request<{ habits: HabitLog[] }>(`/habits?from=${from}&to=${to}`),
           request<{ entries: LogEntry[] }>(`/logs?logType=weight&from=${from}&to=${to}`),
           request<{ entries: LogEntry[] }>(`/logs?logType=bodyFat&from=${from}&to=${to}`),
+          request<{ entries: LogEntry[] }>(`/logs?logType=mood&from=${from}&to=${to}`),
+          request<{ expenses: Expense[] }>(`/expenses?from=${from}&to=${to}`),
         ]);
         if (ignore) return;
         const byType = (type: HabitLog["habitType"]) =>
@@ -62,6 +67,24 @@ export default function Insights() {
         setExerciseTrend(byType("exercise"));
         setStepsTrend(byType("steps"));
         setWeightEntries([...weightData.entries, ...bodyFatData.entries]);
+
+        setMoodTrend(
+          moodData.entries
+            .filter((e) => e.data.rating !== undefined)
+            .map((e) => ({ date: e.date, value: Number(e.data.rating) }))
+            .sort((a, b) => (a.date < b.date ? -1 : 1)),
+        );
+
+        const spendByDate = new Map<string, number>();
+        for (const expense of expensesData.expenses) {
+          spendByDate.set(expense.date, (spendByDate.get(expense.date) ?? 0) + expense.amount);
+        }
+        const spendingDays: { date: string; value: number }[] = [];
+        for (let i = TREND_DAYS - 1; i >= 0; i--) {
+          const date = dateOffset(i);
+          spendingDays.push({ date, value: spendByDate.get(date) ?? 0 });
+        }
+        setSpendingTrend(spendingDays);
       } catch {
         // Trend charts are a bonus view — the on-demand AI insights below still work.
       } finally {
@@ -119,6 +142,23 @@ export default function Insights() {
       )}
 
       {!trendLoading && <WeightTrend entries={weightEntries} />}
+
+      {!trendLoading && (moodTrend.length > 0 || spendingTrend.some((p) => p.value > 0)) && (
+        <div className={`mb-6 flex flex-col gap-4 sm:flex-row ${card}`}>
+          {moodTrend.length > 0 && (
+            <div className="flex-1">
+              <h2 className={`mb-2 ${sectionLabel}`}>Mood ({TREND_DAYS}d)</h2>
+              <LineChart points={moodTrend} color="stroke-amber" formatValue={(v) => `${v}/5`} />
+            </div>
+          )}
+          {spendingTrend.some((p) => p.value > 0) && (
+            <div className="flex-1">
+              <h2 className={`mb-2 ${sectionLabel}`}>Spending ({TREND_DAYS}d)</h2>
+              <LineChart points={spendingTrend} color="stroke-bloom" formatValue={formatINR} />
+            </div>
+          )}
+        </div>
+      )}
 
       <div className={`mb-6 flex flex-wrap items-center gap-3 ${card}`}>
         <div className="flex gap-1.5">
