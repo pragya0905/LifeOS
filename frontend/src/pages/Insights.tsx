@@ -21,11 +21,34 @@ import {
 type Period = "day" | "week";
 
 const TREND_DAYS = 14;
+const WEEKLY_WEEKS = 8;
+const WEEKLY_SPAN_DAYS = WEEKLY_WEEKS * 7;
 
 function dateOffset(daysAgo: number): string {
   const d = new Date();
   d.setDate(d.getDate() - daysAgo);
   return toLocalDateStr(d);
+}
+
+// Buckets a date->value map into WEEKLY_WEEKS 7-day windows, oldest first. "sum" keeps the
+// weekly total (used for spending, where a week's total is the meaningful number); "avg"
+// divides by 7 so the unit stays comparable to the daily chart above it (ml, minutes, steps,
+// mood rating) instead of ballooning into a 7x-larger number.
+function weeklyBuckets(
+  dailyValues: Map<string, number>,
+  aggregate: "sum" | "avg",
+): { date: string; value: number }[] {
+  const buckets: { date: string; value: number }[] = [];
+  for (let w = WEEKLY_WEEKS - 1; w >= 0; w--) {
+    const oldestDaysAgo = w * 7 + 6;
+    const newestDaysAgo = w * 7;
+    let total = 0;
+    for (let d = newestDaysAgo; d <= oldestDaysAgo; d++) {
+      total += dailyValues.get(dateOffset(d)) ?? 0;
+    }
+    buckets.push({ date: dateOffset(oldestDaysAgo), value: aggregate === "avg" ? total / 7 : total });
+  }
+  return buckets;
 }
 
 export default function Insights() {
@@ -43,12 +66,20 @@ export default function Insights() {
   const [moodTrend, setMoodTrend] = useState<{ date: string; value: number }[]>([]);
   const [spendingTrend, setSpendingTrend] = useState<{ date: string; value: number }[]>([]);
 
+  const [waterWeekly, setWaterWeekly] = useState<{ date: string; value: number }[]>([]);
+  const [exerciseWeekly, setExerciseWeekly] = useState<{ date: string; value: number }[]>([]);
+  const [stepsWeekly, setStepsWeekly] = useState<{ date: string; value: number }[]>([]);
+  const [moodWeekly, setMoodWeekly] = useState<{ date: string; value: number }[]>([]);
+  const [spendingWeekly, setSpendingWeekly] = useState<{ date: string; value: number }[]>([]);
+
   useEffect(() => {
     let ignore = false;
     async function loadTrend() {
       setTrendLoading(true);
       try {
-        const from = dateOffset(TREND_DAYS - 1);
+        // Fetch the full 8-week span once — both the 14-day daily charts and the 8-week
+        // aggregated charts are sliced/bucketed from this same data, not fetched separately.
+        const from = dateOffset(WEEKLY_SPAN_DAYS - 1);
         const to = dateOffset(0);
         const [habitsData, weightData, bodyFatData, moodData, expensesData] = await Promise.all([
           request<{ habits: HabitLog[] }>(`/habits?from=${from}&to=${to}`),
@@ -58,22 +89,42 @@ export default function Insights() {
           request<{ expenses: Expense[] }>(`/expenses?from=${from}&to=${to}`),
         ]);
         if (ignore) return;
-        const byType = (type: HabitLog["habitType"]) =>
-          habitsData.habits
-            .filter((h) => h.habitType === type)
-            .map((h) => ({ date: h.date, value: h.value ?? 0 }))
-            .sort((a, b) => (a.date < b.date ? -1 : 1));
-        setWaterTrend(byType("water"));
-        setExerciseTrend(byType("exercise"));
-        setStepsTrend(byType("steps"));
-        setWeightEntries([...weightData.entries, ...bodyFatData.entries]);
 
-        setMoodTrend(
-          moodData.entries
-            .filter((e) => e.data.rating !== undefined)
-            .map((e) => ({ date: e.date, value: Number(e.data.rating) }))
-            .sort((a, b) => (a.date < b.date ? -1 : 1)),
+        const isWithinTrendWindow = (date: string) => date >= dateOffset(TREND_DAYS - 1);
+
+        const byType = (type: HabitLog["habitType"]) => {
+          const map = new Map<string, number>();
+          for (const h of habitsData.habits) {
+            if (h.habitType === type) map.set(h.date, h.value ?? 0);
+          }
+          return map;
+        };
+        const toSortedTrend = (map: Map<string, number>) =>
+          [...map.entries()]
+            .filter(([date]) => isWithinTrendWindow(date))
+            .map(([date, value]) => ({ date, value }))
+            .sort((a, b) => (a.date < b.date ? -1 : 1));
+
+        const waterMap = byType("water");
+        const exerciseMap = byType("exercise");
+        const stepsMap = byType("steps");
+        setWaterTrend(toSortedTrend(waterMap));
+        setExerciseTrend(toSortedTrend(exerciseMap));
+        setStepsTrend(toSortedTrend(stepsMap));
+        setWaterWeekly(weeklyBuckets(waterMap, "avg"));
+        setExerciseWeekly(weeklyBuckets(exerciseMap, "avg"));
+        setStepsWeekly(weeklyBuckets(stepsMap, "avg"));
+
+        setWeightEntries(
+          [...weightData.entries, ...bodyFatData.entries].filter((e) => isWithinTrendWindow(e.date)),
         );
+
+        const moodMap = new Map<string, number>();
+        for (const e of moodData.entries) {
+          if (e.data.rating !== undefined) moodMap.set(e.date, Number(e.data.rating));
+        }
+        setMoodTrend(toSortedTrend(moodMap));
+        setMoodWeekly(weeklyBuckets(moodMap, "avg"));
 
         const spendByDate = new Map<string, number>();
         for (const expense of expensesData.expenses) {
@@ -85,6 +136,7 @@ export default function Insights() {
           spendingDays.push({ date, value: spendByDate.get(date) ?? 0 });
         }
         setSpendingTrend(spendingDays);
+        setSpendingWeekly(weeklyBuckets(spendByDate, "sum"));
       } catch {
         // Trend charts are a bonus view — the on-demand AI insights below still work.
       } finally {
@@ -115,7 +167,8 @@ export default function Insights() {
     <div className={page}>
       <h1 className={pageTitle}>Insights</h1>
       <p className={`mb-6 ${mutedText}`}>
-        Generate an AI summary of your recent activity, on demand — nothing runs automatically.
+        Generate an AI summary any time with Today or This week below. You'll also get a push
+        notification with your weekly summary automatically, roughly once every 7 days.
       </p>
 
       {!trendLoading && (waterTrend.length > 0 || exerciseTrend.length > 0 || stepsTrend.length > 0) && (
@@ -157,6 +210,55 @@ export default function Insights() {
               <LineChart points={spendingTrend} color="stroke-bloom" formatValue={formatINR} />
             </div>
           )}
+        </div>
+      )}
+
+      {!trendLoading &&
+        (waterWeekly.some((p) => p.value > 0) ||
+          exerciseWeekly.some((p) => p.value > 0) ||
+          stepsWeekly.some((p) => p.value > 0)) && (
+          <div className={`mb-6 ${card}`}>
+            <p className={`mb-3 ${mutedText}`}>Weekly averages over the last {WEEKLY_WEEKS} weeks.</p>
+            <div className="flex flex-col gap-4 sm:flex-row">
+              {waterWeekly.some((p) => p.value > 0) && (
+                <div className="flex-1">
+                  <h2 className={`mb-2 ${sectionLabel}`}>Water (weekly avg)</h2>
+                  <LineChart points={waterWeekly} formatValue={(v) => `${(v / 1000).toFixed(1)}L`} />
+                </div>
+              )}
+              {exerciseWeekly.some((p) => p.value > 0) && (
+                <div className="flex-1">
+                  <h2 className={`mb-2 ${sectionLabel}`}>Exercise (weekly avg)</h2>
+                  <LineChart points={exerciseWeekly} color="stroke-alert" formatValue={(v) => `${v.toFixed(0)}min`} />
+                </div>
+              )}
+              {stepsWeekly.some((p) => p.value > 0) && (
+                <div className="flex-1">
+                  <h2 className={`mb-2 ${sectionLabel}`}>Steps (weekly avg)</h2>
+                  <LineChart points={stepsWeekly} color="stroke-amber" formatValue={(v) => Math.round(v).toLocaleString()} />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+      {!trendLoading && (moodWeekly.some((p) => p.value > 0) || spendingWeekly.some((p) => p.value > 0)) && (
+        <div className={`mb-6 ${card}`}>
+          <p className={`mb-3 ${mutedText}`}>Weekly {moodWeekly.some((p) => p.value > 0) ? "average / " : ""}total over the last {WEEKLY_WEEKS} weeks.</p>
+          <div className="flex flex-col gap-4 sm:flex-row">
+            {moodWeekly.some((p) => p.value > 0) && (
+              <div className="flex-1">
+                <h2 className={`mb-2 ${sectionLabel}`}>Mood (weekly avg)</h2>
+                <LineChart points={moodWeekly} color="stroke-amber" formatValue={(v) => `${v.toFixed(1)}/5`} />
+              </div>
+            )}
+            {spendingWeekly.some((p) => p.value > 0) && (
+              <div className="flex-1">
+                <h2 className={`mb-2 ${sectionLabel}`}>Spending (weekly total)</h2>
+                <LineChart points={spendingWeekly} color="stroke-bloom" formatValue={formatINR} />
+              </div>
+            )}
+          </div>
         </div>
       )}
 

@@ -25,6 +25,7 @@ export interface UserProfile {
   userId: string;
   heightCm?: number;
   monthlyBudget?: number;
+  lastWeeklyDigestSentAt?: string;
   updatedAt: string;
 }
 

@@ -1390,6 +1390,7 @@ Resources:
           MEDICATIONS_TABLE_NAME: !Ref MedicationsTable
           ROUTINE_TEMPLATES_TABLE_NAME: !Ref RoutineTemplatesTable
           TASKS_TABLE_NAME: !Ref TasksTable
+          EXPENSES_TABLE_NAME: !Ref ExpensesTable
           ANTHROPIC_API_KEY_PARAM: !Sub "/lifeos/${Environment}/anthropic-api-key"
       Policies:
         - DynamoDBReadPolicy:
@@ -1406,6 +1407,8 @@ Resources:
             TableName: !Ref RoutineTemplatesTable
         - DynamoDBReadPolicy:
             TableName: !Ref TasksTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref ExpensesTable
         - SSMParameterReadPolicy:
             ParameterName: !Sub "lifeos/${Environment}/anthropic-api-key"
       Events:
@@ -2192,6 +2195,69 @@ Resources:
             Method: DELETE
             Auth:
               Authorizer: CognitoAuthorizer
+
+  WeeklyInsightsSchedulerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-weekly-insights-scheduler-${Environment}"
+      CodeUri: src/functions/weeklyInsightsScheduler/
+      Handler: index.handler
+      Timeout: 120
+      Environment:
+        Variables:
+          USER_PROFILE_TABLE_NAME: !Ref UserProfileTable
+          PUSH_SUBSCRIPTIONS_TABLE_NAME: !Ref PushSubscriptionsTable
+          HABITS_TABLE_NAME: !Ref HabitLogsTable
+          MEDICATION_LOGS_TABLE_NAME: !Ref MedicationLogsTable
+          ROUTINE_LOGS_TABLE_NAME: !Ref RoutineLogsTable
+          LOG_ENTRIES_TABLE_NAME: !Ref LogEntriesTable
+          EXPENSES_TABLE_NAME: !Ref ExpensesTable
+          MEDICATIONS_TABLE_NAME: !Ref MedicationsTable
+          ROUTINE_TEMPLATES_TABLE_NAME: !Ref RoutineTemplatesTable
+          TASKS_TABLE_NAME: !Ref TasksTable
+          ANTHROPIC_API_KEY_PARAM: !Sub "/lifeos/${Environment}/anthropic-api-key"
+          PUSH_VAPID_PRIVATE_KEY_PARAM: !Sub "/lifeos/${Environment}/push-vapid-private-key"
+          PUSH_VAPID_PUBLIC_KEY: !Ref PushVapidPublicKey
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserProfileTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref PushSubscriptionsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref HabitLogsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref MedicationLogsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref RoutineLogsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref LogEntriesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref ExpensesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref MedicationsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref RoutineTemplatesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref TasksTable
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource:
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifeos/${Environment}/anthropic-api-key"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifeos/${Environment}/push-vapid-private-key"
+      Events:
+        Schedule:
+          Type: Schedule
+          Properties:
+            Schedule: "rate(1 day)"
+            Enabled: true
 
   MedicationReminderSchedulerFunction:
     Type: AWS::Serverless::Function

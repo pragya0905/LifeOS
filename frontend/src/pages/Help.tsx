@@ -137,11 +137,12 @@ const SECTIONS: Section[] = [
   {
     title: "Insights",
     body: "",
-    intro: "Trend charts for the last 14 days plus an on-demand AI summary of your recent activity — nothing runs automatically, you trigger it.",
+    intro: "Trend charts for the last 14 days and 8 weeks, plus an on-demand AI summary of your recent activity — and a weekly digest that finds you automatically.",
     bullets: [
       "📈 14-day trend charts for water, exercise, steps, weight, mood, and spending — each only appears once you've logged enough of that type to plot.",
+      "🗓️ 8-week aggregated charts sit below the daily ones — weekly averages for water/exercise/steps/mood, weekly totals for spending — for a longer-range view than the daily charts give you.",
       "🤖 Generate pulls together a summary, highlights, and suggestions from your activity for Today or This week, whichever you pick.",
-      "🔄 Nothing is saved or scheduled — each Generate is a fresh on-demand look, not a running history.",
+      "🔔 A weekly summary also arrives as a push notification automatically, roughly once every 7 days — no need to remember to open the app.",
     ],
   },
   {
