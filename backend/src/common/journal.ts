@@ -376,7 +376,12 @@ export async function applyJournalExtraction(
       writes.push(writeAiHabitLog(userId, date, "steps", extraction.stepsCount));
     }
     if (extraction.food !== null) {
-      writes.push(writeAiLogEntry(userId, date, "food", { description: extraction.food }));
+      writes.push(
+        writeAiLogEntry(userId, date, "food", {
+          description: extraction.food.description,
+          mealType: extraction.food.mealType ?? undefined,
+        }),
+      );
     }
     if (extraction.sleep !== null) {
       writes.push(

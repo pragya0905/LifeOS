@@ -8,7 +8,12 @@ const JournalExtractionSchema = z.object({
   waterMl: z.number().nullable(),
   exerciseMinutes: z.number().nullable(),
   stepsCount: z.number().nullable(),
-  food: z.string().nullable(),
+  food: z
+    .object({
+      description: z.string(),
+      mealType: z.enum(["breakfast", "lunch", "dinner", "snack"]).nullable(),
+    })
+    .nullable(),
   sleep: z
     .object({ bedTime: z.string().nullable(), wakeTime: z.string().nullable() })
     .nullable(),
@@ -48,7 +53,12 @@ function buildJournalSystemPrompt(
     "- waterMl: water intake in milliliters (convert other units — a glass is about 250ml).",
     "- exerciseMinutes: exercise duration in minutes (convert other units).",
     "- stepsCount: number of steps walked, if a step count or distance walked is mentioned.",
-    "- food: a short free-text description of food/meals mentioned, or null.",
+    "- food: { description, mealType } for food/meals mentioned, or null if none mentioned. " +
+      "description is a short free-text summary. mealType is 'breakfast', 'lunch', 'dinner', " +
+      "or 'snack' if it's stated explicitly (e.g. 'for breakfast') or clearly implied by time " +
+      "of day mentioned (e.g. 'this morning I had...' implies breakfast); otherwise null — " +
+      "never guess a meal type from food content alone (e.g. eggs don't necessarily mean " +
+      "breakfast).",
     "- sleep: { bedTime, wakeTime } as HH:MM 24-hour times. Either field can be null if only " +
       "one was mentioned (e.g. just a wake-up time). The whole object is null if neither is " +
       "mentioned.",

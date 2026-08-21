@@ -6,7 +6,11 @@ export function extractionParts(aiExtracted: JournalEntry["aiExtracted"]): strin
   if (aiExtracted.waterMl !== null) parts.push(`water ${aiExtracted.waterMl}ml`);
   if (aiExtracted.exerciseMinutes !== null) parts.push(`exercise ${aiExtracted.exerciseMinutes}min`);
   if (aiExtracted.stepsCount !== null) parts.push(`${aiExtracted.stepsCount} steps`);
-  if (aiExtracted.food !== null) parts.push(`food: ${aiExtracted.food}`);
+  if (aiExtracted.food !== null) {
+    parts.push(
+      `food: ${aiExtracted.food.description}${aiExtracted.food.mealType ? ` (${aiExtracted.food.mealType})` : ""}`,
+    );
+  }
   if (aiExtracted.sleep !== null) {
     const { bedTime, wakeTime } = aiExtracted.sleep;
     if (bedTime !== null && wakeTime !== null) parts.push(`sleep ${bedTime}–${wakeTime}`);
