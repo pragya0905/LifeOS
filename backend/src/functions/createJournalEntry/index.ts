@@ -21,6 +21,17 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
   const date = typeof body.date === "string" ? body.date : "";
   if (!DATE_RE.test(date)) return errorResponse(400, "date is required, format YYYY-MM-DD");
 
+  // Lax by design: Lambda runs in UTC, but the user's local "today" can already be one
+  // calendar day ahead of UTC (e.g. IST is UTC+5:30) — a strict UTC comparison would reject
+  // a legitimate local-today entry for part of the day. This still catches obviously-wrong
+  // far-future dates; the frontend's date picker (bounded by the browser's actual local
+  // "today") is the primary guard for the common case.
+  const utcTomorrow = new Date();
+  utcTomorrow.setUTCDate(utcTomorrow.getUTCDate() + 1);
+  if (date > utcTomorrow.toISOString().slice(0, 10)) {
+    return errorResponse(400, "date can't be in the future");
+  }
+
   const text = typeof body.text === "string" ? body.text.trim() : "";
   if (!text) return errorResponse(400, "text is required");
 

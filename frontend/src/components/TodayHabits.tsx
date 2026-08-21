@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../api/useApi";
-import { todayLocal } from "../lib/date";
+import { toLocalDateStr, todayLocal } from "../lib/date";
 import type { Goal, GoalMetric, HabitLog, JournalEntry, LogEntry } from "../types";
 import {
   badge,
@@ -12,11 +12,20 @@ import {
   pillButton,
   pillButtonInactive,
   primaryButton,
+  secondaryButton,
   sectionLabel,
 } from "./ui";
 
+const OLDEST_DAYS_AGO = 7; // "past 8 days" = today + 7 prior days = 8 selectable days total
+
 function today(): string {
   return todayLocal();
+}
+
+function addDays(dateStr: string, delta: number): string {
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setDate(d.getDate() + delta);
+  return toLocalDateStr(d);
 }
 
 // Returns the parsed number if valid, null if the draft is blank (field not being
@@ -47,7 +56,7 @@ function DoneCheck({ done, label }: { done: boolean; label: string }) {
       checked={done}
       readOnly
       disabled
-      aria-label={`${label}: ${done ? "done" : "not done"} today`}
+      aria-label={`${label}: ${done ? "done" : "not done"}`}
       className="h-4 w-4 rounded border-stone text-bloom accent-bloom disabled:opacity-100 dark:border-stone-dark"
     />
   );
@@ -86,7 +95,8 @@ function GoalTarget({
 
 export default function TodayHabits() {
   const { request } = useApi();
-  const date = today();
+  const [selectedDate, setSelectedDate] = useState(today());
+  const oldestAllowed = addDays(today(), -OLDEST_DAYS_AGO);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -124,7 +134,7 @@ export default function TodayHabits() {
   const [moodRating, setMoodRating] = useState<number | null>(null);
   const [moodNote, setMoodNote] = useState("");
 
-  const [journaledToday, setJournaledToday] = useState(false);
+  const [journaledThatDay, setJournaledThatDay] = useState(false);
 
   const [goalDrafts, setGoalDrafts] = useState<Partial<Record<GoalMetric, string>>>({});
   const [savingGoal, setSavingGoal] = useState<GoalMetric | null>(null);
@@ -135,16 +145,37 @@ export default function TodayHabits() {
     async function load() {
       setLoading(true);
       setError(null);
+      // Reset every per-day field before fetching — otherwise switching to a date with no
+      // sleep/call/weight/etc. entry would keep showing the previous date's values.
+      setWaterDraft("");
+      setExerciseDraft("");
+      setStepsDraft("");
+      setHabitSource({});
+      setSleepLogId(null);
+      setBedTime("");
+      setWakeTime("");
+      setCallLogId(null);
+      setCallPerson("");
+      setCallDuration("");
+      setWeightLogId(null);
+      setWeightDraft("");
+      setBodyFatLogId(null);
+      setBodyFatDraft("");
+      setMoodLogId(null);
+      setMoodRating(null);
+      setMoodNote("");
+      setJournaledThatDay(false);
+      setFieldErrors({});
       try {
         const [habitsData, sleepData, callData, weightData, bodyFatData, moodData, journalData, goalsData] =
           await Promise.all([
-            request<{ habits: HabitLog[] }>(`/habits/${date}`),
-            request<{ entries: LogEntry[] }>(`/logs?logType=sleep&from=${date}&to=${date}`),
-            request<{ entries: LogEntry[] }>(`/logs?logType=call&from=${date}&to=${date}`),
-            request<{ entries: LogEntry[] }>(`/logs?logType=weight&from=${date}&to=${date}`),
-            request<{ entries: LogEntry[] }>(`/logs?logType=bodyFat&from=${date}&to=${date}`),
-            request<{ entries: LogEntry[] }>(`/logs?logType=mood&from=${date}&to=${date}`),
-            request<{ entries: JournalEntry[] }>(`/journal?from=${date}&to=${date}`),
+            request<{ habits: HabitLog[] }>(`/habits/${selectedDate}`),
+            request<{ entries: LogEntry[] }>(`/logs?logType=sleep&from=${selectedDate}&to=${selectedDate}`),
+            request<{ entries: LogEntry[] }>(`/logs?logType=call&from=${selectedDate}&to=${selectedDate}`),
+            request<{ entries: LogEntry[] }>(`/logs?logType=weight&from=${selectedDate}&to=${selectedDate}`),
+            request<{ entries: LogEntry[] }>(`/logs?logType=bodyFat&from=${selectedDate}&to=${selectedDate}`),
+            request<{ entries: LogEntry[] }>(`/logs?logType=mood&from=${selectedDate}&to=${selectedDate}`),
+            request<{ entries: JournalEntry[] }>(`/journal?from=${selectedDate}&to=${selectedDate}`),
             request<{ goals: Goal[] }>("/goals"),
           ]);
         if (ignore) return;
@@ -204,10 +235,10 @@ export default function TodayHabits() {
           setMoodNote((mood.data.note as string) ?? "");
         }
 
-        setJournaledToday(journalData.entries.length > 0);
+        setJournaledThatDay(journalData.entries.length > 0);
       } catch (err) {
         if (ignore) return;
-        setError(err instanceof Error ? err.message : "Failed to load today's habits");
+        setError(err instanceof Error ? err.message : "Failed to load habits");
       } finally {
         if (!ignore) setLoading(false);
       }
@@ -218,7 +249,7 @@ export default function TodayHabits() {
       ignore = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [selectedDate]);
 
   async function handleSaveAll() {
     setError(null);
@@ -247,7 +278,7 @@ export default function TodayHabits() {
 
       if (water !== null) {
         tasks.push(
-          request(`/habits/${date}/water`, {
+          request(`/habits/${selectedDate}/water`, {
             method: "PATCH",
             body: JSON.stringify({ value: water }),
           }),
@@ -255,7 +286,7 @@ export default function TodayHabits() {
       }
       if (exercise !== null) {
         tasks.push(
-          request(`/habits/${date}/exercise`, {
+          request(`/habits/${selectedDate}/exercise`, {
             method: "PATCH",
             body: JSON.stringify({ value: exercise }),
           }),
@@ -263,7 +294,7 @@ export default function TodayHabits() {
       }
       if (steps !== null) {
         tasks.push(
-          request(`/habits/${date}/steps`, {
+          request(`/habits/${selectedDate}/steps`, {
             method: "PATCH",
             body: JSON.stringify({ value: steps }),
           }),
@@ -276,7 +307,7 @@ export default function TodayHabits() {
             ? request(`/logs/${sleepLogId}`, { method: "PATCH", body: JSON.stringify({ data }) })
             : request("/logs", {
                 method: "POST",
-                body: JSON.stringify({ logType: "sleep", date, data }),
+                body: JSON.stringify({ logType: "sleep", date: selectedDate, data }),
               }),
         );
       }
@@ -290,7 +321,7 @@ export default function TodayHabits() {
             ? request(`/logs/${callLogId}`, { method: "PATCH", body: JSON.stringify({ data }) })
             : request("/logs", {
                 method: "POST",
-                body: JSON.stringify({ logType: "call", date, data }),
+                body: JSON.stringify({ logType: "call", date: selectedDate, data }),
               }),
         );
       }
@@ -301,7 +332,7 @@ export default function TodayHabits() {
             ? request(`/logs/${weightLogId}`, { method: "PATCH", body: JSON.stringify({ data }) })
             : request("/logs", {
                 method: "POST",
-                body: JSON.stringify({ logType: "weight", date, data }),
+                body: JSON.stringify({ logType: "weight", date: selectedDate, data }),
               }),
         );
       }
@@ -312,7 +343,7 @@ export default function TodayHabits() {
             ? request(`/logs/${bodyFatLogId}`, { method: "PATCH", body: JSON.stringify({ data }) })
             : request("/logs", {
                 method: "POST",
-                body: JSON.stringify({ logType: "bodyFat", date, data }),
+                body: JSON.stringify({ logType: "bodyFat", date: selectedDate, data }),
               }),
         );
       }
@@ -323,7 +354,7 @@ export default function TodayHabits() {
             ? request(`/logs/${moodLogId}`, { method: "PATCH", body: JSON.stringify({ data }) })
             : request("/logs", {
                 method: "POST",
-                body: JSON.stringify({ logType: "mood", date, data }),
+                body: JSON.stringify({ logType: "mood", date: selectedDate, data }),
               }),
         );
       }
@@ -351,7 +382,7 @@ export default function TodayHabits() {
     setQuickAdding(true);
     setError(null);
     try {
-      await request(`/habits/${date}/water`, {
+      await request(`/habits/${selectedDate}/water`, {
         method: "PATCH",
         body: JSON.stringify({ value: next }),
       });
@@ -384,6 +415,7 @@ export default function TodayHabits() {
   }
 
   const sleepDuration = computeSleepDuration(bedTime, wakeTime);
+  const isToday = selectedDate === today();
 
   const rowLabelClass = "px-3 py-3 text-sm font-medium text-ink dark:text-paper";
   const detailCellClass = "px-3 py-3";
@@ -394,7 +426,27 @@ export default function TodayHabits() {
 
   return (
     <div className={card}>
-      <h2 className={`mb-3 ${sectionLabel}`}>Today's habits ({date})</h2>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => setSelectedDate((d) => addDays(d, -1))}
+          disabled={selectedDate <= oldestAllowed}
+          className={`${secondaryButton} px-2 py-1 text-xs`}
+        >
+          ← Prev day
+        </button>
+        <h2 className={sectionLabel}>
+          {isToday ? "Today's habits" : "Habits"} ({selectedDate})
+        </h2>
+        <button
+          type="button"
+          onClick={() => setSelectedDate((d) => addDays(d, 1))}
+          disabled={isToday}
+          className={`${secondaryButton} px-2 py-1 text-xs`}
+        >
+          Next day →
+        </button>
+      </div>
       {error && <p className={`mb-2 ${errorText}`}>{error}</p>}
       {loading ? (
         <p className={mutedText}>Loading...</p>
@@ -677,11 +729,18 @@ export default function TodayHabits() {
                 <tr>
                   <td className={rowLabelClass}>Journal</td>
                   <td className={detailCellClass}>
-                    <DoneCheck done={journaledToday} label="Journal" />
+                    <DoneCheck done={journaledThatDay} label="Journal" />
                   </td>
                   <td className={detailCellClass}>
                     <Link to="/journal" className="text-sm text-bloom hover:underline">
-                      {journaledToday ? "View today's entry" : "Write today's entry"} →
+                      {journaledThatDay
+                        ? isToday
+                          ? "View today's entry"
+                          : `View entry for ${selectedDate}`
+                        : isToday
+                          ? "Write today's entry"
+                          : `Write entry for ${selectedDate}`}{" "}
+                      →
                     </Link>
                   </td>
                 </tr>

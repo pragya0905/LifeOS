@@ -227,6 +227,10 @@ export default function Journal() {
   async function handleSave(e: FormEvent) {
     e.preventDefault();
     if (!text.trim()) return;
+    if (date > today()) {
+      setError("Journal entries can't be dated in the future.");
+      return;
+    }
     if (listening) stopListening();
     setSaving(true);
     setError(null);
@@ -259,6 +263,7 @@ export default function Journal() {
           <input
             type="date"
             required
+            max={today()}
             value={date}
             onChange={(e) => setDate(e.target.value)}
             className={input}
