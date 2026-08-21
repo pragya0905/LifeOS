@@ -10,7 +10,17 @@ interface Section {
 const SECTIONS: Section[] = [
   {
     title: "Dashboard",
-    body: "Your daily snapshot: at-a-glance progress rings for water/sleep/exercise/steps (with streaks and trend vs. yesterday), today's scheduled tasks, today's habit table, the Extraction Ledger, and a preview of upcoming tasks.",
+    body: "",
+    intro: "Your daily snapshot — everything worth a glance before you dive into a specific page.",
+    bullets: [
+      "💧 Progress rings for water/sleep/exercise/steps, with streaks and a trend vs. yesterday.",
+      "📅 Today's scheduled tasks and the full Today's Habits table, right on the page.",
+      "📋 The Extraction Ledger shows exactly what Claude picked up from your latest journal entry.",
+      "✅ A Tasks card previews pending/overdue counts and your top 3 most urgent tasks.",
+      "💰 A Budget card shows this month's spending against your monthly budget, or your total spent if you haven't set one yet.",
+      "🌸 A Cycle card shows today's estimated phase — only appears once you've logged enough cycle history to estimate one.",
+      "📈 An Insights card links straight into your trend charts and AI summary.",
+    ],
   },
   {
     title: "Journal",

@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../api/useApi";
 import Achievements from "../components/Achievements";
+import BudgetPreview from "../components/BudgetPreview";
+import CyclePreview from "../components/CyclePreview";
 import ExtractionLedger from "../components/ExtractionLedger";
 import TodayHabits from "../components/TodayHabits";
 import TodaySchedule from "../components/TodaySchedule";
@@ -25,11 +27,11 @@ function today(): string {
 
 function greeting(): string {
   const hour = new Date().getHours();
-  if (hour < 5) return "Still up";
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  if (hour < 21) return "Good evening";
-  return "Good night";
+  if (hour < 5) return "Still up 🌙";
+  if (hour < 12) return "Good morning ☀️";
+  if (hour < 17) return "Good afternoon 🌤️";
+  if (hour < 21) return "Good evening 🌇";
+  return "Good night 🌙";
 }
 
 function formattedDate(): string {
@@ -102,9 +104,9 @@ export default function Dashboard() {
         <ExtractionLedger />
       </div>
 
-      <div className="mb-6 flex flex-col gap-6 sm:flex-row">
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className={`flex-1 ${card}`}>
-          <h2 className={`mb-2 ${sectionLabel}`}>Tasks</h2>
+          <h2 className={`mb-2 ${sectionLabel}`}>✅ Tasks</h2>
           {error && <p className={errorText}>{error}</p>}
           {!error && !tasks && <p className={mutedText}>Loading...</p>}
           {tasks && (
@@ -155,8 +157,12 @@ export default function Dashboard() {
           </Link>
         </div>
 
+        <BudgetPreview />
+
+        <CyclePreview />
+
         <div className={`flex-1 ${card}`}>
-          <h2 className={`mb-2 ${sectionLabel}`}>Insights</h2>
+          <h2 className={`mb-2 ${sectionLabel}`}>📈 Insights</h2>
           <p className={mutedText}>See patterns and suggestions from your recent activity.</p>
           <Link to="/insights" className="mt-1 inline-block text-xs text-bloom hover:underline">
             View insights →
