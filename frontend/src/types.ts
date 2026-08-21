@@ -185,10 +185,13 @@ export interface Goal {
   updatedAt: string;
 }
 
+export type UserSex = "male" | "female" | "unspecified";
+
 export interface UserProfile {
   userId: string;
   heightCm?: number;
   monthlyBudget?: number;
+  sex?: UserSex;
   onboardingCompletedAt?: string;
   updatedAt?: string;
 }

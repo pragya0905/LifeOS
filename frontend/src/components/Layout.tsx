@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { useApi } from "../api/useApi";
 import { useAuth } from "../auth/AuthContext";
+import type { UserProfile } from "../types";
 import OnlineStatusBadge from "./OnlineStatusBadge";
 
 const TABS = [
@@ -95,13 +97,37 @@ function IconMore({ active }: { active: boolean }) {
 
 export default function Layout() {
   const { user, signOut } = useAuth();
+  const { request } = useApi();
   const location = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
+  const [hideCycle, setHideCycle] = useState(false);
   const moreActive = MORE_ROUTES.some((r) => location.pathname.startsWith(r));
 
   useEffect(() => {
     setMoreOpen(false);
   }, [location.pathname]);
+
+  useEffect(() => {
+    let ignore = false;
+    request<UserProfile>("/profile")
+      .then((profile) => {
+        if (!ignore) setHideCycle(profile.sex === "male");
+      })
+      .catch(() => {
+        // Nav just shows Cycle by default if this fails — not critical to render.
+      });
+    return () => {
+      ignore = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const moreGroups = hideCycle
+    ? MORE_GROUPS.map((group) => ({
+        ...group,
+        links: group.links.filter((l) => l.to !== "/cycle"),
+      }))
+    : MORE_GROUPS;
 
   return (
     <div className="min-h-screen bg-paper dark:bg-ink-bg">
@@ -196,7 +222,7 @@ export default function Layout() {
                 </svg>
               </button>
             </div>
-            {MORE_GROUPS.map((group) => (
+            {moreGroups.map((group) => (
               <div key={group.label} className="mb-4 last:mb-0">
                 <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-ink-muted dark:text-mist-muted">
                   {group.label}

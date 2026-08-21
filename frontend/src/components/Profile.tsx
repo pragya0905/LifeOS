@@ -1,15 +1,34 @@
 import { useEffect, useState } from "react";
 import { useApi } from "../api/useApi";
-import type { Goal, UserProfile } from "../types";
-import { card, errorText, input, label, mutedText, primaryButton, sectionLabel } from "./ui";
+import type { Goal, UserProfile, UserSex } from "../types";
+import {
+  card,
+  errorText,
+  input,
+  label,
+  mutedText,
+  pillButton,
+  pillButtonDone,
+  pillButtonInactive,
+  primaryButton,
+  sectionLabel,
+} from "./ui";
+
+const SEX_OPTIONS: { value: UserSex; label: string }[] = [
+  { value: "female", label: "Female" },
+  { value: "male", label: "Male" },
+  { value: "unspecified", label: "Prefer not to say" },
+];
 
 export default function Profile() {
   const { request } = useApi();
   const [loading, setLoading] = useState(true);
   const [heightDraft, setHeightDraft] = useState("");
   const [weightTargetDraft, setWeightTargetDraft] = useState("");
+  const [sex, setSex] = useState<UserSex | null>(null);
   const [savingHeight, setSavingHeight] = useState(false);
   const [savingWeightTarget, setSavingWeightTarget] = useState(false);
+  const [savingSex, setSavingSex] = useState(false);
   const [savedHeight, setSavedHeight] = useState(false);
   const [savedWeightTarget, setSavedWeightTarget] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,6 +44,7 @@ export default function Profile() {
         ]);
         if (ignore) return;
         if (profile.heightCm) setHeightDraft(String(profile.heightCm));
+        if (profile.sex) setSex(profile.sex);
         const weightGoal = goalsData.goals.find((g) => g.metric === "weight");
         if (weightGoal) setWeightTargetDraft(String(weightGoal.targetValue));
       } catch (err) {
@@ -39,6 +59,21 @@ export default function Profile() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function handleSetSex(next: UserSex) {
+    const previous = sex;
+    setSex(next);
+    setSavingSex(true);
+    setError(null);
+    try {
+      await request("/profile", { method: "PATCH", body: JSON.stringify({ sex: next }) });
+    } catch (err) {
+      setSex(previous);
+      setError(err instanceof Error ? err.message : "Failed to save sex");
+    } finally {
+      setSavingSex(false);
+    }
+  }
 
   async function handleSaveHeight() {
     const heightCm = Number(heightDraft);
@@ -85,6 +120,27 @@ export default function Profile() {
         <p className={mutedText}>Loading...</p>
       ) : (
         <div className="flex flex-col gap-3">
+          <div>
+            <label className={label}>Sex</label>
+            <div className="flex flex-wrap gap-1.5">
+              {SEX_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  disabled={savingSex}
+                  onClick={() => handleSetSex(opt.value)}
+                  className={`${pillButton} px-3 py-1 ${sex === opt.value ? pillButtonDone : pillButtonInactive}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className={`mt-1 ${mutedText}`}>
+              Used only to show/hide the Cycle feature and a relevant healthy body-fat % range
+              on Insights.
+            </p>
+          </div>
+
           <div>
             <label className={label}>Height (cm)</label>
             <div className="flex items-center gap-2">

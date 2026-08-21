@@ -1,7 +1,25 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApi } from "../api/useApi";
-import { card, errorText, input, label, mutedText, primaryButton, secondaryButton } from "../components/ui";
+import type { UserSex } from "../types";
+import {
+  card,
+  errorText,
+  input,
+  label,
+  mutedText,
+  pillButton,
+  pillButtonDone,
+  pillButtonInactive,
+  primaryButton,
+  secondaryButton,
+} from "../components/ui";
+
+const SEX_OPTIONS: { value: UserSex; label: string }[] = [
+  { value: "female", label: "Female" },
+  { value: "male", label: "Male" },
+  { value: "unspecified", label: "Prefer not to say" },
+];
 
 interface FieldConfig {
   key: "heightCm" | "weightTarget" | "water" | "exercise" | "steps";
@@ -29,6 +47,7 @@ export default function Onboarding() {
   const { request } = useApi();
   const navigate = useNavigate();
   const [values, setValues] = useState<Record<string, string>>({});
+  const [sex, setSex] = useState<UserSex | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,6 +60,7 @@ export default function Onboarding() {
       const heightCm = values.heightCm ? Number(values.heightCm) : undefined;
       const profileBody: Record<string, unknown> = {};
       if (heightCm && Number.isFinite(heightCm) && heightCm > 0) profileBody.heightCm = heightCm;
+      if (sex) profileBody.sex = sex;
       if (markComplete) profileBody.onboardingCompleted = true;
       if (Object.keys(profileBody).length > 0) {
         tasks.push(request("/profile", { method: "PATCH", body: JSON.stringify(profileBody) }));
@@ -86,6 +106,26 @@ export default function Onboarding() {
       </p>
 
       <form onSubmit={handleSubmit} className={`mb-4 flex flex-col gap-4 ${card}`}>
+        <div>
+          <label className={label}>Sex</label>
+          <div className="flex flex-wrap gap-1.5">
+            {SEX_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setSex(opt.value)}
+                className={`${pillButton} px-3 py-1 ${sex === opt.value ? pillButtonDone : pillButtonInactive}`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <p className={`mt-1 ${mutedText}`}>
+            Used only to show/hide the Cycle feature and to show a relevant healthy body-fat %
+            range on Insights. Optional — you can change this any time in Settings.
+          </p>
+        </div>
+
         {FIELDS.map((field) => (
           <div key={field.key}>
             <label className={label}>{field.label}</label>

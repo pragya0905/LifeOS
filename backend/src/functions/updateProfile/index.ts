@@ -3,6 +3,9 @@ import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb } from "../../common/dynamo";
 import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
+import type { UserSex } from "../../common/types";
+
+const SEX_VALUES: UserSex[] = ["male", "female", "unspecified"];
 
 export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) => {
   const userId = getUserId(event);
@@ -29,7 +32,15 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
   if (body.onboardingCompleted !== undefined && body.onboardingCompleted !== true) {
     return errorResponse(400, "onboardingCompleted must be true");
   }
-  if (body.heightCm === undefined && body.monthlyBudget === undefined && body.onboardingCompleted === undefined) {
+  if (body.sex !== undefined && !SEX_VALUES.includes(body.sex as UserSex)) {
+    return errorResponse(400, `sex must be one of ${SEX_VALUES.join(", ")}`);
+  }
+  if (
+    body.heightCm === undefined &&
+    body.monthlyBudget === undefined &&
+    body.onboardingCompleted === undefined &&
+    body.sex === undefined
+  ) {
     return errorResponse(400, "No updatable fields provided");
   }
 
@@ -47,6 +58,11 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     names["#monthlyBudget"] = "monthlyBudget";
     values[":monthlyBudget"] = body.monthlyBudget;
     setClauses.push("#monthlyBudget = :monthlyBudget");
+  }
+  if (body.sex !== undefined) {
+    names["#sex"] = "sex";
+    values[":sex"] = body.sex;
+    setClauses.push("#sex = :sex");
   }
   if (body.onboardingCompleted === true) {
     // Stamped server-side (not client-supplied) so it can't be forged/skewed by the client clock.

@@ -112,7 +112,7 @@ const SECTIONS: Section[] = [
   {
     title: "Cycle",
     body: "",
-    intro: "Log period start/end and symptoms, and let LifeOs turn that history into predictions — private to your account like everything else.",
+    intro: "Log period start/end and symptoms, and let LifeOs turn that history into predictions — private to your account like everything else. Hidden from navigation if you've set your sex to Male in Settings.",
     bullets: [
       "🩸 My period started today logs a period-start entry for today in one tap — no need to fill the full form for the most common entry.",
       "🌙 The colour-coded overview card estimates the cycle phase — Menstrual, Follicular, Ovulation, or Luteal — for any date you pick, with a segmented bar showing where that day sits in the cycle and a short note on what mood/energy tends to look like there. It's an estimate from your own averages, not a medical prediction.",
@@ -139,7 +139,7 @@ const SECTIONS: Section[] = [
     body: "",
     intro: "Trend charts for the last 14 days and 8 weeks, plus an on-demand AI summary of your recent activity — and a weekly digest that finds you automatically.",
     bullets: [
-      "📈 14-day trend charts for water, exercise, steps, weight, mood, and spending — each only appears once you've logged enough of that type to plot.",
+      "📈 14-day trend charts for water, exercise, steps, weight, mood, and spending — each only appears once you've logged enough of that type to plot. Weight shows a dashed line at your target if you've set one; body fat % shows a healthy-range badge if you've set your sex in Settings.",
       "🗓️ 8-week aggregated charts sit below the daily ones — weekly averages for water/exercise/steps/mood, weekly totals for spending — for a longer-range view than the daily charts give you.",
       "🤖 Generate pulls together a summary, highlights, and suggestions from your activity for Today or This week, whichever you pick.",
       "🔔 A weekly summary also arrives as a push notification automatically, roughly once every 7 days — no need to remember to open the app.",
@@ -161,7 +161,7 @@ const SECTIONS: Section[] = [
   },
   {
     title: "Settings",
-    body: "Install the app to your home screen, enable notifications and task due-date reminders, set your profile height and weight target, switch light/dark/system theme, export your data (including expenses) as CSV or PDF, and delete your account.",
+    body: "Install the app to your home screen, enable notifications and task due-date reminders, set your sex, height, and weight target, switch light/dark/system theme, export your data (including expenses) as CSV or PDF, and delete your account.",
   },
 ];
 
