@@ -160,7 +160,7 @@ const SECTIONS: Section[] = [
   },
   {
     title: "Settings",
-    body: "Install the app to your home screen, enable notifications and task due-date reminders, set your profile height, switch light/dark/system theme, export your data as CSV or PDF, and delete your account.",
+    body: "Install the app to your home screen, enable notifications and task due-date reminders, set your profile height, switch light/dark/system theme, export your data (including expenses) as CSV or PDF, and delete your account.",
   },
 ];
 

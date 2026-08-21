@@ -32,7 +32,8 @@ export default function DeleteAccount() {
         <>
           <p className={`mb-3 ${mutedText}`}>
             Permanently delete your account and all data — tasks, journal entries, habits,
-            logs, medications, and routines. This cannot be undone.
+            logs (including cycle events), medications, routines, goals, wishes, and your
+            budgets and expenses. This cannot be undone.
           </p>
           <button
             type="button"

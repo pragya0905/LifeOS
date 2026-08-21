@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useApi } from "../api/useApi";
 import { todayLocal } from "../lib/date";
-import type { JournalEntry, LogEntry, Task } from "../types";
+import type { Expense, JournalEntry, LogEntry, Task } from "../types";
 import { card, errorText, mutedText, primaryButton, secondaryButton, sectionLabel } from "./ui";
 
 function csvEscape(value: string): string {
@@ -33,12 +33,18 @@ function escapeHtml(value: string): string {
 }
 
 async function fetchExportData(request: ReturnType<typeof useApi>["request"]) {
-  const [tasksData, journalData, logsData] = await Promise.all([
+  const [tasksData, journalData, logsData, expensesData] = await Promise.all([
     request<{ tasks: Task[] }>("/tasks"),
     request<{ entries: JournalEntry[] }>("/journal"),
     request<{ entries: LogEntry[] }>("/logs"),
+    request<{ expenses: Expense[] }>("/expenses"),
   ]);
-  return { tasks: tasksData.tasks, journalEntries: journalData.entries, logs: logsData.entries };
+  return {
+    tasks: tasksData.tasks,
+    journalEntries: journalData.entries,
+    logs: logsData.entries,
+    expenses: expensesData.expenses,
+  };
 }
 
 export default function DataExport() {
@@ -51,7 +57,7 @@ export default function DataExport() {
     setExportingCsv(true);
     setError(null);
     try {
-      const { tasks, journalEntries, logs } = await fetchExportData(request);
+      const { tasks, journalEntries, logs, expenses } = await fetchExportData(request);
       const rows: string[][] = [["type", "date", "summary", "details"]];
 
       for (const task of tasks) {
@@ -78,6 +84,14 @@ export default function DataExport() {
       for (const logEntry of logs) {
         rows.push([logEntry.logType, logEntry.date, "", JSON.stringify(logEntry.data)]);
       }
+      for (const expense of expenses) {
+        rows.push([
+          "expense",
+          expense.date,
+          `${expense.category} — ₹${expense.amount}`,
+          JSON.stringify({ category: expense.category, amount: expense.amount, note: expense.note }),
+        ]);
+      }
 
       downloadCsv(`lifeos-export-${todayLocal()}.csv`, toCsv(rows));
     } catch (err) {
@@ -91,7 +105,7 @@ export default function DataExport() {
     setExportingPdf(true);
     setError(null);
     try {
-      const { tasks, journalEntries, logs } = await fetchExportData(request);
+      const { tasks, journalEntries, logs, expenses } = await fetchExportData(request);
       const printWindow = window.open("", "_blank");
       if (!printWindow) {
         setError("Your browser blocked the print window — allow pop-ups for this site and try again.");
@@ -114,6 +128,12 @@ export default function DataExport() {
         .map(
           (l) =>
             `<tr><td>${l.date}</td><td>${escapeHtml(l.logType)}</td><td>${escapeHtml(JSON.stringify(l.data))}</td></tr>`,
+        )
+        .join("");
+      const expenseRows = expenses
+        .map(
+          (e) =>
+            `<tr><td>${e.date}</td><td>${escapeHtml(e.category)}</td><td>₹${e.amount}</td><td>${escapeHtml(e.note ?? "")}</td></tr>`,
         )
         .join("");
 
@@ -140,6 +160,8 @@ export default function DataExport() {
           <table><tr><th>Date</th><th>Entry</th></tr>${journalRows || "<tr><td colspan=2>None</td></tr>"}</table>
           <h2>Logs (${logs.length})</h2>
           <table><tr><th>Date</th><th>Type</th><th>Details</th></tr>${logRows || "<tr><td colspan=3>None</td></tr>"}</table>
+          <h2>Expenses (${expenses.length})</h2>
+          <table><tr><th>Date</th><th>Category</th><th>Amount</th><th>Note</th></tr>${expenseRows || "<tr><td colspan=4>None</td></tr>"}</table>
           <script>window.onload = () => window.print();</script>
         </body>
         </html>
@@ -156,8 +178,8 @@ export default function DataExport() {
     <div className={card}>
       <h2 className={`mb-2 ${sectionLabel}`}>Export data</h2>
       <p className={`mb-3 ${mutedText}`}>
-        Download your tasks, journal entries, and logs (sleep, weight, mood, cycle, food, calls,
-        expenses) — useful for backups or sharing with a healthcare provider.
+        Download your tasks, journal entries, logs (sleep, weight, mood, cycle, food, calls), and
+        expenses — useful for backups or sharing with a healthcare provider.
       </p>
       {error && <p className={`mb-2 ${errorText}`}>{error}</p>}
       <div className="flex gap-2">
