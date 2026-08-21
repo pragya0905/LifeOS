@@ -147,6 +147,7 @@ export default function Profile() {
               <input
                 type="number"
                 min={1}
+                step="0.1"
                 value={heightDraft}
                 onChange={(e) => setHeightDraft(e.target.value)}
                 placeholder="e.g. 170"
@@ -171,6 +172,7 @@ export default function Profile() {
               <input
                 type="number"
                 min={1}
+                step="0.1"
                 value={weightTargetDraft}
                 onChange={(e) => setWeightTargetDraft(e.target.value)}
                 placeholder="e.g. 65"
