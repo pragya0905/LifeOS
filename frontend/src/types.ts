@@ -22,6 +22,7 @@ export interface JournalEntryExtraction {
   waterMl: number | null;
   exerciseMinutes: number | null;
   stepsCount: number | null;
+  distanceKm: number | null;
   food: { description: string; mealType: "breakfast" | "lunch" | "dinner" | "snack" | null } | null;
   sleep: { bedTime: string | null; wakeTime: string | null } | null;
   weightKg: number | null;

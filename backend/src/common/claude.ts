@@ -8,6 +8,7 @@ const JournalExtractionSchema = z.object({
   waterMl: z.number().nullable(),
   exerciseMinutes: z.number().nullable(),
   stepsCount: z.number().nullable(),
+  distanceKm: z.number().nullable(),
   food: z
     .object({
       description: z.string(),
@@ -50,9 +51,16 @@ function buildJournalSystemPrompt(
     "Extract structured information mentioned in this personal journal entry. For every " +
       "field, only fill it in if genuinely mentioned — leave numbers/objects null and arrays " +
       "empty when a category isn't mentioned at all. Never invent values.",
-    "- waterMl: water intake in milliliters (convert other units — a glass is about 250ml).",
+    "- waterMl: water intake in milliliters (convert other units — a glass is about 250ml, a " +
+      "bottle is about 500ml unless described as large/1L).",
     "- exerciseMinutes: exercise duration in minutes (convert other units).",
-    "- stepsCount: number of steps walked, if a step count or distance walked is mentioned.",
+    "- stepsCount: number of steps walked, ONLY if an explicit step count is mentioned (e.g. " +
+      "'walked 8000 steps'). If only a distance is mentioned (e.g. 'walked 10km', 'ran 5 " +
+      "miles'), leave this null and use distanceKm instead — never estimate steps from " +
+      "distance yourself.",
+    "- distanceKm: distance walked/run in kilometers, if a distance (not a step count) is " +
+      "mentioned (convert miles: 1 mile ≈ 1.609km). Null if a step count was given instead, or " +
+      "if no distance/steps are mentioned at all.",
     "- food: { description, mealType } for food/meals mentioned, or null if none mentioned. " +
       "description is a short free-text summary. mealType is 'breakfast', 'lunch', 'dinner', " +
       "or 'snack' if it's stated explicitly (e.g. 'for breakfast') or clearly implied by time " +

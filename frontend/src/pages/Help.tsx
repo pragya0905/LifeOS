@@ -14,7 +14,7 @@ const SECTIONS: Section[] = [
     intro: "Your daily snapshot — everything worth a glance before you dive into a specific page.",
     bullets: [
       "💧 Progress rings for water/sleep/exercise/steps, with streaks and a trend vs. yesterday.",
-      "📅 Today's scheduled tasks and the full Today's Habits table, right on the page.",
+      "📅 Today's scheduled tasks and the full Today's Habits table, right on the page — use ← Prev day / Next day → above the table to view or fill in the past 8 days, not just today.",
       "📋 The Extraction Ledger shows exactly what Claude picked up from your latest journal entry.",
       "✅ A Tasks card previews pending/overdue counts and your top 3 most urgent tasks.",
       "💰 A Budget card shows this month's spending against your monthly budget, or your total spent if you haven't set one yet.",
@@ -31,6 +31,7 @@ const SECTIONS: Section[] = [
       "✍️ One entry per day — pick a date, and if it already has an entry, the form loads it for editing instead of letting you create a duplicate.",
       "🎤 Voice input dictates straight into the entry box, independent of typing — stop and start it anytime, on Android or desktop.",
       "🤖 Claude reads what you wrote and quietly fills in matching fields elsewhere — water, exercise, steps, sleep times, weight, mood, expenses, medications taken, routine steps, calls, cycle events. Nothing you typed manually is ever overwritten by what Claude extracted.",
+      "🚶 Mention a distance instead of a step count (\"walked 10km\") and steps are calculated for you from your height in Settings — an explicit step count you write always wins over this.",
       "😊 The Mood picker (1–5) sits right on the form, and 4 starter prompts are one tap away if you're staring at a blank page.",
       "📖 Past entries show a mood emoji, a Voice badge if dictated, and truncate past 280 characters with a Show more/less toggle so the list stays scannable.",
       "✏️ Tap Edit on any past entry to jump straight back into editing it — no manually hunting for the right date.",

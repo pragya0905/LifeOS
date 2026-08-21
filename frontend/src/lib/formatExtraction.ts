@@ -5,7 +5,11 @@ export function extractionParts(aiExtracted: JournalEntry["aiExtracted"]): strin
   const parts: string[] = [];
   if (aiExtracted.waterMl !== null) parts.push(`water ${aiExtracted.waterMl}ml`);
   if (aiExtracted.exerciseMinutes !== null) parts.push(`exercise ${aiExtracted.exerciseMinutes}min`);
-  if (aiExtracted.stepsCount !== null) parts.push(`${aiExtracted.stepsCount} steps`);
+  if (aiExtracted.stepsCount !== null) {
+    parts.push(
+      `${aiExtracted.stepsCount} steps${aiExtracted.distanceKm !== null ? ` (from ${aiExtracted.distanceKm}km)` : ""}`,
+    );
+  }
   if (aiExtracted.food !== null) {
     parts.push(
       `food: ${aiExtracted.food.description}${aiExtracted.food.mealType ? ` (${aiExtracted.food.mealType})` : ""}`,

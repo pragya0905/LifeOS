@@ -328,6 +328,24 @@ async function fetchRoutineTemplates(userId: string): Promise<RoutineTemplate[]>
   return (result.Items ?? []) as RoutineTemplate[];
 }
 
+async function fetchHeightCm(userId: string): Promise<number | undefined> {
+  const result = await ddb.send(
+    new GetCommand({ TableName: process.env.USER_PROFILE_TABLE_NAME, Key: { userId } }),
+  );
+  return (result.Item as { heightCm?: number } | undefined)?.heightCm;
+}
+
+// Average walking stride length as a fraction of height (a commonly cited approximation,
+// not medically precise) — used only when the journal mentions a distance instead of an
+// explicit step count. Falls back to an average adult height when the user hasn't set one.
+const STRIDE_LENGTH_FACTOR = 0.415;
+const DEFAULT_HEIGHT_CM = 170;
+
+function stepsFromDistance(distanceKm: number, heightCm: number | undefined): number {
+  const strideMeters = ((heightCm ?? DEFAULT_HEIGHT_CM) * STRIDE_LENGTH_FACTOR) / 100;
+  return Math.round((distanceKm * 1000) / strideMeters);
+}
+
 // Best-effort: extracts everything mentioned in journal text (habits, food, sleep, weight,
 // mood, medications, routine steps, cycle events, calls, expenses) and fans it out to the
 // right tables (manual entries always win), and never throws — a failure here must never
@@ -338,9 +356,10 @@ export async function applyJournalExtraction(
   text: string,
 ): Promise<JournalEntry["aiExtracted"] | undefined> {
   try {
-    const [medications, routines] = await Promise.all([
+    const [medications, routines, heightCm] = await Promise.all([
       fetchActiveMedications(userId),
       fetchRoutineTemplates(userId),
+      fetchHeightCm(userId),
     ]);
 
     const routineStepRefs = routines.flatMap((r) =>
@@ -352,6 +371,13 @@ export async function applyJournalExtraction(
       medications.map((m) => m.name),
       routineStepRefs.map((s) => s.text),
     );
+
+    // The model reports raw distance rather than estimating steps itself (LLM arithmetic
+    // isn't reliable) — steps are derived here from the user's height so the ledger and the
+    // written habit log agree on the same number.
+    if (extraction.stepsCount === null && extraction.distanceKm !== null) {
+      extraction.stepsCount = stepsFromDistance(extraction.distanceKm, heightCm);
+    }
 
     await ddb.send(
       new UpdateCommand({
