@@ -348,6 +348,11 @@
       <p>The voice/chat Assistant's tool-calling Lambda forwards every action to the same HTTP API routes the web app calls, with the same bearer token — the exact thin-adapter pattern already proven by a separate Alexa skill integration. "How a task gets created" lives in exactly one code path, no matter which surface asked for it.</p>
     </div>
     <div class="highlight-card">
+      <span class="h-icon">🔎</span>
+      <h3>RAG over your own journal, no vector database</h3>
+      <p>Every journal save gets embedded (Bedrock Titan) independently of the AI extraction, so neither can block the other. Semantic search runs as brute-force cosine similarity over one user's journal partition in Lambda memory — no dedicated vector store needed at a few hundred to low-thousands of entries per person. Ask the Assistant "what have I said about my landlord" and it answers from entries that never used that word.</p>
+    </div>
+    <div class="highlight-card">
       <span class="h-icon">📐</span>
       <h3>Coaching that's honest, not just encouraging</h3>
       <p>Ask the Assistant how you're doing and it calls a tool that computes — in code, not by model guess — which goals are falling behind schedule, which habit streaks broke, and whether this month's spending is on pace to bust the budget. It's told to name the gap plainly before any encouragement, never instead of it.</p>
