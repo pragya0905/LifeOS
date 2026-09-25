@@ -3,9 +3,10 @@
 🌸 System design reference
 
 A personal life-tracking PWA — tasks, journal, habits, medications, cycle,
-budget, routines, wishes, and AI-generated insights — built as a serverless
-AWS backend behind a React SPA. This document describes the system as it is
-actually deployed today, not an aspirational target.
+budget, routines, wishes, AI-generated insights, and a voice/chat AI
+Assistant — built as a serverless AWS backend behind a React SPA. This
+document describes the system as it is actually deployed today, not an
+aspirational target.
 
 account 593110023904
 region ap-southeast-2
@@ -20,7 +21,11 @@ app — into one account, with a single point of entry: **write a
 sentence in Journal, and Claude fills in the rest.** Say "walked 10km,
 drank a bottle of water, called mom for 20 minutes" and steps, water, and a
 call log all populate on their own — nothing about the system's structure is
-exposed to the person using it.
+exposed to the person using it. A second entry point does the same thing
+conversationally: the Assistant page lets you talk to the app instead of
+filling in a form, on top of RAG-backed journal search, a memory that
+grows across conversations, and honest, numbers-grounded coaching against
+your own Wishes and Goals.
 
 It is built and run for a small number of real users (currently three — the
 author and two others), not for scale. Every architectural choice in this
@@ -30,12 +35,12 @@ deployment stage. Where a more scalable pattern was considered and
 deliberately not built, it's called out in [§14](#limitations)
 rather than left unexplained.
 
-- **55** Lambda functions
-- **50** API routes
-- **14** DynamoDB tables
-- **18** Frontend routes
+- **58** Lambda functions
+- **52** API routes
+- **16** DynamoDB tables
+- **19** Frontend routes
 - **5** Scheduled jobs
-- **1** AI model (Haiku 4.5)
+- **1** AI model (Haiku 4.5) + Bedrock Titan Embeddings
 
 ## Architecture at a glance
 
@@ -59,15 +64,16 @@ flowchart TB
       APIGW["API Gateway (HTTP API)<br/>Cognito JWT authorizer"]
     end
 
-    subgraph Compute["Compute — 55 Lambda functions"]
+    subgraph Compute["Compute — 58 Lambda functions"]
       direction TB
       CRUD["CRUD handlers<br/>(tasks, journal, habits, meds,<br/>logs, cycle, budget, routines,<br/>wishes, goals, profile)"]
-      AICALLS["AI-calling handlers<br/>(journal extraction, insights,<br/>task priority)"]
+      AICALLS["AI-calling handlers<br/>(journal extraction, insights,<br/>task priority, journal search)"]
+      ASSIST["chatAssistant<br/>(tool-calling loop)"]
       SCHED["5 scheduled Lambdas<br/>(reminders + weekly digest)"]
     end
 
     subgraph Data["Data & identity"]
-      DDB[("DynamoDB — 14 tables")]
+      DDB[("DynamoDB — 16 tables")]
       COGNITO["Cognito User Pool"]
       SSM["SSM Parameter Store<br/>(API keys, VAPID keys)"]
       S3W["S3 — wish image uploads"]
@@ -75,6 +81,7 @@ flowchart TB
 
     subgraph External["External services"]
       CLAUDE["Claude API<br/>(claude-haiku-4-5)"]
+      BEDROCK["Bedrock Titan Embeddings"]
       PUSH["Web Push<br/>(browser push services)"]
     end
 
@@ -84,10 +91,16 @@ flowchart TB
     PWA -- HTTPS + JWT --> APIGW
     APIGW --> CRUD
     APIGW --> AICALLS
+    APIGW --> ASSIST
     CRUD --> DDB
     AICALLS --> DDB
     AICALLS --> CLAUDE
+    AICALLS --> BEDROCK
     AICALLS --> SSM
+    ASSIST --> DDB
+    ASSIST --> CLAUDE
+    ASSIST --> SSM
+    ASSIST -. calls back into .-> APIGW
     PWA -. sign up / sign in .-> COGNITO
     APIGW -. verifies JWT .-> COGNITO
     EB --> SCHED
@@ -99,11 +112,15 @@ flowchart TB
 
 Request/data flow — solid lines are synchronous calls, dotted are auth/config lookups.
 
-Two request paths matter for understanding latency and cost: the
+Three request paths matter for understanding latency and cost: the
 **CRUD path** (read/write one or two DynamoDB items, usually
-under 300ms) and the **AI path** (journal save, insights
-generation, task priority — each makes one Claude API call, so these
-Lambdas run with longer timeouts, see [§4](#backend)).
+under 300ms), the **AI path** (journal save, insights
+generation, task priority — each makes one Claude API call, plus a
+best-effort Bedrock embedding call on journal saves, so these
+Lambdas run with longer timeouts, see [§4](#backend)), and the
+**Assistant path** (`chatAssistant` — a tool-calling loop that itself
+calls back into the same API Gateway routes the CRUD path serves, using
+the caller's own JWT, rather than duplicating any business logic).
 
 ## Frontend
 
@@ -173,7 +190,7 @@ read to deliver reminders — see [§8](#notifications).
 
 ## Backend compute
 
-Defined as a single AWS SAM template. All 55 functions share a
+Defined as a single AWS SAM template. All 58 functions share a
 `Globals` block — Node.js 20.x on arm64, 256MB memory, X-Ray
 tracing on, 10-second default timeout — and individual functions override
 the timeout upward where they call Claude (30–120s depending on how much
@@ -207,7 +224,7 @@ nothing is implicitly reachable.
 
 ## Data model
 
-14 DynamoDB tables, all `PAY_PER_REQUEST` billing, all with
+16 DynamoDB tables, all `PAY_PER_REQUEST` billing, all with
 server-side encryption and point-in-time recovery enabled. Every table uses
 the same partition strategy — `userId` as the hash key — which
 is what makes the per-user ownership model in [§6](#auth)
@@ -218,7 +235,7 @@ table is queried by its own primary key only.
 | Table | Partition key | Sort key | Notes |
 | --- | --- | --- | --- |
 | TasksTable | userId | taskId | dueAtUtc computed client-side for reminder scheduling |
-| JournalEntriesTable | userId | date | one entry per calendar day, enforced by conditional put |
+| JournalEntriesTable | userId | date | one entry per calendar day, enforced by conditional put; also carries a `embedding` field (Bedrock Titan vector, written best-effort/async) powering journal semantic search — never sent to the frontend |
 | HabitLogsTable | userId | dateHabitType | composite sort key, e.g. 2026-08-21#water |
 | MedicationsTable | userId | medicationId | – |
 | MedicationLogsTable | userId | dateMedicationId | composite sort key |
@@ -231,6 +248,8 @@ table is queried by its own primary key only.
 | BudgetsTable | userId | category | per-category recurring monthly limits |
 | PushSubscriptionsTable | userId | endpoint | self-pruned on 404/410 from the push service |
 | UserProfileTable | userId | — (no sort key) | sex, height, weight target, monthly budget, onboarding flag |
+| AssistantConversationsTable | userId | conversationTurn | `{conversationId}#{epochMs}` sort key — one conversation's turns sort chronologically under a `begins_with` query |
+| UserMemoryTable | userId | memoryId | `{epochMs}-{uuid}` sort key; short distilled facts, not raw conversation dumps |
 
 The composite sort-key pattern (`dateHabitType`,
 `dateMedicationId`, `dateRoutineStep`) lets a single
@@ -280,12 +299,16 @@ begin with.
 
 ## AI integration
 
-One model for everything: `claude-haiku-4-5`, called
-via the Anthropic SDK's structured-output helper
-(`zodOutputFormat`) so every response is validated against a Zod
-schema before the handler trusts it. The API key lives in SSM Parameter
-Store, fetched once per cold start and cached for the life of the execution
-environment.
+One Claude model for everything — `claude-haiku-4-5` — plus AWS
+Bedrock Titan Embeddings for journal semantic search. Structured extraction
+(journal, insights, task priority) uses the Anthropic SDK's structured-output
+helper (`zodOutputFormat`) so every response is validated against a Zod
+schema before the handler trusts it; the Assistant instead uses Claude's
+tool-use API in a manual agentic loop, since it needs to call functions, not
+emit one JSON object. The Anthropic API key lives in SSM Parameter Store,
+fetched once per cold start and cached for the life of the execution
+environment. Bedrock is called via IAM (the Lambda execution role), not an
+API key — no new vendor credential to manage.
 
 ### 1. Journal extraction
 
@@ -332,6 +355,75 @@ High automatically when the remaining time before the deadline can't fit
 the stated estimate, so a badly-worded task still gets flagged correctly
 even if the model's read of the text is wrong.
 
+### 4. Assistant — tool-calling chat
+
+A dedicated `chatAssistant` Lambda behind `POST /assistant/chat`, fronting a
+chat/voice page that's deliberately separate from Journal. Same
+thin-adapter pattern the Alexa skill uses (see [§8](#notifications) for the
+Alexa handler): every tool that logs or reads app data calls the *existing*
+HTTP API routes with the same bearer JWT the request arrived with, rather
+than touching DynamoDB directly — so "how a task gets created" stays in
+exactly one code path regardless of whether it was typed, spoken to Alexa,
+or spoken to the Assistant. `remember_fact` (below) is the one exception,
+since there's no existing route for user memory to forward to.
+
+A manual agentic loop, not the SDK's beta Tool Runner — this Lambda already
+had a working `callApi()` HTTP-forwarding pattern from the Alexa handler,
+and a hand-rolled `while` loop over `stop_reason === "tool_use"` needed no
+beta dependency to reuse it. Ten tools cover the day-to-day surface (habits,
+logs, routine/medication ticks, tasks, schedule, journal); two more,
+`search_journal` and `remember_fact`, back RAG and memory below; a final
+`get_progress_summary` tool backs goals-anchored coaching. Conversation
+turns persist to `AssistantConversationsTable` keyed by
+`{conversationId}#{epochMs}`, and the last ~20 exchanges replay on every
+request for continuity — the API is stateless, same as every other Claude
+call in this app.
+
+Two things load into the system prompt on *every* turn, not just when
+asked: every row in `UserMemoryTable` (see Memory below), and a compact,
+cheap summary of active Wishes/Goals (titles, progress, today's habit
+actuals vs targets) — fetched fresh each request via the existing `/wishes`,
+`/goals`, and `/habits/{date}` routes, deliberately lighter than the full
+`get_progress_summary` computation so the assistant has goal-awareness on
+every message without paying the full cost every time.
+
+**RAG — journal semantic search.** Every journal save (create or edit)
+triggers a best-effort, independent async step — `embedJournalEntry` in
+`backend/src/common/journal.ts` — that embeds the entry text via Bedrock
+Titan (`amazon.titan-embed-text-v2:0`) and writes the vector onto the
+journal item. It's deliberately decoupled from the existing structured
+extraction (`applyJournalExtraction`): a Bedrock hiccup can't block the
+journal save or the AI extraction, and vice versa. `POST /journal/search`
+(`searchJournal` Lambda) embeds the query the same way, `Query`s the user's
+full journal partition, and computes cosine similarity against each stored
+embedding in Lambda memory — brute-force, not a vector DB, which is fine at
+a few hundred to low-thousands of entries per user. The `search_journal`
+tool calls this endpoint so the Assistant can answer open-ended questions
+("what have I said about my trip to Japan") grounded in real entries
+instead of only what's in the current conversation.
+
+**Memory.** `UserMemoryTable` holds short, distilled facts — not raw
+conversation dumps — each tagged `health` / `financial` / `emotional` /
+`consistency` / `general`. The model calls `remember_fact` mid-conversation
+when it notices something worth persisting; every row loads back into every
+future conversation's system prompt, which is how a brand-new conversation
+with zero shared history can still recall it unprompted.
+
+**Goals-anchored coaching.** `get_progress_summary` is the one tool in this
+Lambda built entirely around the "don't trust the model with arithmetic"
+rule (same rule as distance→steps above): it computes, in code, per-Wish
+falling-behind detection (literally the same elapsed-time-vs-progress
+comparison `wishReminderScheduler` already runs for its push nudge — see
+[§8](#notifications) — exposed here on demand instead of only as a
+background notification), current streak + missed-day counts per habit
+from `HabitLogsTable`, and a linear month-end spend projection per budget
+category (`spentSoFar ÷ daysElapsedInMonth × daysInMonth`, compared to the
+category's `monthlyLimit`). Claude never computes any of these numbers
+itself — it only narrates what the tool returns. The system prompt
+explicitly frames this as honest accountability, not pure cheerleading:
+name the specific gap and its projected outcome before offering
+encouragement, never after or instead of it.
+
 ## Notifications & scheduled jobs
 
 Five EventBridge-triggered Lambdas, each on its own cadence, each sending
@@ -358,14 +450,15 @@ correctness bug worth closing regardless of scale.
 
 ## API surface
 
-50 routes on a single HTTP API, grouped by resource below. Every route
+52 routes on a single HTTP API, grouped by resource below. Every route
 (except the auth endpoints Cognito itself fronts) requires a valid JWT.
 
 | Resource | Routes |
 | --- | --- |
 | Identity | GET /whoami · GET/PATCH /profile · DELETE /account |
 | Tasks | GET/POST /tasks · PATCH /tasks/{id} · GET /schedule/{date} |
-| Journal | GET/POST /journal · PATCH /journal/{date} |
+| Journal | GET/POST /journal · PATCH /journal/{date} · POST /journal/search |
+| Assistant | POST /assistant/chat |
 | Habits | GET /habits · GET /habits/{date} · PATCH /habits/{date}/{type} |
 | Goals | GET /goals · PATCH /goals/{metric} |
 | Medications | GET/POST /medications · DELETE /medications/{id} · GET /medication-logs(/{date}) · PATCH /medication-logs/{date}/{medicationId} |
@@ -440,7 +533,13 @@ environment that exists.
 At 3 active users, the dominant cost is Claude API usage (journal
 extraction runs on every save; insights and task-priority calls are
 lighter and less frequent) — Haiku 4.5 pricing is $1.00 / 1M input tokens,
-$5.00 / 1M output tokens. AWS costs (Lambda invocations, DynamoDB
+$5.00 / 1M output tokens. The Assistant adds more Haiku calls per feature
+use, not a pricier model: each chat turn costs 1–3 Haiku calls (the manual
+tool-use loop — one call to decide on a tool, another to draft the reply
+once the result is back), plus conversation history replayed as input
+tokens on every turn. Bedrock Titan embeddings (one call per journal save,
+one per search) are priced separately from Claude but are small, infrequent
+calls at this usage level. AWS costs (Lambda invocations, DynamoDB
 on-demand, API Gateway requests, S3 + CloudFront) sit well inside typical
 free-tier or near-free ranges at this scale. This is an estimate based on
 usage patterns discussed during development, not a pull from AWS Cost

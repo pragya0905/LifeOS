@@ -23,15 +23,16 @@ What the system does, for whom, under what constraints, and how its major pieces
 
 LifeOs is a single-account personal tracking system spanning tasks,
 journaling, habits, medications, menstrual cycle tracking, budgeting,
-routines, goals ("wishes"), and AI-generated insights. Its defining
-design bet is that **free-text journal entries are the primary
+routines, goals ("wishes"), AI-generated insights, and a voice/chat AI
+Assistant. Its defining design bet is that **free-text journal entries
+are the primary
 input surface** — an LLM extracts structured data from what a
 person naturally writes and fans it out to the specialized trackers,
 rather than requiring separate manual entry into each one.
 
 This document specifies the system as built and deployed, for the
 purpose of enabling: (a) a new contributor to understand the system
-without reading all 55 Lambda functions, (b) a design review to evaluate
+without reading all 58 Lambda functions, (b) a design review to evaluate
 the choices made and the tradeoffs deliberately accepted, and (c) future
 extension work to be scoped against an accurate baseline.
 
@@ -66,6 +67,7 @@ extension work to be scoped against an accurate baseline.
 | Routines | Multi-step daily checklists (e.g. skincare) with per-step done/skipped state and consecutive-day streaks. |
 | Wishes | Goal tracking across 5 progress modes (percentage, milestone, habit-linked, time-based, quantity) with deadline and falling-behind push reminders. |
 | Insights | On-demand AI summary (today/week) plus an automatic weekly digest push, gated to roughly once every 7 days per user. |
+| Assistant | Dedicated chat/voice page backed by a Claude tool-calling loop that reads/logs across the modules above; semantic search over journal history (RAG); persistent cross-conversation memory of facts about the user; deterministic goals-anchored coaching (falling-behind wishes, habit streaks, budget pace) with an honest-accountability framing. |
 | Onboarding & Settings | First-run setup of sex, height, and daily targets; theme, data export, account deletion. |
 
 ## Non-functional requirements
@@ -74,7 +76,7 @@ extension work to be scoped against an accurate baseline.
 | --- | --- | --- |
 | Availability | Best-effort, managed-service SLA (no custom uptime target) | Fully managed AWS services (Lambda, DynamoDB, API Gateway, Cognito, CloudFront) — no self-managed servers to keep running |
 | Security & isolation | Zero cross-user data access | JWT-derived `userId` as every table's partition key (§6, LLD §17) |
-| Data durability | Point-in-time recovery to any second, 35-day window | `PointInTimeRecoverySpecification` enabled on all 14 tables |
+| Data durability | Point-in-time recovery to any second, 35-day window | `PointInTimeRecoverySpecification` enabled on all 16 tables |
 | Confidentiality | Encrypted at rest and in transit | DynamoDB SSE on every table; HTTPS-only at CloudFront and API Gateway |
 | Performance | Sub-second CRUD, low seconds for AI calls | 256MB Lambda memory, DynamoDB single-digit-ms reads on key lookups, client-side request cache/dedup (LLD §15) |
 | Consistency | Eventually consistent reads accepted; no cross-table transactions used | DynamoDB default (eventually consistent) reads; each write is scoped to one logical entity per table |
@@ -88,25 +90,29 @@ flowchart LR
     U["👤 User<br/>(browser / installed PWA)"]
     LO(("LifeOs"))
     COG["Cognito<br/>(identity)"]
-    CLAUDE["Claude API<br/>(AI extraction & insights)"]
+    CLAUDE["Claude API<br/>(AI extraction, insights,<br/>Assistant tool-calling)"]
+    BEDROCK["Bedrock Titan<br/>(journal embeddings)"]
     PUSHSVC["Browser push services<br/>(FCM / Mozilla / etc.)"]
 
     U -- uses --> LO
     LO -- authenticates via --> COG
-    LO -- extracts & summarizes via --> CLAUDE
+    LO -- extracts, summarizes & chats via --> CLAUDE
+    LO -- embeds journal text via --> BEDROCK
     LO -- delivers reminders via --> PUSHSVC
     PUSHSVC -- delivers to --> U
 ```
 
-System context — LifeOs and its three external dependencies. No other third-party system is integrated.
+System context — LifeOs and its four external dependencies. No other third-party system is integrated.
 
-LifeOs has exactly three external system dependencies: **Cognito**
+LifeOs has exactly four external system dependencies: **Cognito**
 for identity (fully inside the AWS account, but architecturally external to
-the application code), **Claude** for all AI extraction/summarization,
-and the **browser push ecosystem** (Web Push standard, routed
-through each browser vendor's push service) for notifications. There is no
-payment processor, no email service, no analytics/telemetry vendor, and no
-third-party wearable integration at this time.
+the application code), **Claude** for all AI extraction/summarization/chat,
+**Bedrock** (Titan Embeddings, also inside the AWS account — IAM-authenticated,
+no separate API key) for journal semantic search, and the **browser push
+ecosystem** (Web Push standard, routed through each browser vendor's push
+service) for notifications. There is no payment processor, no email
+service, no analytics/telemetry vendor, and no third-party wearable
+integration at this time.
 
 ## Component architecture
 
@@ -127,17 +133,18 @@ flowchart TB
     end
     subgraph L3["Business logic layer"]
       direction LR
-      B1["55 Lambda handlers"]
-      B2["common/ modules<br/>(auth, journal, claude,<br/>pushNotifications, medications)"]
+      B1["58 Lambda handlers"]
+      B2["common/ modules<br/>(auth, journal, claude,<br/>bedrock, pushNotifications, medications)"]
     end
     subgraph L4["Data & integration layer"]
       direction LR
-      D1[("14 DynamoDB tables")]
+      D1[("16 DynamoDB tables")]
       D2["Cognito User Pool"]
       D3["SSM Parameter Store"]
       D4["S3 (frontend + uploads)"]
       D5["Claude API"]
       D6["Web Push"]
+      D7["Bedrock Titan"]
     end
 
     L1 --> L2 --> L3 --> L4
@@ -148,10 +155,15 @@ Layered view. See the companion *LifeOs Architecture* document for the full requ
 The business logic layer is intentionally thin per function — each Lambda
 handler is a small, single-purpose file that composes shared logic from
 `backend/src/common/` (auth resolution, journal extraction
-orchestration, Claude client, push delivery, medication date math) rather
-than duplicating it. This keeps the 55-function surface area manageable:
-most handlers are <80 lines because the real logic lives in a handful
-of shared modules (detailed in [§11](#modules)).
+orchestration, Claude client, Bedrock embeddings client, push delivery,
+medication date math) rather than duplicating it. This keeps the
+58-function surface area manageable: most handlers are <80 lines
+because the real logic lives in a handful of shared modules (detailed in
+[§11](#modules)). The one exception is `chatAssistant`, which is
+necessarily larger since it owns the tool-use loop and every tool's
+dispatch — see [§9](#ai-integration) in the companion Architecture doc for
+why that's still a thin adapter over the *existing* API rather than a
+second copy of the business logic.
 
 ## Technology stack & rationale
 
@@ -166,18 +178,20 @@ of shared modules (detailed in [§11](#modules)).
 | API layer | API Gateway HTTP API | Cheaper and lower-latency than REST API Gateway for a JWT-authorizer-only use case with no need for REST API's extra features |
 | Database | DynamoDB, on-demand billing | Every access pattern in the system is a single-item or single-partition-range lookup by `userId` — no relational joins are ever needed, so a key-value store avoids RDS's fixed idle cost |
 | Identity | Amazon Cognito | Managed user pool with JWT issuance, avoids building password storage/reset/verification |
-| AI | Claude Haiku 4.5 (Anthropic) | Structured-output support (schema-validated JSON) is the actual requirement, not conversational quality — Haiku is the cheapest tier that reliably does structured extraction at the required accuracy |
+| AI | Claude Haiku 4.5 (Anthropic) | Structured-output support (schema-validated JSON) is the actual requirement for extraction/insights, not conversational quality; the same model also runs the Assistant's tool-calling loop — Haiku is the cheapest tier that reliably does both at the required accuracy |
+| Embeddings | Bedrock Titan Embeddings v2 | Stays entirely inside the existing AWS account (IAM auth, no new vendor API key) — the quality gap vs. a specialized embeddings vendor doesn't matter at personal-journal scale |
 | Push | web-push (VAPID) | Standards-based, no vendor lock to a push provider (no Firebase/OneSignal dependency) |
 | IaC | AWS SAM | Native CloudFormation superset purpose-built for Lambda + API Gateway stacks, no need for a general-purpose IaC tool at this scope |
 
 ## Major data flows
 
-Four flows account for nearly all system activity; each is detailed as a sequence diagram in [LLD §14](#sequences):
+Five flows account for nearly all system activity; the first, second, and fourth are detailed as sequence diagrams in [LLD §14](#sequences):
 
-1. **Journal-driven extraction** — a journal save triggers one Claude call whose structured output fans out into up to 8 tables in parallel.
+1. **Journal-driven extraction** — a journal save triggers one Claude call whose structured output fans out into up to 8 tables in parallel, plus an independent, best-effort Bedrock embedding call that never blocks the save.
 2. **Direct CRUD** — every other page (Tasks, Medications, Budget, etc.) reads/writes its own table(s) directly, no AI involved.
-3. **Scheduled push delivery** — 5 EventBridge-triggered Lambdas scan subscriptions and push-notify on independent cadences.
-4. **Auth** — Amplify-mediated sign-up/confirm/sign-in against Cognito, JWT attached to every subsequent API call.
+3. **Assistant tool-calling chat** — a chat/voice message triggers a Claude tool-use loop that calls back into flow 2's own API routes (same JWT, same business logic) rather than touching DynamoDB directly, plus reads from `AssistantConversationsTable`/`UserMemoryTable` and Bedrock-backed journal search.
+4. **Scheduled push delivery** — 5 EventBridge-triggered Lambdas scan subscriptions and push-notify on independent cadences.
+5. **Auth** — Amplify-mediated sign-up/confirm/sign-in against Cognito, JWT attached to every subsequent API call.
 
 ## Capacity estimation
 
@@ -208,8 +222,8 @@ section for the specific deferred fix).
 ```mermaid
 flowchart LR
     DEV["Developer machine"] -- "sam build && sam deploy" --> CFN["CloudFormation<br/>(lifeos-backend-dev stack)"]
-    CFN --> LAMBDAS["55 Lambda functions"]
-    CFN --> TABLES["14 DynamoDB tables"]
+    CFN --> LAMBDAS["58 Lambda functions"]
+    CFN --> TABLES["16 DynamoDB tables"]
     CFN --> APIGW["API Gateway"]
     CFN --> POOL["Cognito User Pool"]
     DEV -- "vite build" --> DIST["dist/"]
@@ -347,6 +361,8 @@ partition key (omitted from the field lists below since it's constant).
 | BudgetsTable | category | monthlyLimit: number |
 | PushSubscriptionsTable | endpoint | keys: { p256dh, auth } |
 | UserProfileTable | — none | heightCm? · sex? · monthlyBudget? · lastWeeklyDigestSentAt? · onboardingCompletedAt? |
+| AssistantConversationsTable | conversationTurn (`{conversationId}#{epochMs}`) | conversationId · role: user\|assistant · content: string |
+| UserMemoryTable | memoryId (`{epochMs}-{uuid}`) | text: string · category: health\|financial\|emotional\|consistency\|general |
 
 ## API contracts
 
@@ -399,6 +415,34 @@ Creates today's (or a specified date's) entry and triggers AI extraction synchro
   "dueAtUtc": "2026-08-25T12:30:00.000Z", "createdAt": "...", "updatedAt": "..."
 }
 ```
+
+### POST /assistant/chat
+
+```
+// Request
+{
+  "message": "log 500ml of water",           // required, non-empty after trim
+  "conversationId": "8b151eb2-..."             // optional — omit to start a new conversation
+}
+
+// Response 200 — reply is what gets displayed and (client-side) spoken aloud;
+// conversationId is echoed back so the client can pass it on the next turn
+{
+  "conversationId": "8b151eb2-...",
+  "reply": "Got it! Logged 500ml of water for today. 💧"
+}
+```
+
+Internally: loads the last ~20 turns of history plus every `UserMemoryTable`
+row plus a compact Wishes/Goals summary into the system prompt, then runs a
+manual tool-use loop (max 5 iterations) against `claude-haiku-4-5`. Each
+tool the model calls either forwards to an existing route with the same
+bearer token (see [§9](#ai-integration) in the companion Architecture doc)
+or, for `remember_fact` only, writes directly to `UserMemoryTable`. Both the
+user's message and the final assistant reply persist to
+`AssistantConversationsTable` after the loop ends — intermediate tool-use/
+tool-result blocks are not persisted, only the final text, so a resumed
+conversation replays as plain dialogue rather than raw tool traffic.
 
 ### GET /wishes
 
@@ -480,6 +524,43 @@ sequenceDiagram
 ```
 
 The deadline guardrail runs *before* any Claude call — if the math alone proves the task can't finish in time, no AI round-trip happens at all.
+
+### Assistant tool-calling chat
+
+```mermaid
+sequenceDiagram
+    actor U as User
+    participant FE as Assistant page
+    participant L as chatAssistant
+    participant DDB as DynamoDB
+    participant CL as Claude API
+    participant API as Existing HTTP API
+
+    U->>FE: "log 500ml of water" (typed or spoken)
+    FE->>L: POST /assistant/chat {message, conversationId}
+    par context gathering (Promise.all)
+        L->>DDB: Query last ~20 turns (AssistantConversationsTable)
+        L->>DDB: Query all memory rows (UserMemoryTable)
+        L->>API: GET /wishes, /goals, /habits/{today} (goals context)
+    end
+    L->>CL: messages.create({system, tools, messages})
+    CL-->>L: stop_reason: tool_use → log_habit({habitType, value})
+    L->>API: PATCH /habits/{date}/water {value: 500}
+    Note over L,API: same JWT the request arrived with — no<br/>duplicated business logic, one code path
+    API-->>L: 200 {habit log}
+    L->>CL: tool_result appended, messages.create() again
+    CL-->>L: stop_reason: end_turn, "Got it! Logged 500ml..."
+    L->>DDB: Put user turn + assistant turn (AssistantConversationsTable)
+    L-->>FE: 200 {conversationId, reply}
+    FE-->>U: Reply shown + spoken (window.speechSynthesis)
+```
+
+The loop caps at 5 iterations (`MAX_TOOL_ITERATIONS`); every tool but
+`remember_fact` goes through the existing HTTP API rather than touching
+DynamoDB directly, and `get_progress_summary` additionally fans out to
+`/wishes`, `/habits`, `/budgets`, and `/expenses` before computing its
+numbers in code — not shown above since it's one tool call among the ten
+available, not a separate flow.
 
 ### Authentication
 
@@ -588,6 +669,42 @@ else:
     priority = suggestTaskPriority(title, due, estimate, description)  // Claude call
 ```
 
+### Assistant progress summary (get_progress_summary tool)
+
+Three independent computations, all run in `chatAssistant` code — Claude
+only narrates the returned numbers, it never computes them. Same
+"don't trust the model with arithmetic" rule as the distance→steps and
+task-priority guardrail above.
+
+```
+// 1. Wish falling-behind — identical thresholds to wishReminderScheduler's
+//    push-nudge check (LLD §14 scheduled-reminder flow), exposed on demand
+//    here instead of only as a one-time background notification
+for each active wish with a targetDate:
+    elapsedFraction = min((now - wish.createdAt) / (targetDate - wish.createdAt), 1)
+    progress = progressFractionForWish(wish)   // same per-mode logic as §13's
+                                                // habit-linked computation, plus
+                                                // percentage/milestone/quantity modes
+    fallingBehind = progress != null and elapsedFraction > 0.5
+                    and (elapsedFraction - progress) > 0.3
+
+// 2. Habit streak + misses, per habitType, from the last 30 days of HabitLogsTable
+currentStreakDays = count of consecutive days ending today where status == "done"
+missedInLast7Days = count of the last 7 days with no log or status != "done"
+missedInLast30Days = same, over 30 days
+
+// 3. Budget pace projection — new calculation, not reused from elsewhere
+spentSoFar = sum(expense.amount for this month, this category)
+projectedMonthEndTotal = (spentSoFar / dayOfMonth) * daysInMonth
+projectedOverBy = projectedMonthEndTotal - budget.monthlyLimit
+```
+
+The system prompt instructs Claude to lead with whichever of these three
+is worst (a falling-behind wish, a broken streak, an over-budget
+projection) before any encouragement — the honest-accountability framing
+lives entirely in prompt instructions, not in this computation; the
+computation itself is purely factual.
+
 ### Habit-linked wish progress (computed on read)
 
 ```
@@ -637,7 +754,7 @@ function request(path, options):
 
 #### Ownership via partition key
 
-`userId` from the verified JWT is the partition key on every one of the 14 tables. Cross-user access isn't rejected by a check — the key required to read another user's row structurally never appears in any query built from a request's own auth context.
+`userId` from the verified JWT is the partition key on every one of the 16 tables. Cross-user access isn't rejected by a check — the key required to read another user's row structurally never appears in any query built from a request's own auth context.
 
 #### Server-stamped timestamps
 
@@ -653,7 +770,11 @@ Habit-linked wish progress and cycle-phase estimates are never stored — they'r
 
 #### Best-effort AI, mandatory core write
 
-Every AI call (extraction, insights) is wrapped so its failure never blocks the primary user action it's attached to. Journal entries save even if Claude is down; the AI enrichment is additive, never load-bearing.
+Every AI call (extraction, insights, journal embedding) is wrapped so its failure never blocks the primary user action it's attached to. Journal entries save even if Claude or Bedrock is down; the AI enrichment is additive, never load-bearing. Extraction and embedding are additionally independent of *each other* — a Bedrock failure can't block the structured extraction or vice versa, since they run as separate try/catch blocks rather than one combined step.
+
+#### Thin adapter over the existing API
+
+Both the Alexa skill handler and the Assistant's `chatAssistant` front a different interface (voice, chat) onto the app, and both resist the temptation to touch DynamoDB directly for anything the existing HTTP API already does — they call the *same* routes the web frontend calls, forwarding the caller's own JWT, so "how a task gets created" (or a habit logged, or a journal entry saved) lives in exactly one code path no matter which surface triggered it. The only writes either makes directly to a table are ones with no existing route to forward to (`remember_fact` → `UserMemoryTable`).
 
 #### Manual always wins
 

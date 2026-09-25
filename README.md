@@ -20,6 +20,9 @@ without logging in.
 - **[HLD & LLD](docs/HLD_LLD.md)** — requirements, capacity estimation, full
   field-level schemas, API contracts, sequence diagrams, and the exact
   algorithms running in production.
+- **[Alexa integration](docs/ALEXA.md)** — optional voice control via a custom
+  Alexa skill; manual Alexa Developer Console setup (the AWS side deploys
+  with everything else).
 
 ## Features
 
@@ -48,6 +51,16 @@ without logging in.
   push reminders.
 - **Insights** — on-demand AI summary (today/week) plus an automatic weekly
   digest push, roughly once every 7 days per user.
+- **Assistant** — a dedicated chat page (voice in/out, not just text) backed by a
+  Claude tool-calling loop that can read and log almost everything above —
+  habits, logs, routine/medication ticks, tasks, journal — on request. Adds
+  three things beyond simple logging: semantic search over your journal
+  history (RAG, via Bedrock Titan embeddings), a persistent memory of facts
+  it's learned about you across conversations, and a deterministic
+  `get_progress_summary` tool (falling-behind wishes, habit streaks, budget
+  pace projections — all computed in code, never estimated by the model)
+  that grounds its coaching in real numbers and states gaps plainly before
+  offering encouragement.
 - **Calendar** — month grid on desktop, a reflowed agenda list on phones.
 - Installable **PWA** with Web Push notifications.
 
@@ -55,19 +68,25 @@ without logging in.
 
 - **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS 4, route-based
   code splitting, a shared design-token system (`frontend/`)
-- **Backend**: AWS SAM — 55 Lambda functions (Node.js 20, arm64, TypeScript,
-  esbuild) behind an API Gateway HTTP API, 50 routes (`backend/`)
-- **Database**: DynamoDB — 14 tables, `PAY_PER_REQUEST`, every table
+- **Backend**: AWS SAM — 58 Lambda functions (Node.js 20, arm64, TypeScript,
+  esbuild) behind an API Gateway HTTP API, 52 routes (`backend/`)
+- **Database**: DynamoDB — 16 tables, `PAY_PER_REQUEST`, every table
   partitioned by the authenticated user's ID (no GSIs — every access
   pattern is a direct key lookup)
 - **Auth**: AWS Cognito User Pool, JWT authorizer, custom React
-  sign-up/login UI via Amplify Auth (no Hosted UI)
-- **AI**: Anthropic Claude API (`claude-haiku-4-5`), structured JSON output
-  for journal extraction, insights, and task-priority suggestion
+  sign-up/login UI via Amplify Auth (no Hosted UI); a second app client
+  handles OAuth account linking for the optional Alexa skill
+- **AI**: Anthropic Claude API (`claude-haiku-4-5`) for structured JSON
+  output (journal extraction, insights, task-priority suggestion) and for
+  the Assistant's tool-calling chat loop; AWS Bedrock Titan Embeddings for
+  journal semantic search — both stay inside the same AWS account rather
+  than adding another vendor
 - **Notifications**: Web Push (VAPID) via 5 independently-scheduled Lambdas
 - **Hosting**: S3 + CloudFront for both the app frontend and the public demo
   site (`demo-site/`) — two fully independent stacks/distributions
-- **Voice input**: Browser Web Speech API
+- **Voice**: Browser Web Speech API for input (Journal, Alexa-style quick
+  logging, and the Assistant), browser `SpeechSynthesis` for the
+  Assistant's spoken replies — both free, zero new dependency
 - **PWA**: Web App Manifest, installable, custom `injectManifest` service
   worker
 
@@ -90,8 +109,9 @@ oversight.
   (`attribute_not_exists(...) OR #source = :aiSource`) so it can never
   overwrite a manual edit.
 - **Don't trust the model with arithmetic**: where AI output feeds a
-  calculation (e.g. distance → step count), the model reports the raw
-  fact and the app computes the result deterministically in code.
+  calculation (e.g. distance → step count, or the Assistant's falling-behind/
+  streak/budget-pace numbers), the model reports the raw fact and the app
+  computes the result deterministically in code — Claude only narrates it.
 - **Best-effort AI, mandatory core write**: journal entries, task saves,
   etc. always succeed even if the Claude call fails — AI enrichment is
   additive, never load-bearing.
