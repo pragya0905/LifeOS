@@ -14,6 +14,10 @@ const TABS = [
 
 const MORE_GROUPS = [
   {
+    label: "Assistant",
+    links: [{ to: "/assistant", label: "Chat & voice" }],
+  },
+  {
     label: "Track",
     links: [
       { to: "/calendar", label: "Calendar" },

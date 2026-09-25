@@ -2,6 +2,7 @@ import { DeleteCommand, GetCommand, PutCommand, QueryCommand, UpdateCommand } fr
 import { randomUUID } from "node:crypto";
 import { ddb } from "./dynamo";
 import { extractJournalInfo } from "./claude";
+import { embedText } from "./bedrock";
 import { computeEndDate } from "./medications";
 import { LOG_ENTRY_SCHEMAS, SINGULAR_LOG_TYPES } from "./logEntrySchemas";
 import type {
@@ -344,6 +345,25 @@ const DEFAULT_HEIGHT_CM = 170;
 function stepsFromDistance(distanceKm: number, heightCm: number | undefined): number {
   const strideMeters = ((heightCm ?? DEFAULT_HEIGHT_CM) * STRIDE_LENGTH_FACTOR) / 100;
   return Math.round((distanceKm * 1000) / strideMeters);
+}
+
+// Independent of applyJournalExtraction (below) — never blocks or is blocked by it, so a
+// Bedrock hiccup can't stop the structured extraction (or the journal save itself) from
+// succeeding, and vice versa. Powers RAG search (POST /journal/search).
+export async function embedJournalEntry(userId: string, date: string, text: string): Promise<void> {
+  try {
+    const embedding = await embedText(text);
+    await ddb.send(
+      new UpdateCommand({
+        TableName: process.env.JOURNAL_TABLE_NAME,
+        Key: { userId, date },
+        UpdateExpression: "SET embedding = :embedding",
+        ExpressionAttributeValues: { ":embedding": embedding },
+      }),
+    );
+  } catch (err) {
+    console.error("Journal embedding failed (non-blocking):", err);
+  }
 }
 
 // Best-effort: extracts everything mentioned in journal text (habits, food, sleep, weight,

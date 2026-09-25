@@ -110,6 +110,9 @@ export interface JournalEntry {
   text: string;
   voiceInput: boolean;
   aiExtracted?: JournalEntryExtraction;
+  // Bedrock Titan embedding of `text`, written best-effort/async after save — never sent to
+  // the frontend (stripped in listJournalEntries) or returned in create/update responses.
+  embedding?: number[];
   createdAt: string;
   updatedAt: string;
 }

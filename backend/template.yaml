@@ -78,6 +78,41 @@ Resources:
         IdToken: minutes
         RefreshToken: days
 
+  # Hosted UI domain — required to expose the OAuth authorize/token endpoints
+  # Alexa account linking needs. Not used by the web app (it authenticates
+  # directly via Amplify/SRP, no redirect flow).
+  LifeOsUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub "lifeos-${Environment}-${AWS::AccountId}"
+      UserPoolId: !Ref LifeOsUserPool
+
+  # Separate app client for Alexa account linking — kept distinct from the
+  # web client since it's a different OAuth consumer with a different flow
+  # (Authorization Code Grant, confidential client) vs. the web app's
+  # SRP-based sign-in. GenerateSecret: true because Alexa's token exchange
+  # happens server-to-server from Amazon's infrastructure, not a public client.
+  AlexaUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref LifeOsUserPool
+      ClientName: !Sub "lifeos-alexa-${Environment}"
+      GenerateSecret: true
+      AllowedOAuthFlows: [code]
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes: [openid, email]
+      SupportedIdentityProviders: [COGNITO]
+      # Amazon's well-known Alexa account-linking redirect URIs (one per
+      # Alexa marketplace region) — confirm which one(s) your skill actually
+      # needs in the Alexa Developer Console during account-linking setup
+      # and trim this list accordingly.
+      CallbackURLs:
+        - https://pitangui.amazon.com/api/skill/link/M2
+        - https://layla.amazon.com/api/skill/link/M2
+        - https://alexa.amazon.co.jp/api/skill/link/M2
+      ExplicitAuthFlows:
+        - ALLOW_REFRESH_TOKEN_AUTH
+
   ########################
   # DynamoDB
   ########################
@@ -356,6 +391,52 @@ Resources:
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
 
+  # userId (PK) / conversationTurn (SK) = "{conversationId}#{epochMs, zero-padded}" so a
+  # conversation's turns sort chronologically and a Query with begins_with(conversationTurn,
+  # "{conversationId}#") returns exactly one conversation's history.
+  AssistantConversationsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "LifeOs-AssistantConversations-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: conversationTurn
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: conversationTurn
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  # userId (PK) / memoryId (SK, "{epochMs}-{uuid}" so rows sort chronologically without a new
+  # ULID dependency) — short, distilled facts the assistant notices worth remembering, not raw
+  # conversation dumps. Loaded in full into every chatAssistant system prompt.
+  UserMemoryTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "LifeOs-UserMemory-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: memoryId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: memoryId
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
   WishImagesBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -471,6 +552,7 @@ Resources:
               issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${LifeOsUserPool}"
               audience:
                 - !Ref LifeOsUserPoolClient
+                - !Ref AlexaUserPoolClient
         DefaultAuthorizer: CognitoAuthorizer
 
   ########################
@@ -647,6 +729,10 @@ Resources:
             TableName: !Ref UserProfileTable
         - SSMParameterReadPolicy:
             ParameterName: !Sub "lifeos/${Environment}/anthropic-api-key"
+        - Statement:
+            - Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource: !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0"
       Events:
         CreateJournalEntry:
           Type: HttpApi
@@ -733,6 +819,10 @@ Resources:
             TableName: !Ref UserProfileTable
         - SSMParameterReadPolicy:
             ParameterName: !Sub "lifeos/${Environment}/anthropic-api-key"
+        - Statement:
+            - Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource: !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0"
       Events:
         UpdateJournalEntry:
           Type: HttpApi
@@ -740,6 +830,40 @@ Resources:
             ApiId: !Ref HttpApi
             Path: /journal/{date}
             Method: PATCH
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  SearchJournalFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-search-journal-${Environment}"
+      CodeUri: src/functions/searchJournal/
+      Handler: index.handler
+      Timeout: 15
+      Environment:
+        Variables:
+          JOURNAL_TABLE_NAME: !Ref JournalEntriesTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref JournalEntriesTable
+        - Statement:
+            - Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource: !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0"
+      Events:
+        SearchJournal:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /journal/search
+            Method: POST
             Auth:
               Authorizer: CognitoAuthorizer
 
@@ -2340,11 +2464,98 @@ Resources:
             Schedule: "rate(6 hours)"
             Enabled: true
 
+  ########################
+  # Lambda — Alexa skill backend
+  ########################
+  # Invoked directly by the Alexa service (no API Gateway event source) — a
+  # thin adapter that calls the existing HTTP API with the OAuth access token
+  # Alexa forwards from account linking, rather than touching DynamoDB itself.
+  AlexaSkillHandlerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-alexa-skill-${Environment}"
+      CodeUri: src/functions/alexaSkillHandler/
+      Handler: index.handler
+      Timeout: 15
+      Environment:
+        Variables:
+          HTTP_API_URL: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"
+
+  # Grants the Alexa service permission to invoke the function directly.
+  # EventSourceToken should be tightened to the actual skill ID once the
+  # skill is registered in the Alexa Developer Console (see docs/ALEXA.md) —
+  # left unset for now since the skill doesn't exist yet on first deploy.
+  AlexaSkillHandlerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref AlexaSkillHandlerFunction
+      Principal: alexa-appkit.amazon.com
+
+  ########################
+  # Lambda — AI Assistant chat (tool-calling, reads/writes via the existing HTTP API)
+  ########################
+  ChatAssistantFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-chat-assistant-${Environment}"
+      CodeUri: src/functions/chatAssistant/
+      Handler: index.handler
+      Timeout: 30
+      # No HTTP_API_URL env var here (unlike alexaSkillHandler) — this function is itself an
+      # HttpApi event source, so a !Sub referencing ${HttpApi} would create a circular
+      # dependency. It derives its own base URL at runtime from the incoming request context.
+      Environment:
+        Variables:
+          ASSISTANT_CONVERSATIONS_TABLE_NAME: !Ref AssistantConversationsTable
+          USER_MEMORY_TABLE_NAME: !Ref UserMemoryTable
+          ANTHROPIC_API_KEY_PARAM: !Sub "/lifeos/${Environment}/anthropic-api-key"
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AssistantConversationsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserMemoryTable
+        - SSMParameterReadPolicy:
+            ParameterName: !Sub "lifeos/${Environment}/anthropic-api-key"
+      Events:
+        ChatAssistant:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /assistant/chat
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+
 Outputs:
   UserPoolId:
     Value: !Ref LifeOsUserPool
   UserPoolClientId:
     Value: !Ref LifeOsUserPoolClient
+  AlexaUserPoolClientId:
+    Value: !Ref AlexaUserPoolClient
+    Description: App client ID to enter as the account-linking Client ID in the Alexa Developer Console.
+  AlexaOAuthAuthorizeUrl:
+    Value: !Sub "https://${LifeOsUserPoolDomain}.auth.${AWS::Region}.amazoncognito.com/oauth2/authorize"
+  AlexaOAuthTokenUrl:
+    Value: !Sub "https://${LifeOsUserPoolDomain}.auth.${AWS::Region}.amazoncognito.com/oauth2/token"
+  AlexaSkillHandlerArn:
+    Value: !GetAtt AlexaSkillHandlerFunction.Arn
+    Description: Lambda ARN to enter as the skill's endpoint in the Alexa Developer Console.
   HttpApiUrl:
     Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"
   TasksTableName:
@@ -2365,6 +2576,10 @@ Outputs:
     Value: !Ref RoutineLogsTable
   GoalsTableName:
     Value: !Ref GoalsTable
+  AssistantConversationsTableName:
+    Value: !Ref AssistantConversationsTable
+  UserMemoryTableName:
+    Value: !Ref UserMemoryTable
   FrontendBucketName:
     Value: !Ref FrontendBucket
   FrontendUrl:

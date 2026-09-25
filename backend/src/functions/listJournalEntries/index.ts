@@ -3,6 +3,7 @@ import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb } from "../../common/dynamo";
 import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
+import type { JournalEntry } from "../../common/types";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -42,5 +43,9 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     }),
   );
 
-  return jsonResponse(200, { entries: result.Items ?? [] });
+  // embedding is an internal field powering /journal/search — strip it before sending the
+  // list to the frontend, which never uses it and would otherwise pay for it on every load.
+  const entries = ((result.Items ?? []) as JournalEntry[]).map(({ embedding: _embedding, ...rest }) => rest);
+
+  return jsonResponse(200, { entries });
 };
