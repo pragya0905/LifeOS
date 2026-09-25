@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="description" content="LifeOs — a personal life-tracking app with AI-driven journal extraction. Live screenshots, engineering highlights, and the full stack." />
+<meta name="description" content="LifeOs — a personal life-tracking app with AI-driven journal extraction and a voice/chat assistant. Live screenshots, engineering highlights, and the full stack." />
 <title>LifeOs</title>
 <style>
   :root {
@@ -342,6 +342,16 @@
       <h3>Closed an N+1 without touching the schema</h3>
       <p>Goal progress for habit-linked wishes ran one extra query per wish. Rewrote it to one combined query covering every wish's date range, with per-wish progress computed in memory — 1+N calls became a flat 2, regardless of how many goals a user has.</p>
     </div>
+    <div class="highlight-card">
+      <span class="h-icon">🎙️</span>
+      <h3>A chat assistant that reuses the app, not a second copy of it</h3>
+      <p>The voice/chat Assistant's tool-calling Lambda forwards every action to the same HTTP API routes the web app calls, with the same bearer token — the exact thin-adapter pattern already proven by a separate Alexa skill integration. "How a task gets created" lives in exactly one code path, no matter which surface asked for it.</p>
+    </div>
+    <div class="highlight-card">
+      <span class="h-icon">📐</span>
+      <h3>Coaching that's honest, not just encouraging</h3>
+      <p>Ask the Assistant how you're doing and it calls a tool that computes — in code, not by model guess — which goals are falling behind schedule, which habit streaks broke, and whether this month's spending is on pace to bust the budget. It's told to name the gap plainly before any encouragement, never instead of it.</p>
+    </div>
   </div>
 </section>
 
@@ -351,11 +361,11 @@
     <h2>The whole system, quantified</h2>
   </div>
   <div class="stats-grid">
-    <div class="stat"><span class="n">55</span><span class="l">Lambda functions</span></div>
-    <div class="stat"><span class="n">50</span><span class="l">API routes</span></div>
-    <div class="stat"><span class="n">14</span><span class="l">DynamoDB tables</span></div>
+    <div class="stat"><span class="n">58</span><span class="l">Lambda functions</span></div>
+    <div class="stat"><span class="n">52</span><span class="l">API routes</span></div>
+    <div class="stat"><span class="n">16</span><span class="l">DynamoDB tables</span></div>
     <div class="stat"><span class="n">0</span><span class="l">GSIs — by design</span></div>
-    <div class="stat"><span class="n">18</span><span class="l">frontend routes</span></div>
+    <div class="stat"><span class="n">19</span><span class="l">frontend routes</span></div>
     <div class="stat"><span class="n">5</span><span class="l">scheduled jobs</span></div>
     <div class="stat"><span class="n">11</span><span class="l">tracked life domains</span></div>
     <div class="stat"><span class="n">1</span><span class="l">person, built &amp; runs it solo</span></div>
@@ -380,7 +390,9 @@
     <span class="stack-pill">S3 + CloudFront</span>
     <span class="stack-pill">AWS SAM</span>
     <span class="stack-pill">Claude (Anthropic)</span>
+    <span class="stack-pill">Amazon Bedrock (Titan Embeddings)</span>
     <span class="stack-pill">Web Push / VAPID</span>
+    <span class="stack-pill">Web Speech API</span>
   </div>
 </section>
 
