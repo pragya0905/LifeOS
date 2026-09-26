@@ -186,6 +186,16 @@ export interface Goal {
   updatedAt: string;
 }
 
+export type MemoryCategory = "health" | "financial" | "emotional" | "consistency" | "general";
+
+export interface UserMemory {
+  userId: string;
+  memoryId: string;
+  text: string;
+  category: MemoryCategory;
+  createdAt: string;
+}
+
 export type UserSex = "male" | "female" | "unspecified";
 
 export interface UserProfile {

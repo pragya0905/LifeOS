@@ -170,7 +170,7 @@ const SECTIONS: Section[] = [
       "🔊 Replies are read aloud by default — Mute replies turns that off without losing the text reply.",
       "✅ It can actually do things, not just log actions in the app: log a habit, add a task, tick off a routine step or medication, or write a journal entry, all from a sentence.",
       "🔍 Ask it something from your journal history — it searches by meaning, not just exact words, so \"what have I said about my landlord\" finds entries that never used that word.",
-      "🧠 It remembers things you tell it worth keeping — mention you're saving for a trip or something you're anxious about, and it'll bring that up again in a later conversation, even a brand-new one.",
+      "🧠 It remembers things you tell it worth keeping — mention you're saving for a trip or something you're anxious about, and it'll bring that up again in a later conversation, even a brand-new one. See or delete anything it's remembered under Settings → Assistant.",
       "📊 Ask how you're doing and it's honest, not just encouraging — it checks real numbers (falling-behind wishes, broken habit streaks, budget pace) and names the gap before the pep talk, never instead of it.",
       "🗂️ New conversation starts fresh — your data and memory stay, just the chat thread resets.",
     ],

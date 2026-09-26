@@ -2541,6 +2541,67 @@ Resources:
             Auth:
               Authorizer: CognitoAuthorizer
 
+  ########################
+  # Lambda — Assistant memory (view/delete what it's remembered)
+  ########################
+  ListMemoryFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-list-memory-${Environment}"
+      CodeUri: src/functions/listMemory/
+      Handler: index.handler
+      Environment:
+        Variables:
+          USER_MEMORY_TABLE_NAME: !Ref UserMemoryTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref UserMemoryTable
+      Events:
+        ListMemory:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /memory
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  DeleteMemoryFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-delete-memory-${Environment}"
+      CodeUri: src/functions/deleteMemory/
+      Handler: index.handler
+      Environment:
+        Variables:
+          USER_MEMORY_TABLE_NAME: !Ref UserMemoryTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserMemoryTable
+      Events:
+        DeleteMemory:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /memory/{id}
+            Method: DELETE
+            Auth:
+              Authorizer: CognitoAuthorizer
+
 Outputs:
   UserPoolId:
     Value: !Ref LifeOsUserPool

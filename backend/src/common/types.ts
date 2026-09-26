@@ -257,3 +257,13 @@ export interface Goal {
   targetValue: number;
   updatedAt: string;
 }
+
+export type MemoryCategory = "health" | "financial" | "emotional" | "consistency" | "general";
+
+export interface UserMemory {
+  userId: string;
+  memoryId: string;
+  text: string;
+  category: MemoryCategory;
+  createdAt: string;
+}

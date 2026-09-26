@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { ddb } from "../../common/dynamo";
 import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
-import type { Budget, Expense, Goal, HabitLog, HabitType, Wish } from "../../common/types";
+import type { Budget, Expense, Goal, HabitLog, HabitType, MemoryCategory, UserMemory, Wish } from "../../common/types";
 
 // Thin-adapter pattern, same as alexaSkillHandler: this Lambda never writes to any table an
 // existing API route already owns — it forwards the same bearer token the request arrived
@@ -203,16 +203,7 @@ async function computeProgressSummary(apiUrl: string, authHeader: string): Promi
   return { todaysDate: todayStr, wishes: wishSummaries, habits: habitSummaries, budgets: budgetSummaries };
 }
 
-const MEMORY_CATEGORIES = ["health", "financial", "emotional", "consistency", "general"] as const;
-type MemoryCategory = (typeof MEMORY_CATEGORIES)[number];
-
-interface MemoryItem {
-  userId: string;
-  memoryId: string;
-  text: string;
-  category: MemoryCategory;
-  createdAt: string;
-}
+const MEMORY_CATEGORIES: MemoryCategory[] = ["health", "financial", "emotional", "consistency", "general"];
 
 const TOOLS: Anthropic.Tool[] = [
   {
@@ -487,7 +478,7 @@ async function executeTool(
         // The one place this Lambda writes to DynamoDB directly — there's no existing API
         // route for user memory to forward to, unlike every other tool above.
         const now = new Date().toISOString();
-        const item: MemoryItem = {
+        const item: UserMemory = {
           userId,
           memoryId: `${Date.now()}-${randomUUID()}`,
           text: input.text as string,
@@ -526,7 +517,7 @@ async function getClient(): Promise<Anthropic> {
   return cachedClient;
 }
 
-function buildSystemPrompt(memories: MemoryItem[], goalsContext: string): string {
+function buildSystemPrompt(memories: UserMemory[], goalsContext: string): string {
   const base =
     "You are the LifeOs assistant — a supportive, conversational personal life-management " +
     "companion. You can read and log the user's tasks, habits, logs (food/sleep/weight/mood/" +
@@ -549,7 +540,7 @@ function buildSystemPrompt(memories: MemoryItem[], goalsContext: string): string
   return sections.length === 0 ? base : `${base}\n\n${sections.join("\n\n")}`;
 }
 
-function memoryText(memories: MemoryItem[]): string {
+function memoryText(memories: UserMemory[]): string {
   const memoryLines = memories.map((m) => `- (${m.category}) ${m.text}`).join("\n");
   return `What you already know about this user, from past conversations:\n${memoryLines}`;
 }
@@ -601,7 +592,7 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     fetchGoalsContext(apiUrl, authHeader),
   ]);
   const historyItems = ((historyResult.Items ?? []) as ConversationTurnItem[]).slice(-HISTORY_TURN_LIMIT);
-  const memories = (memoryResult.Items ?? []) as MemoryItem[];
+  const memories = (memoryResult.Items ?? []) as UserMemory[];
 
   const messages: Anthropic.MessageParam[] = [
     ...historyItems.map((item) => ({ role: item.role, content: item.content }) as Anthropic.MessageParam),
