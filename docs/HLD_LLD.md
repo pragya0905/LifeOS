@@ -32,7 +32,7 @@ rather than requiring separate manual entry into each one.
 
 This document specifies the system as built and deployed, for the
 purpose of enabling: (a) a new contributor to understand the system
-without reading all 58 Lambda functions, (b) a design review to evaluate
+without reading all 64 Lambda functions, (b) a design review to evaluate
 the choices made and the tradeoffs deliberately accepted, and (c) future
 extension work to be scoped against an accurate baseline.
 
@@ -67,7 +67,8 @@ extension work to be scoped against an accurate baseline.
 | Routines | Multi-step daily checklists (e.g. skincare) with per-step done/skipped state and consecutive-day streaks. |
 | Wishes | Goal tracking across 5 progress modes (percentage, milestone, habit-linked, time-based, quantity) with deadline and falling-behind push reminders. |
 | Insights | On-demand AI summary (today/week) plus an automatic weekly digest push, gated to roughly once every 7 days per user. |
-| Assistant | Dedicated chat/voice page backed by a Claude tool-calling loop that reads/logs across the modules above; semantic search over journal history (RAG); persistent cross-conversation memory of facts about the user; deterministic goals-anchored coaching (falling-behind wishes, habit streaks, budget pace) with an honest-accountability framing. |
+| Assistant | Dedicated chat/voice page backed by a Claude tool-calling loop that reads/logs across the modules above; semantic search over journal history (RAG); persistent cross-conversation memory of facts about the user, visible and deletable from Settings; deterministic goals-anchored coaching (falling-behind wishes, habit streaks, budget pace) with an honest-accountability framing. |
+| Meal Plan | A weekly grid (7 days × breakfast/lunch/dinner/snack) of free-text planned meals, separate from Logs' after-the-fact food entries. AI can suggest text for empty slots on request (preview only, not auto-saved), and the Assistant can read and revise the plan directly in conversation. |
 | Onboarding & Settings | First-run setup of sex, height, and daily targets; theme, data export, account deletion. |
 
 ## Non-functional requirements
@@ -76,7 +77,7 @@ extension work to be scoped against an accurate baseline.
 | --- | --- | --- |
 | Availability | Best-effort, managed-service SLA (no custom uptime target) | Fully managed AWS services (Lambda, DynamoDB, API Gateway, Cognito, CloudFront) — no self-managed servers to keep running |
 | Security & isolation | Zero cross-user data access | JWT-derived `userId` as every table's partition key (§6, LLD §17) |
-| Data durability | Point-in-time recovery to any second, 35-day window | `PointInTimeRecoverySpecification` enabled on all 16 tables |
+| Data durability | Point-in-time recovery to any second, 35-day window | `PointInTimeRecoverySpecification` enabled on all 17 tables |
 | Confidentiality | Encrypted at rest and in transit | DynamoDB SSE on every table; HTTPS-only at CloudFront and API Gateway |
 | Performance | Sub-second CRUD, low seconds for AI calls | 256MB Lambda memory, DynamoDB single-digit-ms reads on key lookups, client-side request cache/dedup (LLD §15) |
 | Consistency | Eventually consistent reads accepted; no cross-table transactions used | DynamoDB default (eventually consistent) reads; each write is scoped to one logical entity per table |
@@ -133,7 +134,7 @@ flowchart TB
     end
     subgraph L3["Business logic layer"]
       direction LR
-      B1["58 Lambda handlers"]
+      B1["64 Lambda handlers"]
       B2["common/ modules<br/>(auth, journal, claude,<br/>bedrock, pushNotifications, medications)"]
     end
     subgraph L4["Data & integration layer"]
@@ -222,8 +223,8 @@ section for the specific deferred fix).
 ```mermaid
 flowchart LR
     DEV["Developer machine"] -- "sam build && sam deploy" --> CFN["CloudFormation<br/>(lifeos-backend-dev stack)"]
-    CFN --> LAMBDAS["58 Lambda functions"]
-    CFN --> TABLES["16 DynamoDB tables"]
+    CFN --> LAMBDAS["64 Lambda functions"]
+    CFN --> TABLES["17 DynamoDB tables"]
     CFN --> APIGW["API Gateway"]
     CFN --> POOL["Cognito User Pool"]
     DEV -- "vite build" --> DIST["dist/"]
@@ -363,6 +364,7 @@ partition key (omitted from the field lists below since it's constant).
 | UserProfileTable | — none | heightCm? · sex? · monthlyBudget? · lastWeeklyDigestSentAt? · onboardingCompletedAt? |
 | AssistantConversationsTable | conversationTurn (`{conversationId}#{epochMs}`) | conversationId · role: user\|assistant · content: string |
 | UserMemoryTable | memoryId (`{epochMs}-{uuid}`) | text: string · category: health\|financial\|emotional\|consistency\|general |
+| MealPlanTable | dateMealType (`{date}#{mealType}`) | date · mealType: breakfast\|lunch\|dinner\|snack · text: string |
 
 ## API contracts
 
@@ -754,7 +756,7 @@ function request(path, options):
 
 #### Ownership via partition key
 
-`userId` from the verified JWT is the partition key on every one of the 16 tables. Cross-user access isn't rejected by a check — the key required to read another user's row structurally never appears in any query built from a request's own auth context.
+`userId` from the verified JWT is the partition key on every one of the 17 tables. Cross-user access isn't rejected by a check — the key required to read another user's row structurally never appears in any query built from a request's own auth context.
 
 #### Server-stamped timestamps
 

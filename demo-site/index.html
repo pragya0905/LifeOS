@@ -325,7 +325,7 @@
     <div class="highlight-card">
       <span class="h-icon">🔐</span>
       <h3>Cross-user data leaks are structurally impossible</h3>
-      <p>Every one of 14 DynamoDB tables partitions by the authenticated user's ID, resolved once from a verified JWT claim — never a client-supplied field. The key needed to reach another user's row never appears in a request built from your own auth context.</p>
+      <p>Every one of 17 DynamoDB tables partitions by the authenticated user's ID, resolved once from a verified JWT claim — never a client-supplied field. The key needed to reach another user's row never appears in a request built from your own auth context.</p>
     </div>
     <div class="highlight-card">
       <span class="h-icon">🐛</span>
@@ -357,6 +357,11 @@
       <h3>Coaching that's honest, not just encouraging</h3>
       <p>Ask the Assistant how you're doing and it calls a tool that computes — in code, not by model guess — which goals are falling behind schedule, which habit streaks broke, and whether this month's spending is on pace to bust the budget. It's told to name the gap plainly before any encouragement, never instead of it.</p>
     </div>
+    <div class="highlight-card">
+      <span class="h-icon">🍽️</span>
+      <h3>AI proposes, an explicit action commits</h3>
+      <p>The weekly Meal Plan's "Suggest with AI" fills empty slots with a one-shot Claude call — but nothing is written until a separate Save. Same separation the task-priority guardrail uses: the model proposes, a deliberate action always commits. Ask the Assistant to critique the plan instead, and it can revise a slot directly mid-conversation once you agree to the change.</p>
+    </div>
   </div>
 </section>
 
@@ -366,13 +371,13 @@
     <h2>The whole system, quantified</h2>
   </div>
   <div class="stats-grid">
-    <div class="stat"><span class="n">58</span><span class="l">Lambda functions</span></div>
-    <div class="stat"><span class="n">52</span><span class="l">API routes</span></div>
-    <div class="stat"><span class="n">16</span><span class="l">DynamoDB tables</span></div>
+    <div class="stat"><span class="n">64</span><span class="l">Lambda functions</span></div>
+    <div class="stat"><span class="n">58</span><span class="l">API routes</span></div>
+    <div class="stat"><span class="n">17</span><span class="l">DynamoDB tables</span></div>
     <div class="stat"><span class="n">0</span><span class="l">GSIs — by design</span></div>
-    <div class="stat"><span class="n">19</span><span class="l">frontend routes</span></div>
+    <div class="stat"><span class="n">20</span><span class="l">frontend routes</span></div>
     <div class="stat"><span class="n">5</span><span class="l">scheduled jobs</span></div>
-    <div class="stat"><span class="n">11</span><span class="l">tracked life domains</span></div>
+    <div class="stat"><span class="n">12</span><span class="l">tracked life domains</span></div>
     <div class="stat"><span class="n">1</span><span class="l">person, built &amp; runs it solo</span></div>
   </div>
 </section>

@@ -3,10 +3,10 @@
 🌸 System design reference
 
 A personal life-tracking PWA — tasks, journal, habits, medications, cycle,
-budget, routines, wishes, AI-generated insights, and a voice/chat AI
-Assistant — built as a serverless AWS backend behind a React SPA. This
-document describes the system as it is actually deployed today, not an
-aspirational target.
+budget, routines, wishes, a weekly meal plan, AI-generated insights, and a
+voice/chat AI Assistant — built as a serverless AWS backend behind a React
+SPA. This document describes the system as it is actually deployed today,
+not an aspirational target.
 
 account 593110023904
 region ap-southeast-2
@@ -35,10 +35,10 @@ deployment stage. Where a more scalable pattern was considered and
 deliberately not built, it's called out in [§14](#limitations)
 rather than left unexplained.
 
-- **58** Lambda functions
-- **52** API routes
-- **16** DynamoDB tables
-- **19** Frontend routes
+- **64** Lambda functions
+- **58** API routes
+- **17** DynamoDB tables
+- **20** Frontend routes
 - **5** Scheduled jobs
 - **1** AI model (Haiku 4.5) + Bedrock Titan Embeddings
 
@@ -64,7 +64,7 @@ flowchart TB
       APIGW["API Gateway (HTTP API)<br/>Cognito JWT authorizer"]
     end
 
-    subgraph Compute["Compute — 58 Lambda functions"]
+    subgraph Compute["Compute — 64 Lambda functions"]
       direction TB
       CRUD["CRUD handlers<br/>(tasks, journal, habits, meds,<br/>logs, cycle, budget, routines,<br/>wishes, goals, profile)"]
       AICALLS["AI-calling handlers<br/>(journal extraction, insights,<br/>task priority, journal search)"]
@@ -73,7 +73,7 @@ flowchart TB
     end
 
     subgraph Data["Data & identity"]
-      DDB[("DynamoDB — 16 tables")]
+      DDB[("DynamoDB — 17 tables")]
       COGNITO["Cognito User Pool"]
       SSM["SSM Parameter Store<br/>(API keys, VAPID keys)"]
       S3W["S3 — wish image uploads"]
@@ -224,7 +224,7 @@ nothing is implicitly reachable.
 
 ## Data model
 
-16 DynamoDB tables, all `PAY_PER_REQUEST` billing, all with
+17 DynamoDB tables, all `PAY_PER_REQUEST` billing, all with
 server-side encryption and point-in-time recovery enabled. Every table uses
 the same partition strategy — `userId` as the hash key — which
 is what makes the per-user ownership model in [§6](#auth)
@@ -238,6 +238,7 @@ table is queried by its own primary key only.
 | JournalEntriesTable | userId | date | one entry per calendar day, enforced by conditional put; also carries a `embedding` field (Bedrock Titan vector, written best-effort/async) powering journal semantic search — never sent to the frontend |
 | HabitLogsTable | userId | dateHabitType | composite sort key, e.g. 2026-08-21#water |
 | MedicationsTable | userId | medicationId | – |
+| MealPlanTable | userId | dateMealType | composite sort key, e.g. 2026-09-28#dinner; free-text planned meals, separate from LogEntriesTable's after-the-fact food logs |
 | MedicationLogsTable | userId | dateMedicationId | composite sort key |
 | LogEntriesTable | userId | logId | catch-all: food, calls, weight, mood, sleep, cycle events |
 | RoutineTemplatesTable | userId | routineId | – |
@@ -407,7 +408,11 @@ conversation dumps — each tagged `health` / `financial` / `emotional` /
 `consistency` / `general`. The model calls `remember_fact` mid-conversation
 when it notices something worth persisting; every row loads back into every
 future conversation's system prompt, which is how a brand-new conversation
-with zero shared history can still recall it unprompted.
+with zero shared history can still recall it unprompted. `GET`/`DELETE
+/memory` give the user visibility and control over this — a Settings
+section lists every remembered fact with a delete button, since a wrong or
+outdated fact previously had no way to be corrected except talking around
+it.
 
 **Goals-anchored coaching.** `get_progress_summary` is the one tool in this
 Lambda built entirely around the "don't trust the model with arithmetic"
@@ -423,6 +428,23 @@ itself — it only narrates what the tool returns. The system prompt
 explicitly frames this as honest accountability, not pure cheerleading:
 name the specific gap and its projected outcome before offering
 encouragement, never after or instead of it.
+
+### 5. Meal plan suggestion
+
+A one-shot structured-output call (same `zodOutputFormat` pattern as
+extraction/insights/task-priority above), not a chat interaction — it
+proposes free text for whichever slots in a date range are still empty,
+explicitly told never to touch a slot that already has something planned.
+Deliberately returns suggestions without writing them: `POST
+/meal-plan/suggest` only reads `MealPlanTable` and calls Claude, the
+frontend shows the results as an editable preview, and a separate,
+explicit save is what actually persists — the same "AI proposes, an
+explicit action commits" separation the task-priority guardrail uses. The
+Assistant additionally gets two thin-adapter tools, `get_meal_plan` and
+`set_meal_plan`, so a conversation like "is my plan good, swap Wednesday
+for something lighter" can read the real plan and write an agreed change
+back — the actual "discuss and improve" surface, not a second suggestion
+endpoint.
 
 ## Notifications & scheduled jobs
 
@@ -450,7 +472,7 @@ correctness bug worth closing regardless of scale.
 
 ## API surface
 
-52 routes on a single HTTP API, grouped by resource below. Every route
+58 routes on a single HTTP API, grouped by resource below. Every route
 (except the auth endpoints Cognito itself fronts) requires a valid JWT.
 
 | Resource | Routes |
@@ -459,6 +481,8 @@ correctness bug worth closing regardless of scale.
 | Tasks | GET/POST /tasks · PATCH /tasks/{id} · GET /schedule/{date} |
 | Journal | GET/POST /journal · PATCH /journal/{date} · POST /journal/search |
 | Assistant | POST /assistant/chat |
+| Memory | GET /memory · DELETE /memory/{id} |
+| Meal Plan | GET /meal-plan · PATCH/DELETE /meal-plan/{date}/{mealType} · POST /meal-plan/suggest |
 | Habits | GET /habits · GET /habits/{date} · PATCH /habits/{date}/{type} |
 | Goals | GET /goals · PATCH /goals/{metric} |
 | Medications | GET/POST /medications · DELETE /medications/{id} · GET /medication-logs(/{date}) · PATCH /medication-logs/{date}/{medicationId} |

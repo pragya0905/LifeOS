@@ -39,6 +39,10 @@ without logging in.
 - **Medications** — dosage/notes, daily taken/missed logging, a rolling
   adherence percentage, daily push reminders.
 - **Logs** — catch-all for food and calls.
+- **Meal Plan** — a weekly grid of what to eat (free text per slot), separate
+  from Logs' after-the-fact food entries. AI can fill in empty slots on
+  request without auto-saving, and the Assistant can discuss and revise the
+  plan directly in conversation.
 - **Cycle** — period start/end and symptom logging, with phase estimation
   and next-period prediction from your own logged history (never a medical
   claim). Hidden entirely if you set sex to male.
@@ -68,19 +72,19 @@ without logging in.
 
 - **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS 4, route-based
   code splitting, a shared design-token system (`frontend/`)
-- **Backend**: AWS SAM — 58 Lambda functions (Node.js 20, arm64, TypeScript,
-  esbuild) behind an API Gateway HTTP API, 52 routes (`backend/`)
-- **Database**: DynamoDB — 16 tables, `PAY_PER_REQUEST`, every table
+- **Backend**: AWS SAM — 64 Lambda functions (Node.js 20, arm64, TypeScript,
+  esbuild) behind an API Gateway HTTP API, 58 routes (`backend/`)
+- **Database**: DynamoDB — 17 tables, `PAY_PER_REQUEST`, every table
   partitioned by the authenticated user's ID (no GSIs — every access
   pattern is a direct key lookup)
 - **Auth**: AWS Cognito User Pool, JWT authorizer, custom React
   sign-up/login UI via Amplify Auth (no Hosted UI); a second app client
   handles OAuth account linking for the optional Alexa skill
 - **AI**: Anthropic Claude API (`claude-haiku-4-5`) for structured JSON
-  output (journal extraction, insights, task-priority suggestion) and for
-  the Assistant's tool-calling chat loop; AWS Bedrock Titan Embeddings for
-  journal semantic search — both stay inside the same AWS account rather
-  than adding another vendor
+  output (journal extraction, insights, task-priority suggestion, meal-plan
+  suggestions) and for the Assistant's tool-calling chat loop; AWS Bedrock
+  Titan Embeddings for journal semantic search — both stay inside the same
+  AWS account rather than adding another vendor
 - **Notifications**: Web Push (VAPID) via 5 independently-scheduled Lambdas
 - **Hosting**: S3 + CloudFront for both the app frontend and the public demo
   site (`demo-site/`) — two fully independent stacks/distributions
