@@ -196,6 +196,18 @@ export interface UserMemory {
   createdAt: string;
 }
 
+export type MealType = "breakfast" | "lunch" | "dinner" | "snack";
+
+export interface MealPlanSlot {
+  userId: string;
+  dateMealType: string;
+  date: string;
+  mealType: MealType;
+  text: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type UserSex = "male" | "female" | "unspecified";
 
 export interface UserProfile {

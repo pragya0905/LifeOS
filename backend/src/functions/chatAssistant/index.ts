@@ -360,6 +360,33 @@ const TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "get_meal_plan",
+    description:
+      "Get the user's planned meals for a date range — call this before commenting on, critiquing, or suggesting changes to their meal plan, so you're reacting to what's actually planned rather than guessing.",
+    input_schema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "YYYY-MM-DD" },
+        to: { type: "string", description: "YYYY-MM-DD" },
+      },
+      required: ["from", "to"],
+    },
+  },
+  {
+    name: "set_meal_plan",
+    description:
+      "Set or change one planned meal slot. Use this when the user agrees to a specific change during a conversation about their meal plan (e.g. 'swap Wednesday dinner for something lighter' after you've suggested one).",
+    input_schema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "YYYY-MM-DD" },
+        mealType: { type: "string", enum: ["breakfast", "lunch", "dinner", "snack"] },
+        text: { type: "string", description: "The planned meal, e.g. 'Grilled salmon with steamed broccoli'." },
+      },
+      required: ["date", "mealType", "text"],
+    },
+  },
+  {
     name: "get_progress_summary",
     description:
       "Get a deterministically computed snapshot of how the user is actually tracking: which active Wishes are falling behind schedule, current streaks and missed-day counts for each habit, and a projected month-end total for each budget category based on this month's spending pace so far. Always call this before making any claim about whether the user is on track, off track, or ahead/behind — never estimate or guess these numbers yourself.",
@@ -468,6 +495,21 @@ async function executeTool(
           date: (input.date as string) || today(),
           text: input.text,
         });
+        break;
+      }
+      case "get_meal_plan": {
+        const params = new URLSearchParams({ from: input.from as string, to: input.to as string });
+        result = await callApi(apiUrl, authHeader, `/meal-plan?${params.toString()}`, "GET");
+        break;
+      }
+      case "set_meal_plan": {
+        result = await callApi(
+          apiUrl,
+          authHeader,
+          `/meal-plan/${input.date}/${input.mealType}`,
+          "PATCH",
+          { text: input.text },
+        );
         break;
       }
       case "get_progress_summary": {

@@ -175,6 +175,26 @@ Resources:
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
 
+  MealPlanTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "LifeOs-MealPlan-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: dateMealType
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: dateMealType
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
   MedicationsTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -954,6 +974,129 @@ Resources:
             ApiId: !Ref HttpApi
             Path: /habits
             Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  ########################
+  # Lambda — Meal Plan
+  ########################
+  UpsertMealPlanSlotFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-upsert-meal-plan-slot-${Environment}"
+      CodeUri: src/functions/upsertMealPlanSlot/
+      Handler: index.handler
+      Environment:
+        Variables:
+          MEAL_PLAN_TABLE_NAME: !Ref MealPlanTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MealPlanTable
+      Events:
+        UpsertMealPlanSlot:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /meal-plan/{date}/{mealType}
+            Method: PATCH
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  ListMealPlanRangeFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-list-meal-plan-range-${Environment}"
+      CodeUri: src/functions/listMealPlanRange/
+      Handler: index.handler
+      Environment:
+        Variables:
+          MEAL_PLAN_TABLE_NAME: !Ref MealPlanTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref MealPlanTable
+      Events:
+        ListMealPlanRange:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /meal-plan
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  DeleteMealPlanSlotFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-delete-meal-plan-slot-${Environment}"
+      CodeUri: src/functions/deleteMealPlanSlot/
+      Handler: index.handler
+      Environment:
+        Variables:
+          MEAL_PLAN_TABLE_NAME: !Ref MealPlanTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MealPlanTable
+      Events:
+        DeleteMealPlanSlot:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /meal-plan/{date}/{mealType}
+            Method: DELETE
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  SuggestMealPlanFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-suggest-meal-plan-${Environment}"
+      CodeUri: src/functions/suggestMealPlan/
+      Handler: index.handler
+      Timeout: 30
+      Environment:
+        Variables:
+          MEAL_PLAN_TABLE_NAME: !Ref MealPlanTable
+          ANTHROPIC_API_KEY_PARAM: !Sub "/lifeos/${Environment}/anthropic-api-key"
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref MealPlanTable
+        - SSMParameterReadPolicy:
+            ParameterName: !Sub "lifeos/${Environment}/anthropic-api-key"
+      Events:
+        SuggestMealPlan:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /meal-plan/suggest
+            Method: POST
             Auth:
               Authorizer: CognitoAuthorizer
 
@@ -2625,6 +2768,8 @@ Outputs:
     Value: !Ref JournalEntriesTable
   HabitLogsTableName:
     Value: !Ref HabitLogsTable
+  MealPlanTableName:
+    Value: !Ref MealPlanTable
   MedicationsTableName:
     Value: !Ref MedicationsTable
   MedicationLogsTableName:

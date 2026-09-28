@@ -257,3 +257,54 @@ export async function suggestTaskPriority(
   }
   return response.parsed_output.priority;
 }
+
+const MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"] as const;
+
+const MealPlanSuggestionSchema = z.object({
+  slots: z.array(
+    z.object({
+      date: z.string(),
+      mealType: z.enum(MEAL_TYPES),
+      text: z.string(),
+    }),
+  ),
+});
+
+export type MealPlanSuggestion = z.infer<typeof MealPlanSuggestionSchema>;
+
+const MEAL_PLAN_SYSTEM_PROMPT =
+  "Suggest simple, varied, home-cookable meals for the given date range and meal types. Keep " +
+  "each suggestion short (a dish name plus a few key ingredients, not a full recipe) — this is " +
+  "a planning grid, not a cookbook. Vary proteins and cuisines across the week rather than " +
+  "repeating the same dish. Never suggest anything for a slot that already has an existing " +
+  "entry — only fill in the empty slots listed as needing a suggestion. Return exactly one " +
+  "entry per empty slot, matching its date and mealType exactly.";
+
+// Returns suggestions only — never writes to the meal plan table itself. The caller decides
+// what to keep and makes an explicit save, same "AI proposes, an explicit action commits"
+// separation used for task priority suggestions.
+export async function suggestMealPlan(
+  emptySlots: { date: string; mealType: string }[],
+  existingSlots: { date: string; mealType: string; text: string }[],
+): Promise<MealPlanSuggestion> {
+  const client = await getClient();
+  const lines = [
+    `Empty slots needing a suggestion: ${JSON.stringify(emptySlots)}`,
+    existingSlots.length > 0
+      ? `Already-planned meals this week (for variety, don't repeat these): ${JSON.stringify(existingSlots)}`
+      : "No meals planned yet this week.",
+  ];
+
+  const response = await client.messages.parse({
+    model: "claude-haiku-4-5",
+    max_tokens: 1024,
+    system: MEAL_PLAN_SYSTEM_PROMPT,
+    messages: [{ role: "user", content: lines.join("\n") }],
+    output_config: { format: zodOutputFormat(MealPlanSuggestionSchema) },
+  });
+
+  if (!response.parsed_output) {
+    throw new Error("Claude did not return parsed structured output");
+  }
+  return response.parsed_output;
+}

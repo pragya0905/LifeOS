@@ -97,6 +97,17 @@ const SECTIONS: Section[] = [
     ],
   },
   {
+    title: "Meal Plan",
+    body: "",
+    intro: "A weekly grid of what to eat — planning ahead, separate from Logs' after-the-fact food entries.",
+    bullets: [
+      "📝 Free text per slot (breakfast/lunch/dinner/snack), 7 days at a time — tap a slot and type, no fixed recipe format required.",
+      "◀️▶️ Prev week / Next week move you through time; clearing a slot's text removes it.",
+      "✨ Suggest with AI fills in whatever's still empty for the visible week, varying meals rather than repeating — review the suggestions right in the grid, then Save plan or Discard, nothing is written until you save.",
+      "💬 Ask the Assistant to review your week — \"is my meal plan good, what would you change\" — it reads the actual plan and can swap a slot directly if you agree, right from the conversation.",
+    ],
+  },
+  {
     title: "Budget",
     body: "",
     intro: "Track spending by category against monthly budgets you set once — no need to recreate them every month.",

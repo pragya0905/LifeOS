@@ -267,3 +267,15 @@ export interface UserMemory {
   category: MemoryCategory;
   createdAt: string;
 }
+
+export type MealType = "breakfast" | "lunch" | "dinner" | "snack";
+
+export interface MealPlanSlot {
+  userId: string;
+  dateMealType: string; // "{date}#{mealType}"
+  date: string;
+  mealType: MealType;
+  text: string;
+  createdAt: string;
+  updatedAt: string;
+}
