@@ -177,13 +177,15 @@ const SECTIONS: Section[] = [
     intro:
       "A dedicated chat page — More → Assistant — separate from Journal, so it never mixes into your daily entry. Talk or type; it can act, not just answer.",
     bullets: [
+      "💬 Replies stream in as they're written, word by word, and render real formatting (bold, lists) instead of flat text.",
       "🎤 Tap the mic and speak — a finished sentence sends itself automatically, like talking to a person, not filling in a form. Typing still needs Send.",
-      "🔊 Replies are read aloud by default — Mute replies turns that off without losing the text reply.",
-      "✅ It can actually do things, not just log actions in the app: log a habit, add a task, tick off a routine step or medication, or write a journal entry, all from a sentence.",
+      "🎙️ Voice mode (next to the mic) is a full hands-free loop — talk, it answers out loud, then it's listening again automatically, no tapping between turns. Tap the circle to start, ✕ to exit.",
+      "🔊 Replies are read aloud by default — the 🔇/🔊 icon turns that off without losing the text reply.",
+      "✅ It can actually do things, not just log actions in the app: log a habit, add a task, tick off a routine step or medication, plan a meal, or write a journal entry, all from a sentence.",
       "🔍 Ask it something from your journal history — it searches by meaning, not just exact words, so \"what have I said about my landlord\" finds entries that never used that word.",
       "🧠 It remembers things you tell it worth keeping — mention you're saving for a trip or something you're anxious about, and it'll bring that up again in a later conversation, even a brand-new one. See or delete anything it's remembered under Settings → Assistant.",
       "📊 Ask how you're doing and it's honest, not just encouraging — it checks real numbers (falling-behind wishes, broken habit streaks, budget pace) and names the gap before the pep talk, never instead of it.",
-      "🗂️ New conversation starts fresh — your data and memory stay, just the chat thread resets.",
+      "🗂️ The folder icon opens your past conversations — reopen one to keep going, or delete one you don't need. New starts a fresh thread without losing anything.",
     ],
   },
   {
