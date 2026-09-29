@@ -189,55 +189,63 @@ export default function MealPlan() {
       )}
 
       {loading ? (
-        <div className="flex flex-col gap-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <SkeletonCard key={i} lines={4} />
-          ))}
-        </div>
+        <SkeletonCard lines={4} />
       ) : (
-        <div className="flex flex-col gap-3">
-          {dates.map((date) => (
-            <div key={date} className={card}>
-              <h2 className="mb-2 text-sm font-medium text-ink dark:text-paper">
-                {dayLabel(date)}
-                {date === todayLocal() && <span className="ml-2 text-xs text-bloom">Today</span>}
-              </h2>
-              <div className="flex flex-col gap-2">
-                {MEAL_TYPES.map((mealType) => {
-                  const key = slotKey(date, mealType);
-                  const pendingText = pending[key];
-                  const value = pendingText ?? slots[key] ?? "";
-                  return (
-                    <div key={mealType} className="flex items-center gap-2">
-                      <label className="w-20 shrink-0 text-xs text-ink-muted dark:text-mist-muted">
-                        {MEAL_TYPE_LABEL[mealType]}
-                      </label>
-                      <input
-                        type="text"
-                        defaultValue={value}
-                        key={value}
-                        placeholder="Tap to plan this meal"
-                        onBlur={(e) => {
-                          if (pending[key] !== undefined) {
-                            const trimmed = e.target.value.trim();
-                            setPending((prev) => {
-                              const next = { ...prev };
-                              if (trimmed) next[key] = trimmed;
-                              else delete next[key];
-                              return next;
-                            });
-                          } else {
-                            saveSlot(date, mealType, e.target.value);
-                          }
-                        }}
-                        className={`flex-1 ${input} ${pendingText !== undefined ? "border-bloom" : ""}`}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+        <div className={`${card} overflow-x-auto p-3`}>
+          <table className="w-full min-w-[860px] border-separate border-spacing-1">
+            <thead>
+              <tr>
+                <th className="w-20 shrink-0 text-left text-xs font-medium text-ink-muted dark:text-mist-muted" />
+                {dates.map((date) => (
+                  <th
+                    key={date}
+                    className="min-w-[140px] p-1 text-left text-xs font-medium text-ink dark:text-paper"
+                  >
+                    {dayLabel(date)}
+                    {date === todayLocal() && <span className="ml-1 text-bloom">•</span>}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {MEAL_TYPES.map((mealType) => (
+                <tr key={mealType}>
+                  <td className="p-1 align-top text-xs text-ink-muted dark:text-mist-muted">
+                    {MEAL_TYPE_LABEL[mealType]}
+                  </td>
+                  {dates.map((date) => {
+                    const key = slotKey(date, mealType);
+                    const pendingText = pending[key];
+                    const value = pendingText ?? slots[key] ?? "";
+                    return (
+                      <td key={date} className="p-1 align-top">
+                        <input
+                          type="text"
+                          defaultValue={value}
+                          key={value}
+                          placeholder="Tap to plan"
+                          onBlur={(e) => {
+                            if (pending[key] !== undefined) {
+                              const trimmed = e.target.value.trim();
+                              setPending((prev) => {
+                                const next = { ...prev };
+                                if (trimmed) next[key] = trimmed;
+                                else delete next[key];
+                                return next;
+                              });
+                            } else {
+                              saveSlot(date, mealType, e.target.value);
+                            }
+                          }}
+                          className={`w-full ${input} text-xs ${pendingText !== undefined ? "border-bloom" : ""}`}
+                        />
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
       {!loading && Object.keys(slots).length === 0 && Object.keys(pending).length === 0 && (
