@@ -362,6 +362,11 @@
       <h3>AI proposes, an explicit action commits</h3>
       <p>The weekly Meal Plan's "Suggest with AI" fills empty slots with a one-shot Claude call — but nothing is written until a separate Save. Same separation the task-priority guardrail uses: the model proposes, a deliberate action always commits. Ask the Assistant to critique the plan instead, and it can revise a slot directly mid-conversation once you agree to the change.</p>
     </div>
+    <div class="highlight-card">
+      <span class="h-icon">⚡</span>
+      <h3>Real token streaming meant leaving API Gateway for one route</h3>
+      <p>API Gateway's proxy integration buffers a Lambda's whole response before returning it — no way to stream through it. The Assistant's chat now runs behind its own Lambda Function URL with response streaming instead, which doesn't support the shared Cognito authorizer, so that one function verifies the JWT itself (via AWS's own aws-jwt-verify library) before committing to any HTTP status — checked with both a valid and a deliberately invalid token before calling it done, since that's the one place auth isn't the platform's problem anymore.</p>
+    </div>
   </div>
 </section>
 
@@ -371,8 +376,8 @@
     <h2>The whole system, quantified</h2>
   </div>
   <div class="stats-grid">
-    <div class="stat"><span class="n">64</span><span class="l">Lambda functions</span></div>
-    <div class="stat"><span class="n">58</span><span class="l">API routes</span></div>
+    <div class="stat"><span class="n">67</span><span class="l">Lambda functions</span></div>
+    <div class="stat"><span class="n">60</span><span class="l">API routes</span></div>
     <div class="stat"><span class="n">17</span><span class="l">DynamoDB tables</span></div>
     <div class="stat"><span class="n">0</span><span class="l">GSIs — by design</span></div>
     <div class="stat"><span class="n">20</span><span class="l">frontend routes</span></div>

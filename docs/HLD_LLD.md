@@ -32,7 +32,7 @@ rather than requiring separate manual entry into each one.
 
 This document specifies the system as built and deployed, for the
 purpose of enabling: (a) a new contributor to understand the system
-without reading all 64 Lambda functions, (b) a design review to evaluate
+without reading all 67 Lambda functions, (b) a design review to evaluate
 the choices made and the tradeoffs deliberately accepted, and (c) future
 extension work to be scoped against an accurate baseline.
 
@@ -67,7 +67,7 @@ extension work to be scoped against an accurate baseline.
 | Routines | Multi-step daily checklists (e.g. skincare) with per-step done/skipped state and consecutive-day streaks. |
 | Wishes | Goal tracking across 5 progress modes (percentage, milestone, habit-linked, time-based, quantity) with deadline and falling-behind push reminders. |
 | Insights | On-demand AI summary (today/week) plus an automatic weekly digest push, gated to roughly once every 7 days per user. |
-| Assistant | Dedicated chat/voice page backed by a Claude tool-calling loop that reads/logs across the modules above; semantic search over journal history (RAG); persistent cross-conversation memory of facts about the user, visible and deletable from Settings; deterministic goals-anchored coaching (falling-behind wishes, habit streaks, budget pace) with an honest-accountability framing. |
+| Assistant | Dedicated chat/voice page, streamed token-by-token from a Claude tool-calling loop, that reads/logs across the modules above; browsable/reopenable/deletable conversation history; a dedicated hands-free voice mode; semantic search over journal history (RAG); persistent cross-conversation memory of facts about the user, visible and deletable from Settings; deterministic goals-anchored coaching (falling-behind wishes, habit streaks, budget pace) with an honest-accountability framing. |
 | Meal Plan | A weekly grid (7 days × breakfast/lunch/dinner/snack) of free-text planned meals, separate from Logs' after-the-fact food entries. AI can suggest text for empty slots on request (preview only, not auto-saved), and the Assistant can read and revise the plan directly in conversation. |
 | Onboarding & Settings | First-run setup of sex, height, and daily targets; theme, data export, account deletion. |
 
@@ -134,7 +134,7 @@ flowchart TB
     end
     subgraph L3["Business logic layer"]
       direction LR
-      B1["64 Lambda handlers"]
+      B1["67 Lambda handlers"]
       B2["common/ modules<br/>(auth, journal, claude,<br/>bedrock, pushNotifications, medications)"]
     end
     subgraph L4["Data & integration layer"]
@@ -223,7 +223,7 @@ section for the specific deferred fix).
 ```mermaid
 flowchart LR
     DEV["Developer machine"] -- "sam build && sam deploy" --> CFN["CloudFormation<br/>(lifeos-backend-dev stack)"]
-    CFN --> LAMBDAS["64 Lambda functions"]
+    CFN --> LAMBDAS["67 Lambda functions"]
     CFN --> TABLES["17 DynamoDB tables"]
     CFN --> APIGW["API Gateway"]
     CFN --> POOL["Cognito User Pool"]
@@ -418,33 +418,75 @@ Creates today's (or a specified date's) entry and triggers AI extraction synchro
 }
 ```
 
-### POST /assistant/chat
+### POST — Assistant chat (Lambda Function URL, not API Gateway)
+
+Not `/assistant/chat` on the shared HTTP API — this is the one endpoint in
+the system that doesn't live there. It's a **Lambda Function URL** with
+`InvokeMode: RESPONSE_STREAM`, because API Gateway's proxy integration
+buffers a full response before returning it, which would defeat streaming
+regardless of what the Lambda does. Function URLs don't support Cognito
+authorizers, so the bearer token is verified inside the Lambda itself
+(`aws-jwt-verify`, see LLD §17) before any response is committed.
 
 ```
-// Request
+// Request (same shape as the old buffered version)
 {
-  "message": "log 500ml of water",           // required, non-empty after trim
-  "conversationId": "8b151eb2-..."             // optional — omit to start a new conversation
+  "message": "log 500ml of water",
+  "conversationId": "8b151eb2-..."   // optional — omit to start a new conversation
 }
 
-// Response 200 — reply is what gets displayed and (client-side) spoken aloud;
-// conversationId is echoed back so the client can pass it on the next turn
-{
-  "conversationId": "8b151eb2-...",
-  "reply": "Got it! Logged 500ml of water for today. 💧"
-}
+// Response — Content-Type: application/x-ndjson, one JSON object per line,
+// streamed as Claude generates it rather than returned all at once
+{"type":"tool_use","name":"log_habit"}
+{"type":"text","delta":"Got"}
+{"type":"text","delta":" it! Logged 500ml"}
+{"type":"text","delta":" of water for today. 💧"}
+{"type":"done","conversationId":"8b151eb2-..."}
+
+// Auth failure — real HTTP 401, checked before any of the above ships
+// (statusCode is fixed the moment the stream's metadata prelude is sent,
+// so this must happen first, not as an {"type":"error"} line mid-stream)
+HTTP 401
+{"error":"Unauthorized"}
 ```
 
 Internally: loads the last ~20 turns of history plus every `UserMemoryTable`
 row plus a compact Wishes/Goals summary into the system prompt, then runs a
-manual tool-use loop (max 5 iterations) against `claude-haiku-4-5`. Each
-tool the model calls either forwards to an existing route with the same
-bearer token (see [§9](#ai-integration) in the companion Architecture doc)
-or, for `remember_fact` only, writes directly to `UserMemoryTable`. Both the
-user's message and the final assistant reply persist to
-`AssistantConversationsTable` after the loop ends — intermediate tool-use/
-tool-result blocks are not persisted, only the final text, so a resumed
-conversation replays as plain dialogue rather than raw tool traffic.
+manual tool-use loop (max 5 iterations) against `claude-haiku-4-5` using
+`client.messages.stream(...)` instead of `.create(...)` — each text delta
+forwards to the client immediately via `.on("text", ...)`, while
+`stream.finalMessage()` still yields the complete structured message for
+tool-use detection. Each tool the model calls either forwards to an
+existing route with the same bearer token (see [§9](#ai-integration) in
+the companion Architecture doc) or, for `remember_fact` only, writes
+directly to `UserMemoryTable`. Both the user's message and the fully
+assembled assistant reply persist to `AssistantConversationsTable` after
+the stream ends — intermediate tool-use/tool-result blocks are not
+persisted, only the final text, so a resumed conversation replays as
+plain dialogue rather than raw tool traffic.
+
+### GET /assistant/conversations, GET/DELETE /assistant/conversations/{id}
+
+Plain CRUD, on the regular HTTP API — listing/reopening/deleting a past
+conversation doesn't need streaming. `GET /assistant/conversations` queries
+a user's entire `AssistantConversationsTable` partition and groups items by
+the `conversationId` prefix of `conversationTurn` in application code
+(different conversations' UUIDs don't sort relative to each other by
+recency the way one conversation's own turns naturally do), returning one
+summary row per conversation:
+
+```
+// Response 200
+{
+  "conversations": [
+    { "conversationId": "8b151eb2-...", "preview": "log 500ml of water", "lastMessageAt": "..." }
+  ]
+}
+```
+
+`GET .../{id}` returns that one conversation's full turn list (same shape
+`chatAssistant` loads internally for context); `DELETE .../{id}`
+batch-deletes every turn with that prefix.
 
 ### GET /wishes
 
@@ -539,29 +581,39 @@ sequenceDiagram
     participant API as Existing HTTP API
 
     U->>FE: "log 500ml of water" (typed or spoken)
-    FE->>L: POST /assistant/chat {message, conversationId}
+    FE->>L: POST Function URL {message, conversationId}, bearer JWT
+    L->>L: verifyIdToken(authHeader) — aws-jwt-verify, no API<br/>Gateway authorizer available on a Function URL
+    alt invalid/missing token
+        L-->>FE: 401, stream never opened
+    end
+    L->>FE: HttpResponseStream.from(200, ndjson) — status now committed
     par context gathering (Promise.all)
         L->>DDB: Query last ~20 turns (AssistantConversationsTable)
         L->>DDB: Query all memory rows (UserMemoryTable)
         L->>API: GET /wishes, /goals, /habits/{today} (goals context)
     end
-    L->>CL: messages.create({system, tools, messages})
-    CL-->>L: stop_reason: tool_use → log_habit({habitType, value})
+    L->>CL: messages.stream({system, tools, messages})
+    loop each text delta
+        CL-->>L: "text" event
+        L-->>FE: {"type":"text","delta":"..."} (streamed immediately)
+    end
+    CL-->>L: finalMessage(): stop_reason tool_use → log_habit({habitType, value})
+    L-->>FE: {"type":"tool_use","name":"log_habit"}
     L->>API: PATCH /habits/{date}/water {value: 500}
     Note over L,API: same JWT the request arrived with — no<br/>duplicated business logic, one code path
     API-->>L: 200 {habit log}
-    L->>CL: tool_result appended, messages.create() again
-    CL-->>L: stop_reason: end_turn, "Got it! Logged 500ml..."
+    L->>CL: tool_result appended, messages.stream() again
+    CL-->>L: finalMessage(): stop_reason end_turn
     L->>DDB: Put user turn + assistant turn (AssistantConversationsTable)
-    L-->>FE: 200 {conversationId, reply}
-    FE-->>U: Reply shown + spoken (window.speechSynthesis)
+    L-->>FE: {"type":"done","conversationId":"..."}, stream ends
+    FE-->>U: Reply shown (markdown) + spoken (window.speechSynthesis)
 ```
 
 The loop caps at 5 iterations (`MAX_TOOL_ITERATIONS`); every tool but
 `remember_fact` goes through the existing HTTP API rather than touching
 DynamoDB directly, and `get_progress_summary` additionally fans out to
 `/wishes`, `/habits`, `/budgets`, and `/expenses` before computing its
-numbers in code — not shown above since it's one tool call among the ten
+numbers in code — not shown above since it's one tool call among the 15
 available, not a separate flow.
 
 ### Authentication

@@ -55,12 +55,17 @@ without logging in.
   push reminders.
 - **Insights** — on-demand AI summary (today/week) plus an automatic weekly
   digest push, roughly once every 7 days per user.
-- **Assistant** — a dedicated chat page (voice in/out, not just text) backed by a
-  Claude tool-calling loop that can read and log almost everything above —
-  habits, logs, routine/medication ticks, tasks, journal — on request. Adds
-  three things beyond simple logging: semantic search over your journal
-  history (RAG, via Bedrock Titan embeddings), a persistent memory of facts
-  it's learned about you across conversations, and a deterministic
+- **Assistant** — a dedicated chat page backed by a Claude tool-calling loop
+  that can read and log almost everything above — habits, logs,
+  routine/medication ticks, tasks, journal, meal plan — on request. Replies
+  stream in token-by-token with real markdown rendering, not a single
+  buffered blob; conversation history is browsable and reopenable, not just
+  the current thread; and a dedicated hands-free voice mode loops
+  listen → respond → speak → listen automatically, on top of the existing
+  inline mic for quick dictation. Adds three things beyond simple logging:
+  semantic search over your journal history (RAG, via Bedrock Titan
+  embeddings), a persistent memory of facts it's learned about you across
+  conversations (viewable/deletable in Settings), and a deterministic
   `get_progress_summary` tool (falling-behind wishes, habit streaks, budget
   pace projections — all computed in code, never estimated by the model)
   that grounds its coaching in real numbers and states gaps plainly before
@@ -71,15 +76,24 @@ without logging in.
 ## Stack
 
 - **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS 4, route-based
-  code splitting, a shared design-token system (`frontend/`)
-- **Backend**: AWS SAM — 64 Lambda functions (Node.js 20, arm64, TypeScript,
-  esbuild) behind an API Gateway HTTP API, 58 routes (`backend/`)
+  code splitting, a shared design-token system (`frontend/`); `react-markdown`
+  renders the Assistant's replies, scoped to that page's own lazy chunk
+- **Backend**: AWS SAM — 67 Lambda functions (Node.js 20, arm64, TypeScript,
+  esbuild) behind an API Gateway HTTP API (60 routes) plus one Lambda
+  Function URL — the Assistant's chat endpoint streams its response, which
+  API Gateway's buffered proxy integration can't pass through, so that one
+  endpoint runs behind its own Function URL with response streaming instead
+  (`backend/`)
 - **Database**: DynamoDB — 17 tables, `PAY_PER_REQUEST`, every table
   partitioned by the authenticated user's ID (no GSIs — every access
   pattern is a direct key lookup)
 - **Auth**: AWS Cognito User Pool, JWT authorizer, custom React
   sign-up/login UI via Amplify Auth (no Hosted UI); a second app client
-  handles OAuth account linking for the optional Alexa skill
+  handles OAuth account linking for the optional Alexa skill. The one
+  exception to "API Gateway verifies every request's JWT": the Assistant's
+  streaming Function URL doesn't support a Cognito authorizer, so that one
+  Lambda verifies the token itself via `aws-jwt-verify` before doing
+  anything else
 - **AI**: Anthropic Claude API (`claude-haiku-4-5`) for structured JSON
   output (journal extraction, insights, task-priority suggestion, meal-plan
   suggestions) and for the Assistant's tool-calling chat loop; AWS Bedrock

@@ -35,8 +35,8 @@ deployment stage. Where a more scalable pattern was considered and
 deliberately not built, it's called out in [§14](#limitations)
 rather than left unexplained.
 
-- **64** Lambda functions
-- **58** API routes
+- **67** Lambda functions
+- **60** API routes (+ 1 Lambda Function URL)
 - **17** DynamoDB tables
 - **20** Frontend routes
 - **5** Scheduled jobs
@@ -62,9 +62,10 @@ flowchart TB
 
     subgraph API["API layer"]
       APIGW["API Gateway (HTTP API)<br/>Cognito JWT authorizer"]
+      FURL["Lambda Function URL<br/>(response streaming)<br/>token verified in-Lambda"]
     end
 
-    subgraph Compute["Compute — 64 Lambda functions"]
+    subgraph Compute["Compute — 67 Lambda functions"]
       direction TB
       CRUD["CRUD handlers<br/>(tasks, journal, habits, meds,<br/>logs, cycle, budget, routines,<br/>wishes, goals, profile)"]
       AICALLS["AI-calling handlers<br/>(journal extraction, insights,<br/>task priority, journal search)"]
@@ -89,9 +90,10 @@ flowchart TB
 
     PWA -- static assets --> CF --> S3F
     PWA -- HTTPS + JWT --> APIGW
+    PWA -- HTTPS + JWT, streamed reply --> FURL
     APIGW --> CRUD
     APIGW --> AICALLS
-    APIGW --> ASSIST
+    FURL --> ASSIST
     CRUD --> DDB
     AICALLS --> DDB
     AICALLS --> CLAUDE
@@ -103,6 +105,7 @@ flowchart TB
     ASSIST -. calls back into .-> APIGW
     PWA -. sign up / sign in .-> COGNITO
     APIGW -. verifies JWT .-> COGNITO
+    FURL -. verifies JWT itself .-> COGNITO
     EB --> SCHED
     SCHED --> DDB
     SCHED --> SSM
@@ -118,13 +121,17 @@ under 300ms), the **AI path** (journal save, insights
 generation, task priority — each makes one Claude API call, plus a
 best-effort Bedrock embedding call on journal saves, so these
 Lambdas run with longer timeouts, see [§4](#backend)), and the
-**Assistant path** (`chatAssistant` — a tool-calling loop that itself
-calls back into the same API Gateway routes the CRUD path serves, using
-the caller's own JWT, rather than duplicating any business logic).
+**Assistant path** (`chatAssistant` — reached through its own Lambda
+Function URL rather than API Gateway, the only way to stream a response
+back token-by-token; it then runs a tool-calling loop that calls back
+into the same API Gateway routes the CRUD path serves, using the
+caller's own JWT, rather than duplicating any business logic — listing,
+reopening, and deleting past conversations are plain CRUD, so those stay
+on the regular API Gateway route like everything else).
 
 ## Frontend
 
-`react 19.2` · `typescript 6.0` · `tailwindcss 4.3` · `vite 8.1` · `react-router-dom 7.18` · `vite-plugin-pwa 1.3` · `aws-amplify 6.18`
+`react 19.2` · `typescript 6.0` · `tailwindcss 4.3` · `vite 8.1` · `react-router-dom 7.18` · `vite-plugin-pwa 1.3` · `aws-amplify 6.18` · `react-markdown 10` (Assistant replies only)
 
 ### Routing & code splitting
 
@@ -358,27 +365,52 @@ even if the model's read of the text is wrong.
 
 ### 4. Assistant — tool-calling chat
 
-A dedicated `chatAssistant` Lambda behind `POST /assistant/chat`, fronting a
-chat/voice page that's deliberately separate from Journal. Same
-thin-adapter pattern the Alexa skill uses (see [§8](#notifications) for the
-Alexa handler): every tool that logs or reads app data calls the *existing*
-HTTP API routes with the same bearer JWT the request arrived with, rather
-than touching DynamoDB directly — so "how a task gets created" stays in
-exactly one code path regardless of whether it was typed, spoken to Alexa,
-or spoken to the Assistant. `remember_fact` (below) is the one exception,
-since there's no existing route for user memory to forward to.
+A dedicated `chatAssistant` Lambda, fronting a chat/voice page that's
+deliberately separate from Journal. Same thin-adapter pattern the Alexa
+skill uses (see [§8](#notifications) for the Alexa handler): every tool
+that logs or reads app data calls the *existing* HTTP API routes with the
+same bearer JWT the request arrived with, rather than touching DynamoDB
+directly — so "how a task gets created" stays in exactly one code path
+regardless of whether it was typed, spoken to Alexa, or spoken to the
+Assistant. `remember_fact` (below) is the one exception, since there's no
+existing route for user memory to forward to.
+
+Unlike every other Lambda in this app, `chatAssistant` doesn't run behind
+API Gateway — it has its own **Lambda Function URL** with
+`InvokeMode: RESPONSE_STREAM`, because API Gateway's HTTP API proxy
+integration buffers a Lambda's entire response before returning it, which
+defeats token-by-token streaming no matter what the Lambda does
+internally. Function URLs don't support Cognito JWT authorizers (an API
+Gateway-only feature), so this is also the one place in the codebase that
+verifies a token by hand rather than trusting the platform: `getUserId()`
+(used everywhere else) is replaced here by `verifyIdToken()` in
+`backend/src/common/jwtVerify.ts`, a thin wrapper around AWS's own
+`aws-jwt-verify` library, checked *before* the response stream commits to
+any HTTP status — an invalid or missing token gets a real `401`, not a
+chunk inside an already-`200`'d stream. `client.messages.stream(...)`
+replaces the plain `.create()` call used elsewhere; each text delta is
+forwarded to the client immediately as an NDJSON line the moment it
+arrives, while `stream.finalMessage()` still yields the complete
+structured message for tool-use detection — the agentic loop itself is
+otherwise unchanged.
 
 A manual agentic loop, not the SDK's beta Tool Runner — this Lambda already
 had a working `callApi()` HTTP-forwarding pattern from the Alexa handler,
 and a hand-rolled `while` loop over `stop_reason === "tool_use"` needed no
-beta dependency to reuse it. Ten tools cover the day-to-day surface (habits,
-logs, routine/medication ticks, tasks, schedule, journal); two more,
-`search_journal` and `remember_fact`, back RAG and memory below; a final
-`get_progress_summary` tool backs goals-anchored coaching. Conversation
-turns persist to `AssistantConversationsTable` keyed by
+beta dependency to reuse it. 15 tools cover the day-to-day surface
+(habits, logs, routine/medication ticks, tasks, schedule, journal, meal
+plan); `search_journal` and `remember_fact` back RAG and memory below;
+`get_progress_summary` backs goals-anchored coaching. Conversation turns
+persist to `AssistantConversationsTable` keyed by
 `{conversationId}#{epochMs}`, and the last ~20 exchanges replay on every
 request for continuity — the API is stateless, same as every other Claude
-call in this app.
+call in this app. Three plain-CRUD Lambdas (`listAssistantConversations`,
+`getAssistantConversation`, `deleteAssistantConversation`) sit behind the
+regular API Gateway route, not the Function URL, since listing/reopening/
+deleting a past conversation doesn't need streaming — grouped by
+`conversationId` prefix in application code, since different
+conversations' UUIDs don't naturally sort by recency the way one
+conversation's own turns do.
 
 Two things load into the system prompt on *every* turn, not just when
 asked: every row in `UserMemoryTable` (see Memory below), and a compact,
@@ -472,7 +504,8 @@ correctness bug worth closing regardless of scale.
 
 ## API surface
 
-58 routes on a single HTTP API, grouped by resource below. Every route
+60 routes on a single HTTP API, grouped by resource below (plus the Assistant's own
+Lambda Function URL, not part of this API — see §9). Every route
 (except the auth endpoints Cognito itself fronts) requires a valid JWT.
 
 | Resource | Routes |
@@ -480,7 +513,7 @@ correctness bug worth closing regardless of scale.
 | Identity | GET /whoami · GET/PATCH /profile · DELETE /account |
 | Tasks | GET/POST /tasks · PATCH /tasks/{id} · GET /schedule/{date} |
 | Journal | GET/POST /journal · PATCH /journal/{date} · POST /journal/search |
-| Assistant | POST /assistant/chat |
+| Assistant | GET/DELETE /assistant/conversations(/{id}) — chat itself is `POST` on its own Lambda Function URL, not this API, see §9 |
 | Memory | GET /memory · DELETE /memory/{id} |
 | Meal Plan | GET /meal-plan · PATCH/DELETE /meal-plan/{date}/{mealType} · POST /meal-plan/suggest |
 | Habits | GET /habits · GET /habits/{date} · PATCH /habits/{date}/{type} |
@@ -528,7 +561,11 @@ fixes below — framed here as the current state, not a roadmap.
 - **Encryption in transit** — CloudFront and API Gateway
   both terminate HTTPS only.
 - **Identity** — Cognito-issued, signature-verified JWTs;
-  see [§6](#auth) for the ownership guarantee this enables.
+  see [§6](#auth) for the ownership guarantee this enables. One exception:
+  the Assistant's streaming Lambda Function URL can't use API Gateway's
+  Cognito authorizer, so it verifies the token itself via `aws-jwt-verify`
+  (§9) — checked, and rejected with a real 401, before the response
+  stream commits to any status code.
 - **Recovery** — point-in-time recovery enabled on every
   table, so an accidental delete or bad write is recoverable to any second
   in the last 35 days.
