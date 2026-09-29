@@ -2658,15 +2658,22 @@ Resources:
       FunctionName: !Sub "lifeos-chat-assistant-${Environment}"
       CodeUri: src/functions/chatAssistant/
       Handler: index.handler
-      Timeout: 30
-      # No HTTP_API_URL env var here (unlike alexaSkillHandler) — this function is itself an
-      # HttpApi event source, so a !Sub referencing ${HttpApi} would create a circular
-      # dependency. It derives its own base URL at runtime from the incoming request context.
+      Timeout: 60
+      # Runs behind a Lambda Function URL, not the shared HttpApi — response streaming (for
+      # token-by-token replies) requires bypassing API Gateway's buffered proxy integration.
+      # Function URLs don't support Cognito JWT authorizers, so this function verifies the
+      # token itself (see common/jwtVerify.ts) instead of trusting API Gateway's verification —
+      # USER_POOL_ID/WEB_CLIENT_ID/ALEXA_CLIENT_ID configure that check. Since this is no longer
+      # an HttpApi event source, referencing HttpApi's own URL here is no longer circular.
       Environment:
         Variables:
           ASSISTANT_CONVERSATIONS_TABLE_NAME: !Ref AssistantConversationsTable
           USER_MEMORY_TABLE_NAME: !Ref UserMemoryTable
           ANTHROPIC_API_KEY_PARAM: !Sub "/lifeos/${Environment}/anthropic-api-key"
+          HTTP_API_URL: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"
+          USER_POOL_ID: !Ref LifeOsUserPool
+          WEB_CLIENT_ID: !Ref LifeOsUserPoolClient
+          ALEXA_CLIENT_ID: !Ref AlexaUserPoolClient
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref AssistantConversationsTable
@@ -2674,15 +2681,13 @@ Resources:
             TableName: !Ref UserMemoryTable
         - SSMParameterReadPolicy:
             ParameterName: !Sub "lifeos/${Environment}/anthropic-api-key"
-      Events:
-        ChatAssistant:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref HttpApi
-            Path: /assistant/chat
-            Method: POST
-            Auth:
-              Authorizer: CognitoAuthorizer
+      FunctionUrlConfig:
+        AuthType: NONE
+        InvokeMode: RESPONSE_STREAM
+        Cors:
+          AllowOrigins: !Ref AllowedOrigins
+          AllowHeaders: ["Authorization", "Content-Type"]
+          AllowMethods: ["POST"]
 
   ########################
   # Lambda — Assistant memory (view/delete what it's remembered)
@@ -2745,6 +2750,96 @@ Resources:
             Auth:
               Authorizer: CognitoAuthorizer
 
+  ########################
+  # Lambda — Assistant conversation history (list/reopen/delete past chats)
+  ########################
+  ListAssistantConversationsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-list-assistant-conversations-${Environment}"
+      CodeUri: src/functions/listAssistantConversations/
+      Handler: index.handler
+      Environment:
+        Variables:
+          ASSISTANT_CONVERSATIONS_TABLE_NAME: !Ref AssistantConversationsTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref AssistantConversationsTable
+      Events:
+        ListAssistantConversations:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /assistant/conversations
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  GetAssistantConversationFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-get-assistant-conversation-${Environment}"
+      CodeUri: src/functions/getAssistantConversation/
+      Handler: index.handler
+      Environment:
+        Variables:
+          ASSISTANT_CONVERSATIONS_TABLE_NAME: !Ref AssistantConversationsTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref AssistantConversationsTable
+      Events:
+        GetAssistantConversation:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /assistant/conversations/{id}
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  DeleteAssistantConversationFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-delete-assistant-conversation-${Environment}"
+      CodeUri: src/functions/deleteAssistantConversation/
+      Handler: index.handler
+      Environment:
+        Variables:
+          ASSISTANT_CONVERSATIONS_TABLE_NAME: !Ref AssistantConversationsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AssistantConversationsTable
+      Events:
+        DeleteAssistantConversation:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /assistant/conversations/{id}
+            Method: DELETE
+            Auth:
+              Authorizer: CognitoAuthorizer
+
 Outputs:
   UserPoolId:
     Value: !Ref LifeOsUserPool
@@ -2786,6 +2881,9 @@ Outputs:
     Value: !Ref AssistantConversationsTable
   UserMemoryTableName:
     Value: !Ref UserMemoryTable
+  ChatAssistantFunctionUrl:
+    Value: !GetAtt ChatAssistantFunctionUrl.FunctionUrl
+    Description: Streaming endpoint for the Assistant chat — used by the frontend instead of the shared HttpApi.
   FrontendBucketName:
     Value: !Ref FrontendBucket
   FrontendUrl:

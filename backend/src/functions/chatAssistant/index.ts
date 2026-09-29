@@ -1,22 +1,51 @@
-import type { APIGatewayProxyHandlerV2WithJWTAuthorizer } from "aws-lambda";
+import type { APIGatewayProxyEventV2 } from "aws-lambda";
 import Anthropic from "@anthropic-ai/sdk";
 import { PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { SSMClient, GetParameterCommand } from "@aws-sdk/client-ssm";
 import { randomUUID } from "node:crypto";
 import { ddb } from "../../common/dynamo";
-import { getUserId } from "../../common/auth";
-import { jsonResponse, errorResponse } from "../../common/http";
-import type { Budget, Expense, Goal, HabitLog, HabitType, MemoryCategory, UserMemory, Wish } from "../../common/types";
+import { verifyIdToken } from "../../common/jwtVerify";
+import type {
+  AssistantConversationTurn,
+  Budget,
+  Expense,
+  Goal,
+  HabitLog,
+  HabitType,
+  MemoryCategory,
+  UserMemory,
+  Wish,
+} from "../../common/types";
 
-// Thin-adapter pattern, same as alexaSkillHandler: this Lambda never writes to any table an
-// existing API route already owns — it forwards the same bearer token the request arrived
-// with to the existing HTTP API, so "how a task gets created" stays in exactly one place.
-// The base URL is derived from the incoming request's own context rather than an env var
-// pointing back at the HttpApi resource, which would be a circular template dependency
-// since this function is itself an HttpApi event source.
-function apiUrlFor(event: Parameters<APIGatewayProxyHandlerV2WithJWTAuthorizer>[0]): string {
-  return `https://${event.requestContext.domainName}/${event.requestContext.stage}`;
+// This function runs behind a Lambda Function URL, not the shared HttpApi — response
+// streaming (needed for token-by-token replies) requires bypassing API Gateway's buffered
+// proxy integration entirely. Since it's no longer an HttpApi event source, referencing the
+// HttpApi's own URL here is no longer circular the way it would be for an HttpApi route.
+const API_URL = process.env.HTTP_API_URL as string;
+
+// The `awslambda` global is injected by Lambda's Node.js runtime for response-streaming
+// functions — no import exists for it. Ambient-declared here since @types/aws-lambda doesn't
+// cover it. See https://docs.aws.amazon.com/lambda/latest/dg/config-rs-write-functions.html
+declare const awslambda: {
+  streamifyResponse(
+    handler: (
+      event: APIGatewayProxyEventV2,
+      responseStream: NodeJS.WritableStream,
+      context: unknown,
+    ) => Promise<void>,
+  ): unknown;
+  HttpResponseStream: {
+    from(
+      responseStream: NodeJS.WritableStream,
+      metadata: { statusCode: number; headers?: Record<string, string> },
+    ): NodeJS.WritableStream;
+  };
+};
+
+function writeEvent(stream: NodeJS.WritableStream, event: Record<string, unknown>): void {
+  stream.write(`${JSON.stringify(event)}\n`);
 }
+
 const MAX_TOOL_ITERATIONS = 5;
 const HISTORY_TURN_LIMIT = 40; // ~20 exchanges of conversational context
 
@@ -587,131 +616,162 @@ function memoryText(memories: UserMemory[]): string {
   return `What you already know about this user, from past conversations:\n${memoryLines}`;
 }
 
-interface ConversationTurnItem {
-  userId: string;
-  conversationTurn: string;
-  conversationId: string;
-  role: "user" | "assistant";
-  content: string;
-  createdAt: string;
-}
+export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxyEventV2, rawStream) => {
+  const authHeader = event.headers?.authorization ?? event.headers?.Authorization;
 
-export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) => {
-  const userId = getUserId(event);
-  const authHeader = event.headers.authorization ?? event.headers.Authorization;
-  if (!authHeader) return errorResponse(401, "Missing Authorization header");
-  const apiUrl = apiUrlFor(event);
-
-  let body: Record<string, unknown>;
+  // Verified before committing to any HTTP status — once HttpResponseStream.from() is called
+  // below, the status code is locked in, so an invalid/missing token must be rejected with a
+  // real 401 here rather than as a chunk inside an already-200'd stream.
+  let userId: string;
   try {
-    body = JSON.parse(event.body ?? "{}");
+    userId = await verifyIdToken(authHeader);
   } catch {
-    return errorResponse(400, "Invalid JSON body");
-  }
-
-  const userMessage = typeof body.message === "string" ? body.message.trim() : "";
-  if (!userMessage) return errorResponse(400, "message is required");
-  const conversationId =
-    typeof body.conversationId === "string" && body.conversationId ? body.conversationId : randomUUID();
-
-  const [historyResult, memoryResult, goalsContext] = await Promise.all([
-    ddb.send(
-      new QueryCommand({
-        TableName: process.env.ASSISTANT_CONVERSATIONS_TABLE_NAME,
-        KeyConditionExpression: "userId = :userId AND begins_with(conversationTurn, :prefix)",
-        ExpressionAttributeValues: { ":userId": userId, ":prefix": `${conversationId}#` },
-      }),
-    ),
-    // Small table, no pagination concern at personal scale — every remembered fact is loaded
-    // into every conversation's system prompt.
-    ddb.send(
-      new QueryCommand({
-        TableName: process.env.USER_MEMORY_TABLE_NAME,
-        KeyConditionExpression: "userId = :userId",
-        ExpressionAttributeValues: { ":userId": userId },
-      }),
-    ),
-    fetchGoalsContext(apiUrl, authHeader),
-  ]);
-  const historyItems = ((historyResult.Items ?? []) as ConversationTurnItem[]).slice(-HISTORY_TURN_LIMIT);
-  const memories = (memoryResult.Items ?? []) as UserMemory[];
-
-  const messages: Anthropic.MessageParam[] = [
-    ...historyItems.map((item) => ({ role: item.role, content: item.content }) as Anthropic.MessageParam),
-    { role: "user", content: userMessage },
-  ];
-
-  const client = await getClient();
-  const systemPrompt = buildSystemPrompt(memories, goalsContext);
-  let finalText = "";
-
-  for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
-    const response = await client.messages.create({
-      model: "claude-haiku-4-5",
-      max_tokens: 1024,
-      system: systemPrompt,
-      tools: TOOLS,
-      messages,
+    const unauthedStream = awslambda.HttpResponseStream.from(rawStream, {
+      statusCode: 401,
+      headers: { "Content-Type": "application/json" },
     });
+    unauthedStream.write(JSON.stringify({ error: "Unauthorized" }));
+    unauthedStream.end();
+    return;
+  }
 
-    const textBlocks = response.content.filter((b) => b.type === "text");
-    if (textBlocks.length > 0) {
-      finalText = textBlocks.map((b) => b.text).join("\n");
+  const responseStream = awslambda.HttpResponseStream.from(rawStream, {
+    statusCode: 200,
+    headers: { "Content-Type": "application/x-ndjson" },
+  });
+
+  try {
+    let body: Record<string, unknown>;
+    try {
+      body = JSON.parse(event.body ?? "{}");
+    } catch {
+      writeEvent(responseStream, { type: "error", message: "Invalid JSON body" });
+      responseStream.end();
+      return;
     }
 
-    if (response.stop_reason !== "tool_use") break;
+    const userMessage = typeof body.message === "string" ? body.message.trim() : "";
+    if (!userMessage) {
+      writeEvent(responseStream, { type: "error", message: "message is required" });
+      responseStream.end();
+      return;
+    }
+    const conversationId =
+      typeof body.conversationId === "string" && body.conversationId ? body.conversationId : randomUUID();
 
-    messages.push({ role: "assistant", content: response.content });
+    const [historyResult, memoryResult, goalsContext] = await Promise.all([
+      ddb.send(
+        new QueryCommand({
+          TableName: process.env.ASSISTANT_CONVERSATIONS_TABLE_NAME,
+          KeyConditionExpression: "userId = :userId AND begins_with(conversationTurn, :prefix)",
+          ExpressionAttributeValues: { ":userId": userId, ":prefix": `${conversationId}#` },
+        }),
+      ),
+      // Small table, no pagination concern at personal scale — every remembered fact is loaded
+      // into every conversation's system prompt.
+      ddb.send(
+        new QueryCommand({
+          TableName: process.env.USER_MEMORY_TABLE_NAME,
+          KeyConditionExpression: "userId = :userId",
+          ExpressionAttributeValues: { ":userId": userId },
+        }),
+      ),
+      fetchGoalsContext(API_URL, authHeader as string),
+    ]);
+    const historyItems = ((historyResult.Items ?? []) as AssistantConversationTurn[]).slice(-HISTORY_TURN_LIMIT);
+    const memories = (memoryResult.Items ?? []) as UserMemory[];
 
-    const toolUseBlocks = response.content.filter(
-      (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
-    );
-    const toolResults: Anthropic.ToolResultBlockParam[] = [];
-    for (const tool of toolUseBlocks) {
-      const { content, isError } = await executeTool(
-        apiUrl,
-        userId,
-        tool.name,
-        tool.input as Record<string, unknown>,
-        authHeader,
+    const messages: Anthropic.MessageParam[] = [
+      ...historyItems.map((item) => ({ role: item.role, content: item.content }) as Anthropic.MessageParam),
+      { role: "user", content: userMessage },
+    ];
+
+    const client = await getClient();
+    const systemPrompt = buildSystemPrompt(memories, goalsContext);
+    let finalText = "";
+
+    for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
+      const stream = client.messages.stream({
+        model: "claude-haiku-4-5",
+        max_tokens: 1024,
+        system: systemPrompt,
+        tools: TOOLS,
+        messages,
+      });
+      stream.on("text", (delta) => {
+        writeEvent(responseStream, { type: "text", delta });
+      });
+      const response = await stream.finalMessage();
+
+      const textBlocks = response.content.filter((b) => b.type === "text");
+      if (textBlocks.length > 0) {
+        finalText = textBlocks.map((b) => b.text).join("\n");
+      }
+
+      if (response.stop_reason !== "tool_use") break;
+
+      messages.push({ role: "assistant", content: response.content });
+
+      const toolUseBlocks = response.content.filter(
+        (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
       );
-      toolResults.push({ type: "tool_result", tool_use_id: tool.id, content, is_error: isError });
+      const toolResults: Anthropic.ToolResultBlockParam[] = [];
+      for (const tool of toolUseBlocks) {
+        writeEvent(responseStream, { type: "tool_use", name: tool.name });
+        const { content, isError } = await executeTool(
+          API_URL,
+          userId,
+          tool.name,
+          tool.input as Record<string, unknown>,
+          authHeader as string,
+        );
+        toolResults.push({ type: "tool_result", tool_use_id: tool.id, content, is_error: isError });
+      }
+      messages.push({ role: "user", content: toolResults });
     }
-    messages.push({ role: "user", content: toolResults });
+
+    if (!finalText) {
+      finalText = "Sorry, I got a bit stuck on that one — could you try rephrasing?";
+    }
+
+    const now = Date.now();
+    const nowIso = new Date(now).toISOString();
+    await ddb.send(
+      new PutCommand({
+        TableName: process.env.ASSISTANT_CONVERSATIONS_TABLE_NAME,
+        Item: {
+          userId,
+          conversationTurn: `${conversationId}#${String(now).padStart(15, "0")}`,
+          conversationId,
+          role: "user",
+          content: userMessage,
+          createdAt: nowIso,
+        } satisfies AssistantConversationTurn,
+      }),
+    );
+    await ddb.send(
+      new PutCommand({
+        TableName: process.env.ASSISTANT_CONVERSATIONS_TABLE_NAME,
+        Item: {
+          userId,
+          conversationTurn: `${conversationId}#${String(now + 1).padStart(15, "0")}`,
+          conversationId,
+          role: "assistant",
+          content: finalText,
+          createdAt: new Date(now + 1).toISOString(),
+        } satisfies AssistantConversationTurn,
+      }),
+    );
+
+    writeEvent(responseStream, { type: "done", conversationId });
+    responseStream.end();
+  } catch (err) {
+    console.error("chatAssistant stream error:", err);
+    try {
+      writeEvent(responseStream, { type: "error", message: "Something went wrong. Please try again." });
+      responseStream.end();
+    } catch {
+      // Stream may already be closed — nothing more we can do.
+    }
   }
-
-  if (!finalText) {
-    finalText = "Sorry, I got a bit stuck on that one — could you try rephrasing?";
-  }
-
-  const now = Date.now();
-  const nowIso = new Date(now).toISOString();
-  await ddb.send(
-    new PutCommand({
-      TableName: process.env.ASSISTANT_CONVERSATIONS_TABLE_NAME,
-      Item: {
-        userId,
-        conversationTurn: `${conversationId}#${String(now).padStart(15, "0")}`,
-        conversationId,
-        role: "user",
-        content: userMessage,
-        createdAt: nowIso,
-      } satisfies ConversationTurnItem,
-    }),
-  );
-  await ddb.send(
-    new PutCommand({
-      TableName: process.env.ASSISTANT_CONVERSATIONS_TABLE_NAME,
-      Item: {
-        userId,
-        conversationTurn: `${conversationId}#${String(now + 1).padStart(15, "0")}`,
-        conversationId,
-        role: "assistant",
-        content: finalText,
-        createdAt: new Date(now + 1).toISOString(),
-      } satisfies ConversationTurnItem,
-    }),
-  );
-
-  return jsonResponse(200, { conversationId, reply: finalText });
-};
+});

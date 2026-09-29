@@ -268,6 +268,15 @@ export interface UserMemory {
   createdAt: string;
 }
 
+export interface AssistantConversationTurn {
+  userId: string;
+  conversationTurn: string; // "{conversationId}#{epochMs, zero-padded}"
+  conversationId: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+}
+
 export type MealType = "breakfast" | "lunch" | "dinner" | "snack";
 
 export interface MealPlanSlot {
