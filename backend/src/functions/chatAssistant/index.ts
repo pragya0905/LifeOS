@@ -416,6 +416,82 @@ const TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "create_routine_template",
+    description:
+      "Create a new multi-step routine checklist (e.g. a skincare or morning routine) when the user describes one. Each step is a short text description, not a tool with its own fields.",
+    input_schema: {
+      type: "object",
+      properties: {
+        category: { type: "string", enum: ["skinCare", "hairCare", "dailyRoutine", "custom"] },
+        name: { type: "string" },
+        steps: { type: "array", items: { type: "string" }, description: "One entry per step, in order." },
+      },
+      required: ["category", "name", "steps"],
+    },
+  },
+  {
+    name: "create_medication",
+    description:
+      "Add a new medication the user says they're taking. durationDays is required — if the user gives an end date or doesn't say how long, work out a reasonable number of days (e.g. 'ongoing' or no end mentioned → a large number like 365). A reminder time can't be set this way — if the user wants a daily reminder, tell them to set the time on the Medications page.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        dosage: { type: "string", description: "e.g. '500mg'" },
+        notes: { type: "string", description: "e.g. 'take with food'" },
+        startDate: { type: "string", description: "YYYY-MM-DD. Defaults to today if omitted." },
+        durationDays: { type: "integer", minimum: 1 },
+      },
+      required: ["name", "durationDays"],
+    },
+  },
+  {
+    name: "create_wish",
+    description:
+      "Create a new goal/wish when the user describes one. Required fields depend on progressMode: 'habit_linked' needs linkedHabitType + habitLinkTargetValue (e.g. 'exercise 30 times'); 'quantity' needs quantityTarget (+ optional quantityUnit); 'time_based' needs targetDate; 'percentage' and 'milestone' need neither (percentage starts at 0, milestones are added later). Pick the mode that best fits how the user described progress — don't ask them to choose a mode by name.",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        type: {
+          type: "string",
+          enum: ["learning", "travel", "savings", "health", "shopping", "creative", "personal_growth", "achievement"],
+        },
+        progressMode: { type: "string", enum: ["percentage", "milestone", "habit_linked", "time_based", "quantity"] },
+        targetDate: { type: "string", description: "YYYY-MM-DD — required for time_based, optional otherwise as a deadline." },
+        quantityTarget: { type: "number", description: "Required for quantity mode." },
+        quantityUnit: { type: "string", description: "e.g. 'books', 'km' — optional, quantity mode only." },
+        linkedHabitType: { type: "string", enum: ["water", "exercise", "steps"], description: "Required for habit_linked mode." },
+        habitLinkTargetValue: { type: "number", description: "Required for habit_linked mode — the cumulative target." },
+      },
+      required: ["title", "type", "progressMode"],
+    },
+  },
+  {
+    name: "update_profile",
+    description: "Update the user's height, sex, or monthly budget when they mention one in conversation.",
+    input_schema: {
+      type: "object",
+      properties: {
+        heightCm: { type: "number" },
+        sex: { type: "string", enum: ["male", "female", "unspecified"] },
+        monthlyBudget: { type: "number" },
+      },
+    },
+  },
+  {
+    name: "set_goal",
+    description: "Set the user's daily target for a habit, or their target weight, when they mention one.",
+    input_schema: {
+      type: "object",
+      properties: {
+        metric: { type: "string", enum: ["water", "exercise", "steps", "weight"] },
+        targetValue: { type: "number", description: "ml/day for water, minutes/day for exercise, steps/day for steps, kg for weight." },
+      },
+      required: ["metric", "targetValue"],
+    },
+  },
+  {
     name: "get_progress_summary",
     description:
       "Get a deterministically computed snapshot of how the user is actually tracking: which active Wishes are falling behind schedule, current streaks and missed-day counts for each habit, and a projected month-end total for each budget category based on this month's spending pace so far. Always call this before making any claim about whether the user is on track, off track, or ahead/behind — never estimate or guess these numbers yourself.",
@@ -541,6 +617,51 @@ async function executeTool(
         );
         break;
       }
+      case "create_routine_template": {
+        result = await callApi(apiUrl, authHeader, "/routines", "POST", {
+          category: input.category,
+          name: input.name,
+          steps: input.steps,
+        });
+        break;
+      }
+      case "create_medication": {
+        result = await callApi(apiUrl, authHeader, "/medications", "POST", {
+          name: input.name,
+          dosage: input.dosage,
+          notes: input.notes,
+          startDate: input.startDate,
+          durationDays: input.durationDays,
+        });
+        break;
+      }
+      case "create_wish": {
+        result = await callApi(apiUrl, authHeader, "/wishes", "POST", {
+          title: input.title,
+          type: input.type,
+          progressMode: input.progressMode,
+          targetDate: input.targetDate,
+          quantityTarget: input.quantityTarget,
+          quantityUnit: input.quantityUnit,
+          linkedHabitType: input.linkedHabitType,
+          habitLinkTargetValue: input.habitLinkTargetValue,
+        });
+        break;
+      }
+      case "update_profile": {
+        result = await callApi(apiUrl, authHeader, "/profile", "PATCH", {
+          heightCm: input.heightCm,
+          sex: input.sex,
+          monthlyBudget: input.monthlyBudget,
+        });
+        break;
+      }
+      case "set_goal": {
+        result = await callApi(apiUrl, authHeader, `/goals/${input.metric}`, "PATCH", {
+          targetValue: input.targetValue,
+        });
+        break;
+      }
       case "get_progress_summary": {
         const summary = await computeProgressSummary(apiUrl, authHeader);
         return { content: JSON.stringify(summary), isError: false };
@@ -588,24 +709,40 @@ async function getClient(): Promise<Anthropic> {
   return cachedClient;
 }
 
-function buildSystemPrompt(memories: UserMemory[], goalsContext: string): string {
+const ONBOARDING_SYSTEM_PROMPT_ADDITION =
+  "\n\nThis is a first conversation, right after the user finished a quick setup form (height, " +
+  "sex, daily targets — already saved, don't ask for those again). Welcome them briefly, then " +
+  "ask a handful of short, open, one-at-a-time questions to learn more — routines they follow, " +
+  "medications they take, goals or wishes they have in mind, anything that'd help you help them " +
+  "later. This is a first conversation, not an interrogation — a few exchanges, not a long form. " +
+  "The actual point: whenever they describe something structured — a routine, a medication, a " +
+  "goal, a wish, a profile detail — call the matching creation tool (create_routine_template, " +
+  "create_medication, create_wish, set_goal, update_profile) immediately so it becomes a real " +
+  "part of the app, not just a remembered fact. Only use remember_fact for genuinely " +
+  "qualitative context that doesn't fit one of those tools — a motivation, a struggle, a " +
+  "preference.";
+
+function buildSystemPrompt(memories: UserMemory[], goalsContext: string, isOnboarding: boolean): string {
   const base =
     "You are the LifeOs assistant — a supportive, conversational personal life-management " +
-    "companion. You can read and log the user's tasks, habits, logs (food/sleep/weight/mood/" +
-    "calls/cycle), routine steps, medications, and journal via the tools available to you. " +
+    "companion. You can read, log, and create the user's tasks, habits, logs (food/sleep/weight/" +
+    "mood/calls/cycle), routines, medications, wishes, goals, profile details, and journal via " +
+    "the tools available to you. " +
     `Today's date is ${today()}. When the user reports something that maps to a tool (a habit ` +
-    "amount, a food/sleep/mood/etc. entry, a task, a routine or medication tick), call the " +
-    "matching tool rather than just acknowledging it in text — logging things is the point of " +
-    "this chat. Keep replies short and natural, like a real conversation, since they may be " +
-    "spoken aloud. Never invent numbers or facts you don't have — call a get_* tool to check " +
-    "before answering a question about the user's own data. When the user shares something " +
-    "durable worth remembering for future conversations, call remember_fact.\n\n" +
+    "amount, a food/sleep/mood/etc. entry, a task, a routine or medication tick, a new routine/" +
+    "medication/wish/goal/profile detail), call the matching tool rather than just acknowledging " +
+    "it in text — logging and creating things is the point of this chat. Keep replies short and " +
+    "natural, like a real conversation, since they may be spoken aloud. Never invent numbers or " +
+    "facts you don't have — call a get_* tool to check before answering a question about the " +
+    "user's own data. When the user shares something durable worth remembering for future " +
+    "conversations that doesn't fit one of the other tools, call remember_fact.\n\n" +
     "Coaching style — honest accountability, not pure cheerleading: when discussing the " +
     "user's wishes, habits, or budget, call get_progress_summary first and ground everything " +
     "in its numbers. If it shows a wish falling behind schedule, a broken habit streak, or " +
     "spending on pace to exceed a budget, say so plainly and name the specific gap and its " +
     "projected outcome BEFORE offering encouragement — don't soften or bury it. Still be warm " +
-    "and supportive, but the honest number comes first, every time.";
+    "and supportive, but the honest number comes first, every time." +
+    (isOnboarding ? ONBOARDING_SYSTEM_PROMPT_ADDITION : "");
 
   const sections = [goalsContext, memories.length > 0 ? memoryText(memories) : ""].filter(Boolean);
   return sections.length === 0 ? base : `${base}\n\n${sections.join("\n\n")}`;
@@ -651,6 +788,7 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
     }
 
     const userMessage = typeof body.message === "string" ? body.message.trim() : "";
+    const isOnboarding = body.mode === "onboarding";
     if (!userMessage) {
       writeEvent(responseStream, { type: "error", message: "message is required" });
       responseStream.end();
@@ -687,7 +825,7 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
     ];
 
     const client = await getClient();
-    const systemPrompt = buildSystemPrompt(memories, goalsContext);
+    const systemPrompt = buildSystemPrompt(memories, goalsContext, isOnboarding);
     let finalText = "";
 
     for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
