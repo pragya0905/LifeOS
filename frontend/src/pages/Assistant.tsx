@@ -14,6 +14,7 @@ import {
   pageTitle,
   pillButton,
   pillButtonInactive,
+  primaryButton,
   secondaryButton,
 } from "../components/ui";
 
@@ -82,10 +83,21 @@ function relativeTime(iso: string): string {
   return `${Math.round(hours / 24)}d ago`;
 }
 
-export default function Assistant() {
+const ONBOARDING_GREETING =
+  "Nice, you're set up! Tell me a bit more about yourself — any routines, medications, or goals " +
+  "you'd like me to know about? I'll turn whatever you tell me into the real thing in the app.";
+
+interface AssistantProps {
+  onboarding?: boolean;
+  onFinish?: () => void;
+}
+
+export default function Assistant({ onboarding = false, onFinish }: AssistantProps) {
   const { request } = useApi();
   const { sendMessage: streamMessage } = useAssistantStream();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(
+    onboarding ? [{ role: "assistant", content: ONBOARDING_GREETING }] : [],
+  );
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +106,9 @@ export default function Assistant() {
   const [voiceModeOpen, setVoiceModeOpen] = useState(false);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const conversationIdRef = useRef<string | undefined>(loadConversationId());
+  // Onboarding always starts a brand-new conversation rather than picking up whatever
+  // conversationId happens to be in localStorage from a prior session.
+  const conversationIdRef = useRef<string | undefined>(onboarding ? undefined : loadConversationId());
   const listEndRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -211,17 +225,22 @@ export default function Assistant() {
 
     let finalReply = "";
     try {
-      await streamMessage(message, conversationIdRef.current, (event: AssistantStreamEvent) => {
-        if (event.type === "text") {
-          finalReply += event.delta;
-          appendToLastAssistantMessage(event.delta);
-        } else if (event.type === "done") {
-          conversationIdRef.current = event.conversationId;
-          persistConversationId(event.conversationId);
-        } else if (event.type === "error") {
-          setError(event.message);
-        }
-      });
+      await streamMessage(
+        message,
+        conversationIdRef.current,
+        (event: AssistantStreamEvent) => {
+          if (event.type === "text") {
+            finalReply += event.delta;
+            appendToLastAssistantMessage(event.delta);
+          } else if (event.type === "done") {
+            conversationIdRef.current = event.conversationId;
+            persistConversationId(event.conversationId);
+          } else if (event.type === "error") {
+            setError(event.message);
+          }
+        },
+        onboarding ? "onboarding" : undefined,
+      );
       if (finalReply) speak(finalReply);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to reach the assistant");
@@ -283,17 +302,25 @@ export default function Assistant() {
   return (
     <div className={page}>
       <div className="mb-6 flex items-center justify-between">
-        <h1 className={`${pageTitle} mb-0`}>Assistant</h1>
+        <h1 className={`${pageTitle} mb-0`}>{onboarding ? "Let's get to know you" : "Assistant"}</h1>
         <div className="flex gap-2">
-          <button type="button" onClick={openHistory} className={secondaryButton} aria-label="Conversation history">
-            🗂️
-          </button>
-          <button type="button" onClick={toggleMuted} className={secondaryButton}>
-            {muted ? "🔇" : "🔊"}
-          </button>
-          <button type="button" onClick={startNewConversation} className={secondaryButton}>
-            New
-          </button>
+          {onboarding ? (
+            <button type="button" onClick={onFinish} className={primaryButton}>
+              Finish setup
+            </button>
+          ) : (
+            <>
+              <button type="button" onClick={openHistory} className={secondaryButton} aria-label="Conversation history">
+                🗂️
+              </button>
+              <button type="button" onClick={toggleMuted} className={secondaryButton}>
+                {muted ? "🔇" : "🔊"}
+              </button>
+              <button type="button" onClick={startNewConversation} className={secondaryButton}>
+                New
+              </button>
+            </>
+          )}
         </div>
       </div>
 

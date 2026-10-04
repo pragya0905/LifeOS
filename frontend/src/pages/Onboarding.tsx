@@ -80,7 +80,10 @@ export default function Onboarding() {
       }
 
       await Promise.all(tasks);
-      navigate("/dashboard", { replace: true });
+      // "Get started" (markComplete: false) hands off to the Assistant chat step next, which
+      // marks onboardingCompleted itself once the user taps Finish setup there — "Skip for
+      // now" (markComplete: true) skips that step too and goes straight to the dashboard.
+      navigate(markComplete ? "/dashboard" : "/onboarding/chat", { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save setup");
     } finally {
@@ -90,7 +93,7 @@ export default function Onboarding() {
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    finish(true);
+    finish(false);
   }
 
   return (
@@ -147,7 +150,7 @@ export default function Onboarding() {
 
         <div className="flex items-center gap-3">
           <button type="submit" disabled={saving} className={primaryButton}>
-            {saving ? "Saving..." : "Get started"}
+            {saving ? "Saving..." : "Continue"}
           </button>
           <button
             type="button"

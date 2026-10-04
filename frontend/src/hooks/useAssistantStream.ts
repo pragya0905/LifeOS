@@ -20,12 +20,13 @@ export function useAssistantStream() {
       message: string,
       conversationId: string | undefined,
       onEvent: (event: AssistantStreamEvent) => void,
+      mode?: "onboarding",
     ): Promise<void> => {
       const token = await getIdToken();
       const res = await fetch(STREAM_URL, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ message, conversationId }),
+        body: JSON.stringify({ message, conversationId, mode }),
       });
 
       if (!res.ok) {

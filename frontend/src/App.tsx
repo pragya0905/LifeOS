@@ -10,6 +10,7 @@ import Login from "./pages/Login";
 import { mutedText } from "./components/ui";
 
 const Onboarding = lazy(() => import("./pages/Onboarding"));
+const OnboardingChat = lazy(() => import("./pages/OnboardingChat"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Tasks = lazy(() => import("./pages/Tasks"));
 const Journal = lazy(() => import("./pages/Journal"));
@@ -45,6 +46,14 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <Onboarding />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/onboarding/chat"
+              element={
+                <ProtectedRoute>
+                  <OnboardingChat />
                 </ProtectedRoute>
               }
             />
