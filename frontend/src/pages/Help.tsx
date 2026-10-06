@@ -13,13 +13,15 @@ const SECTIONS: Section[] = [
     body: "",
     intro: "Your daily snapshot — everything worth a glance before you dive into a specific page.",
     bullets: [
-      "💧 Progress rings for water/sleep/exercise/steps, with streaks and a trend vs. yesterday.",
+      "🏆 Achievements shows your full badge collection — 14 badges across tasks, journaling, habit streaks, routines, medications, and wishes, each with the date it was earned. Locked ones stay visible (grayed out) showing what's needed, and a banner celebrates anything newly unlocked, once.",
       "📅 Today's scheduled tasks and the full Today's Habits table, right on the page — use ← Prev day / Next day → above the table to view or fill in the past 8 days, not just today.",
+      "🪞 Today's Routines, 🍽️ Today's Meals, 💊 Today's Medications, and 💸 Today's Expenses each show just what's relevant today — scheduled routines respect the days you set them for, meals fall back to your weekly defaults if nothing's planned for the specific date, and you can tick off a routine step or mark a medication taken right from the card.",
+      "🌸 Today's Cycle shows the estimated phase for today and lets you log a period start/end or a symptom directly, no need to visit the Cycle page.",
       "📋 The Extraction Ledger shows exactly what Claude picked up from your latest journal entry.",
       "✅ A Tasks card previews pending/overdue counts and your top 3 most urgent tasks.",
       "💰 A Budget card shows this month's spending against your monthly budget, or your total spent if you haven't set one yet.",
-      "🌸 A Cycle card shows today's estimated phase — only appears once you've logged enough cycle history to estimate one.",
       "📈 An Insights card links straight into your trend charts and AI summary.",
+      "💬 A floating button in the corner jumps straight into the Assistant from anywhere on the Dashboard.",
     ],
   },
   {
@@ -82,6 +84,7 @@ const SECTIONS: Section[] = [
       "🔔 Set a daily reminder time and you'll get a push notification around that time each day the medication is active — skipped automatically if you've already marked it taken.",
       "✅ Mark each active medication Taken or Missed for today with one tap.",
       "📊 A 14-day adherence percentage shows on every medication in the full list, color-coded so a slipping streak is obvious at a glance.",
+      "💬 The Assistant can add, edit, or remove a medication for you, including changing its reminder time — just describe the change in chat.",
     ],
   },
   {
@@ -104,6 +107,7 @@ const SECTIONS: Section[] = [
       "📝 Free text per slot (breakfast/lunch/dinner/snack), 7 days at a time — tap a slot and type, no fixed recipe format required.",
       "◀️▶️ Prev week / Next week move you through time; clearing a slot's text removes it.",
       "✨ Suggest with AI fills in whatever's still empty for the visible week, varying meals rather than repeating — review the suggestions right in the grid, then Save plan or Discard, nothing is written until you save.",
+      "🔁 Weekly defaults sit above the week grid — set a usual meal for a day of the week once (e.g. \"Mondays I have oatmeal\") and it fills that slot every week unless you change that specific date. The week grid shows an inherited default in italics; editing it only overrides that one date, not the recurring default.",
       "💬 Ask the Assistant to review your week — \"is my meal plan good, what would you change\" — it reads the actual plan and can swap a slot directly if you agree, right from the conversation.",
     ],
   },
@@ -119,6 +123,8 @@ const SECTIONS: Section[] = [
       "🍩 The category breakdown bar shows where this month's spending actually went, at a glance.",
       "📅 Flip between months with Prev/Next to review past spending or catch up on a month you fell behind logging.",
       "🗑️ Delete any expense or remove a category's budget entirely from its card.",
+      "📸 Snap or attach a photo of a receipt or bill in the Assistant chat and it reads the amount, merchant, and date off the image and logs it for you — it'll ask instead of guessing if anything's too blurry to read.",
+      "💬 The Assistant can also add, edit, or delete an expense and set or check a category budget straight from a sentence — \"how much do I have left for food this month\" uses the real number, never a guess.",
     ],
   },
   {
@@ -142,8 +148,10 @@ const SECTIONS: Section[] = [
       "📋 A few starter templates (AM/PM skincare, 30-30-30 morning) fill in the category, name, and steps for you — tweak before saving or use as-is.",
       "✅ Mark each step Done or Skipped for today; a live count shows how much of the routine you've finished.",
       "✏️ Edit a routine's name, category, or steps any time — no need to delete and recreate it to fix a typo or add a step.",
+      "📆 Pick which days a routine runs on — defaults to every day, but a Sunday-only or weekday-only routine only shows up (here and on the Dashboard) on the days you choose.",
       "🔥 A streak badge shows how many consecutive days you've completed every step — a single skipped or missing step breaks it, but today never breaks a streak just because it isn't finished yet.",
       "🗑️ Delete a routine you no longer follow.",
+      "💬 The Assistant can create, edit (including the day schedule), or delete a routine, and tick off its steps — describe it in chat instead of opening this page.",
     ],
   },
   {
@@ -177,20 +185,22 @@ const SECTIONS: Section[] = [
     intro:
       "A dedicated chat page — More → Assistant — separate from Journal, so it never mixes into your daily entry. Talk or type; it can act, not just answer.",
     bullets: [
-      "💬 Replies stream in as they're written, word by word, and render real formatting (bold, lists) instead of flat text.",
+      "💬 Replies stream in as they're written, word by word, and render real formatting (bold, lists) instead of flat text. A few suggested messages (like \"Let's log today\") show up when you start a fresh conversation, so you're never staring at a blank box.",
       "🎤 Tap the mic and speak — a finished sentence sends itself automatically, like talking to a person, not filling in a form. Typing still needs Send.",
-      "🎙️ Voice mode (next to the mic) is a full hands-free loop — talk, it answers out loud, then it's listening again automatically, no tapping between turns. Tap the circle to start, ✕ to exit.",
-      "🔊 Replies are read aloud by default — the 🔇/🔊 icon turns that off without losing the text reply.",
-      "✅ It can actually do things, not just log actions in the app: log a habit, add a task, tick off a routine step or medication, plan a meal, or write a journal entry, all from a sentence. It can also create new things — describe a routine, a medication, a goal, or a wish, and it becomes a real entry, not just a note.",
+      "🎙️ Voice mode (next to the mic) is a full hands-free loop — talk, it answers out loud, then it's listening again automatically, no tapping between turns. Tap the circle to start, ✕ to exit. Replies are only spoken aloud in Voice mode — regular typed chat stays silent, just text.",
+      "📋 \"Let's log today\" (or \"daily check-in\") walks you through exactly what's still missing today — habits, sleep, mood, food, each active medication, and each scheduled routine's steps, by their real names — skipping anything already logged, so nothing gets forgotten.",
+      "📎 Attach a photo or PDF — a receipt, a bill, anything — with the paperclip icon. It reads the image and acts on it directly; see Budget above for how that works for expenses specifically.",
+      "✅ It can actually do things, not just log actions in the app: log a habit, add a task, tick off a routine step or medication, plan a meal, or write a journal entry, all from a sentence. It can also create, edit, or delete things — a routine, a medication, an expense or budget, a goal, or a wish — not just create once and never touch again.",
       "🔍 Ask it something from your journal history — it searches by meaning, not just exact words, so \"what have I said about my landlord\" finds entries that never used that word.",
       "🧠 It remembers things you tell it worth keeping — mention you're saving for a trip or something you're anxious about, and it'll bring that up again in a later conversation, even a brand-new one. See or delete anything it's remembered under Settings → Assistant.",
       "📊 Ask how you're doing and it's honest, not just encouraging — it checks real numbers (falling-behind wishes, broken habit streaks, budget pace) and names the gap before the pep talk, never instead of it.",
       "🗂️ The folder icon opens your past conversations — reopen one to keep going, or delete one you don't need. New starts a fresh thread without losing anything.",
+      "🤖 Choose which Claude model powers chat and voice mode — Haiku (fastest, default), Sonnet, or Opus — under Settings → Assistant, along with a plain-language note on the cost difference.",
     ],
   },
   {
     title: "Settings",
-    body: "Install the app to your home screen, enable notifications and task due-date reminders, set your sex, height, and weight target, switch light/dark/system theme, export your data (including expenses) as CSV or PDF, and delete your account.",
+    body: "Install the app to your home screen, enable notifications and task due-date reminders, set your sex, height, and weight target, switch light/dark/system theme, choose which Claude model powers the Assistant, see or delete what it's remembered about you, export your data (including expenses) as CSV or PDF, and delete your account.",
   },
 ];
 

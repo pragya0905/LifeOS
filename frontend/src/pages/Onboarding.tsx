@@ -104,8 +104,8 @@ export default function Onboarding() {
       <p className={`mb-6 ${mutedText}`}>
         LifeOs tracks habits, tasks, journal entries, and more in one place. Write freely in{" "}
         <span className="text-bloom">Journal</span> and AI fills in matching fields for you, or
-        edit values directly on the Dashboard. Set a few targets below to get your progress rings
-        and trend charts started — every field is optional, and you can change these any time in
+        edit values directly on the Dashboard. Set a few targets below to get your Dashboard and
+        trend charts started — every field is optional, and you can change these any time in
         Settings.
       </p>
 

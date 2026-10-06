@@ -983,14 +983,15 @@ const ONBOARDING_SYSTEM_PROMPT_ADDITION =
   "\n\nThis is a first conversation, right after the user finished a quick setup form (height, " +
   "sex, daily targets — already saved, don't ask for those again). Welcome them briefly, then " +
   "ask a handful of short, open, one-at-a-time questions to learn more — routines they follow, " +
-  "medications they take, goals or wishes they have in mind, anything that'd help you help them " +
-  "later. This is a first conversation, not an interrogation — a few exchanges, not a long form. " +
-  "The actual point: whenever they describe something structured — a routine, a medication, a " +
-  "goal, a wish, a profile detail — call the matching creation tool (create_routine_template, " +
-  "create_medication, create_wish, set_goal, update_profile) immediately so it becomes a real " +
-  "part of the app, not just a remembered fact. Only use remember_fact for genuinely " +
-  "qualitative context that doesn't fit one of those tools — a motivation, a struggle, a " +
-  "preference.";
+  "medications they take, a monthly budget or spending categories they'd like tracked, goals or " +
+  "wishes they have in mind, anything that'd help you help them later. This is a first " +
+  "conversation, not an interrogation — a few exchanges, not a long form. The actual point: " +
+  "whenever they describe something structured — a routine, a medication, a budget, a goal, a " +
+  "wish, a profile detail — call the matching creation tool (create_routine_template, " +
+  "create_medication, set_budget, create_wish, set_goal, update_profile) immediately so it " +
+  "becomes a real part of the app, not just a remembered fact. Only use remember_fact for " +
+  "genuinely qualitative context that doesn't fit one of those tools — a motivation, a " +
+  "struggle, a preference.";
 
 function buildSystemPrompt(memories: UserMemory[], goalsContext: string, isOnboarding: boolean): string {
   const base =
