@@ -1,9 +1,9 @@
 import type { APIGatewayProxyHandlerV2WithJWTAuthorizer } from "aws-lambda";
-import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb } from "../../common/dynamo";
 import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
-import type { RoutineStepStatus } from "../../common/types";
+import type { RoutineStepStatus, RoutineTemplate } from "../../common/types";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const STATUSES: RoutineStepStatus[] = ["done", "skipped"];
@@ -30,6 +30,17 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
 
   if (!STATUSES.includes(body.status as RoutineStepStatus)) {
     return errorResponse(400, `status must be one of ${STATUSES.join(", ")}`);
+  }
+
+  // Guards against writing a log against a routineId/stepIndex that doesn't actually exist —
+  // most importantly a hallucinated routineId from the Assistant, which has no UI form to
+  // catch a typo'd or made-up id the way a human clicking a real button would.
+  const routine = await ddb.send(
+    new GetCommand({ TableName: process.env.ROUTINE_TEMPLATES_TABLE_NAME, Key: { userId, routineId } }),
+  );
+  if (!routine.Item) return errorResponse(404, "Routine not found");
+  if (stepIndex >= (routine.Item as RoutineTemplate).steps.length) {
+    return errorResponse(400, "stepIndex is out of range for this routine");
   }
 
   const now = new Date().toISOString();

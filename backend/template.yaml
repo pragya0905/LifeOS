@@ -1371,9 +1371,12 @@ Resources:
       Environment:
         Variables:
           MEDICATION_LOGS_TABLE_NAME: !Ref MedicationLogsTable
+          MEDICATIONS_TABLE_NAME: !Ref MedicationsTable
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref MedicationLogsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref MedicationsTable
       Events:
         UpdateMedicationLog:
           Type: HttpApi
@@ -1696,9 +1699,12 @@ Resources:
       Environment:
         Variables:
           ROUTINE_LOGS_TABLE_NAME: !Ref RoutineLogsTable
+          ROUTINE_TEMPLATES_TABLE_NAME: !Ref RoutineTemplatesTable
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref RoutineLogsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref RoutineTemplatesTable
       Events:
         UpdateRoutineStepLog:
           Type: HttpApi

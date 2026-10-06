@@ -1,5 +1,5 @@
 import type { APIGatewayProxyHandlerV2WithJWTAuthorizer } from "aws-lambda";
-import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb } from "../../common/dynamo";
 import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
@@ -26,6 +26,14 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
   if (!STATUSES.includes(body.status as MedicationLogStatus)) {
     return errorResponse(400, `status must be one of ${STATUSES.join(", ")}`);
   }
+
+  // Guards against writing a log against a medicationId that doesn't actually exist — most
+  // importantly a hallucinated one from the Assistant, which has no UI form to catch a typo'd
+  // or made-up id the way a human clicking a real button on the Medications page would.
+  const medication = await ddb.send(
+    new GetCommand({ TableName: process.env.MEDICATIONS_TABLE_NAME, Key: { userId, medicationId } }),
+  );
+  if (!medication.Item) return errorResponse(404, "Medication not found");
 
   const now = new Date().toISOString();
   const result = await ddb.send(

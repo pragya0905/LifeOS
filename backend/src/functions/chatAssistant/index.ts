@@ -8,11 +8,16 @@ import { ddb } from "../../common/dynamo";
 import { verifyIdToken } from "../../common/jwtVerify";
 import { EXPENSE_CATEGORIES } from "../../common/expenseCategories";
 import { computeProgressSummary, progressFractionForWish, type WishWithProgress } from "../../common/progressSummary";
+import { computeEndDate } from "../../common/medications";
 import type {
   AssistantConversationTurn,
   Goal,
   HabitLog,
+  Medication,
+  MedicationLog,
   MemoryCategory,
+  RoutineStepLog,
+  RoutineTemplate,
   UserMemory,
 } from "../../common/types";
 
@@ -160,6 +165,70 @@ async function fetchGoalsContext(apiUrl: string, authHeader: string): Promise<st
   }
 }
 
+// The deterministic engine behind get_daily_checkin_status — tells the model exactly what the
+// user has and hasn't logged today, across every domain, so a guided "let's log today" chat
+// only asks about what's actually missing (and, for medications/routines, by their real names
+// and steps) instead of guessing or re-asking about things already logged.
+async function computeDailyCheckinStatus(apiUrl: string, authHeader: string): Promise<Record<string, unknown>> {
+  const todayStr = today();
+  const dayOfWeek = new Date(`${todayStr}T00:00:00Z`).getUTCDay();
+
+  const [habitsRes, sleepRes, moodRes, medicationsRes, medicationLogsRes, routinesRes, routineLogsRes] =
+    await Promise.all([
+      callApi(apiUrl, authHeader, `/habits/${todayStr}`, "GET"),
+      callApi(apiUrl, authHeader, `/logs?logType=sleep&from=${todayStr}&to=${todayStr}`, "GET"),
+      callApi(apiUrl, authHeader, `/logs?logType=mood&from=${todayStr}&to=${todayStr}`, "GET"),
+      callApi(apiUrl, authHeader, "/medications", "GET"),
+      callApi(apiUrl, authHeader, `/medication-logs/${todayStr}`, "GET"),
+      callApi(apiUrl, authHeader, "/routines", "GET"),
+      callApi(apiUrl, authHeader, `/routine-logs/${todayStr}`, "GET"),
+    ]);
+
+  const todayHabits = (habitsRes.data as { habits: HabitLog[] } | undefined)?.habits ?? [];
+  const habitByType = (type: string) => todayHabits.find((h) => h.habitType === type);
+  const habits = {
+    water: { logged: !!habitByType("water"), value: habitByType("water")?.value ?? null },
+    exercise: { logged: !!habitByType("exercise"), value: habitByType("exercise")?.value ?? null },
+    steps: { logged: !!habitByType("steps"), value: habitByType("steps")?.value ?? null },
+  };
+
+  const sleepEntries = (sleepRes.data as { entries: { data: Record<string, unknown> }[] } | undefined)?.entries ?? [];
+  const sleep = sleepEntries[0]
+    ? { logged: true, bedTime: sleepEntries[0].data.bedTime ?? null, wakeTime: sleepEntries[0].data.wakeTime ?? null }
+    : { logged: false };
+
+  const moodEntries = (moodRes.data as { entries: { data: Record<string, unknown> }[] } | undefined)?.entries ?? [];
+  const mood = moodEntries[0] ? { logged: true, rating: moodEntries[0].data.rating ?? null } : { logged: false };
+
+  const medications = (medicationsRes.data as { medications: Medication[] } | undefined)?.medications ?? [];
+  const activeMedications = medications.filter(
+    (m) => todayStr >= m.startDate && todayStr <= computeEndDate(m.startDate, m.durationDays),
+  );
+  const medicationLogs = (medicationLogsRes.data as { logs: MedicationLog[] } | undefined)?.logs ?? [];
+  const medicationsStatus = activeMedications.map((m) => ({
+    medicationId: m.medicationId,
+    name: m.name,
+    dosage: m.dosage ?? null,
+    status: medicationLogs.find((l) => l.medicationId === m.medicationId)?.status ?? null,
+  }));
+
+  const routines = (routinesRes.data as { routines: RoutineTemplate[] } | undefined)?.routines ?? [];
+  const todaysRoutines = routines.filter(
+    (r) => !r.daysOfWeek || r.daysOfWeek.length === 0 || r.daysOfWeek.includes(dayOfWeek),
+  );
+  const routineLogs = (routineLogsRes.data as { logs: RoutineStepLog[] } | undefined)?.logs ?? [];
+  const routinesStatus = todaysRoutines.map((r) => ({
+    routineId: r.routineId,
+    name: r.name,
+    steps: r.steps.map((text, index) => ({
+      index,
+      text,
+      status: routineLogs.find((l) => l.routineId === r.routineId && l.stepIndex === index)?.status ?? null,
+    })),
+  }));
+
+  return { date: todayStr, habits, sleep, mood, medications: medicationsStatus, routines: routinesStatus };
+}
 
 const MEMORY_CATEGORIES: MemoryCategory[] = ["health", "financial", "emotional", "consistency", "general"];
 
@@ -588,6 +657,12 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: { type: "object", properties: {} },
   },
   {
+    name: "get_daily_checkin_status",
+    description:
+      "Get exactly what the user has and hasn't logged today, across habits (water/exercise/steps), sleep, mood, every currently-active medication by name, and every routine scheduled for today with each step by name — each item flagged logged or not. Always call this first when the user wants to do a guided run-through of today (e.g. 'let's log today', 'daily check-in', 'what do I still need to log'), so you only ask about what's actually missing, using the real medication/routine/step names, never a generic placeholder. The medicationId, routineId, and step index values in this result are the exact ids to pass to log_medication/log_routine_step afterward — copy them verbatim, never shorten or invent one from the name (e.g. never pass something like 'vitamin-d' as an id).",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
     name: "remember_fact",
     description:
       "Save a short, durable fact about the user for future conversations — something worth remembering long-term, not a one-off detail. Call this when the user shares something like a goal, a preference, a recurring struggle, or context that would help you understand them better later (e.g. 'saving for a trip to Japan', 'gets anxious before big presentations', 'prefers strength training over cardio'). Don't call this for routine logging (that's what the other tools are for) or trivial small talk.",
@@ -848,6 +923,10 @@ async function executeTool(
         const summary = await computeProgressSummary(apiUrl, authHeader);
         return { content: JSON.stringify(summary), isError: false };
       }
+      case "get_daily_checkin_status": {
+        const status = await computeDailyCheckinStatus(apiUrl, authHeader);
+        return { content: JSON.stringify(status), isError: false };
+      }
       case "remember_fact": {
         // The one place this Lambda writes to DynamoDB directly — there's no existing API
         // route for user memory to forward to, unlike every other tool above.
@@ -931,6 +1010,19 @@ function buildSystemPrompt(memories: UserMemory[], goalsContext: string, isOnboa
     "specific unclear detail rather than guessing — never invent a number you can't actually " +
     "read. If the receipt clearly lists several distinct purchases that belong in different " +
     "categories, log them as separate create_expense calls instead of one combined total.\n\n" +
+    "Guided daily check-in: when the user wants to log their whole day (e.g. 'let's log " +
+    "today', 'daily check-in', 'what do I still need to log'), call get_daily_checkin_status " +
+    "first — never ask about something it shows as already logged, and never ask a generic " +
+    "question when you have the real name to use instead (ask 'Did you take your Vitamin D?' " +
+    "not 'Did you take your medication?'; 'Cleanser, Toner, Moisturizer done?' not 'Did you do " +
+    "your skincare steps?'). Ask through the missing items a few at a time in a warm, natural " +
+    "conversational flow, not a rigid interrogation — group small related things together (e.g. " +
+    "all three habit numbers in one message) but ask about each medication and each routine's " +
+    "steps by name. Call the matching log tool (log_habit, log_entry, log_medication, " +
+    "log_routine_step) the moment the user answers each one, don't batch them up to the end. " +
+    "If everything is already logged, say so warmly instead of asking anything. Once every " +
+    "missing item has an answer, close with a short, genuinely warm one- or two-line wrap-up — " +
+    "not a dry recap list.\n\n" +
     "Coaching style — honest accountability, not pure cheerleading: when discussing the " +
     "user's wishes, habits, or budget, call get_progress_summary first and ground everything " +
     "in its numbers. If it shows a wish falling behind schedule, a broken habit streak, or " +
