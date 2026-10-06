@@ -274,6 +274,9 @@ async function computeProgressSummary(apiUrl: string, authHeader: string): Promi
       category: budget.category,
       monthlyLimit: budget.monthlyLimit,
       spentSoFar: round2(spentSoFar),
+      // Deterministic, not left for the model to subtract itself — same reasoning as every
+      // other number in this summary.
+      remainingThisMonth: round2(budget.monthlyLimit - spentSoFar),
       projectedMonthEndTotal: round2(projectedMonthEndTotal),
       projectedOverBy: round2(projectedMonthEndTotal - budget.monthlyLimit),
     };
@@ -704,7 +707,7 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "get_progress_summary",
     description:
-      "Get a deterministically computed snapshot of how the user is actually tracking: which active Wishes are falling behind schedule, current streaks and missed-day counts for each habit, and a projected month-end total for each budget category based on this month's spending pace so far. Always call this before making any claim about whether the user is on track, off track, or ahead/behind — never estimate or guess these numbers yourself.",
+      "Get a deterministically computed snapshot of how the user is actually tracking: which active Wishes are falling behind schedule, current streaks and missed-day counts for each habit, and each budget category's spending so far this month — including remainingThisMonth (use this directly for 'how much do I have left to spend on X' questions, never subtract spentSoFar from monthlyLimit yourself) and a projected month-end total based on this month's spending pace so far. Always call this before making any claim about whether the user is on track, off track, ahead/behind, or how much budget remains — never estimate or compute these numbers yourself.",
     input_schema: { type: "object", properties: {} },
   },
   {

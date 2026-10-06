@@ -69,12 +69,22 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     setClauses.push(`#${field} = :${field}`);
   }
 
+  // Changing timeOfDay mid-day must not get silently swallowed by the reminder scheduler's
+  // "already sent today" guard (lastReminderSentDate === today) — that guard is keyed only on
+  // the date, not the time, so without this reset, moving today's reminder from 9am to 6pm
+  // after the 9am one already fired would skip the new 6pm time entirely until tomorrow.
+  let updateExpression = `SET ${setClauses.join(", ")}`;
+  if (body.timeOfDay !== undefined) {
+    names["#lastReminderSentDate"] = "lastReminderSentDate";
+    updateExpression += " REMOVE #lastReminderSentDate";
+  }
+
   try {
     const result = await ddb.send(
       new UpdateCommand({
         TableName: process.env.MEDICATIONS_TABLE_NAME,
         Key: { userId, medicationId },
-        UpdateExpression: `SET ${setClauses.join(", ")}`,
+        UpdateExpression: updateExpression,
         ExpressionAttributeNames: names,
         ExpressionAttributeValues: values,
         ConditionExpression: "attribute_exists(medicationId)",
