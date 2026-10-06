@@ -96,6 +96,12 @@ const ONBOARDING_GREETING =
   "Nice, you're set up! Tell me a bit more about yourself — any routines, medications, or goals " +
   "you'd like me to know about? I'll turn whatever you tell me into the real thing in the app.";
 
+const SUGGESTED_MESSAGES = [
+  "Let's log today",
+  "What's on my schedule today?",
+  "How's my budget looking?",
+];
+
 interface AssistantProps {
   onboarding?: boolean;
   onFinish?: () => void;
@@ -140,12 +146,6 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
   useEffect(() => {
     listEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, sending]);
-
-  function speak(text: string) {
-    if (muted || typeof window === "undefined" || !window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
-  }
 
   function toggleMuted() {
     setMuted((prev) => {
@@ -271,14 +271,12 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
       }
     }
 
-    let finalReply = "";
     try {
       await streamMessage(
         message,
         conversationIdRef.current,
         (event: AssistantStreamEvent) => {
           if (event.type === "text") {
-            finalReply += event.delta;
             appendToLastAssistantMessage(event.delta);
           } else if (event.type === "done") {
             conversationIdRef.current = event.conversationId;
@@ -290,7 +288,6 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
         onboarding ? "onboarding" : undefined,
         attachment ?? undefined,
       );
-      if (finalReply) speak(finalReply);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to reach the assistant");
     } finally {
@@ -375,10 +372,26 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
 
       <div className={`mb-4 flex min-h-[50vh] flex-col gap-3 ${card}`}>
         {messages.length === 0 ? (
-          <p className={mutedText}>
-            Talk or type — log a habit, ask what's on your schedule, add a task, or just check in.
-            I'll remember this conversation as we go.
-          </p>
+          <div className="flex flex-col gap-3">
+            <p className={mutedText}>
+              Talk or type — log a habit, ask what's on your schedule, add a task, or just check in.
+              I'll remember this conversation as we go.
+            </p>
+            {!onboarding && (
+              <div className="flex flex-wrap gap-1.5">
+                {SUGGESTED_MESSAGES.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    onClick={() => sendMessage(suggestion)}
+                    className={`${pillButton} ${pillButtonInactive} px-3 py-1.5`}
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         ) : (
           messages.map((m, i) => (
             <div

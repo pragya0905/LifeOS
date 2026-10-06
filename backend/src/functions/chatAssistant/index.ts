@@ -173,11 +173,12 @@ async function computeDailyCheckinStatus(apiUrl: string, authHeader: string): Pr
   const todayStr = today();
   const dayOfWeek = new Date(`${todayStr}T00:00:00Z`).getUTCDay();
 
-  const [habitsRes, sleepRes, moodRes, medicationsRes, medicationLogsRes, routinesRes, routineLogsRes] =
+  const [habitsRes, sleepRes, moodRes, foodRes, medicationsRes, medicationLogsRes, routinesRes, routineLogsRes] =
     await Promise.all([
       callApi(apiUrl, authHeader, `/habits/${todayStr}`, "GET"),
       callApi(apiUrl, authHeader, `/logs?logType=sleep&from=${todayStr}&to=${todayStr}`, "GET"),
       callApi(apiUrl, authHeader, `/logs?logType=mood&from=${todayStr}&to=${todayStr}`, "GET"),
+      callApi(apiUrl, authHeader, `/logs?logType=food&from=${todayStr}&to=${todayStr}`, "GET"),
       callApi(apiUrl, authHeader, "/medications", "GET"),
       callApi(apiUrl, authHeader, `/medication-logs/${todayStr}`, "GET"),
       callApi(apiUrl, authHeader, "/routines", "GET"),
@@ -199,6 +200,14 @@ async function computeDailyCheckinStatus(apiUrl: string, authHeader: string): Pr
 
   const moodEntries = (moodRes.data as { entries: { data: Record<string, unknown> }[] } | undefined)?.entries ?? [];
   const mood = moodEntries[0] ? { logged: true, rating: moodEntries[0].data.rating ?? null } : { logged: false };
+
+  // Food is multiple-per-day (breakfast/lunch/etc.), unlike sleep/mood — report what's already
+  // logged so the model asks about remaining meals instead of re-asking about ones already in.
+  const foodEntries = (foodRes.data as { entries: { data: Record<string, unknown> }[] } | undefined)?.entries ?? [];
+  const food = {
+    logged: foodEntries.length > 0,
+    meals: foodEntries.map((e) => ({ mealType: e.data.mealType ?? null, description: e.data.description ?? null })),
+  };
 
   const medications = (medicationsRes.data as { medications: Medication[] } | undefined)?.medications ?? [];
   const activeMedications = medications.filter(
@@ -227,7 +236,7 @@ async function computeDailyCheckinStatus(apiUrl: string, authHeader: string): Pr
     })),
   }));
 
-  return { date: todayStr, habits, sleep, mood, medications: medicationsStatus, routines: routinesStatus };
+  return { date: todayStr, habits, sleep, mood, food, medications: medicationsStatus, routines: routinesStatus };
 }
 
 const MEMORY_CATEGORIES: MemoryCategory[] = ["health", "financial", "emotional", "consistency", "general"];
@@ -659,7 +668,7 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "get_daily_checkin_status",
     description:
-      "Get exactly what the user has and hasn't logged today, across habits (water/exercise/steps), sleep, mood, every currently-active medication by name, and every routine scheduled for today with each step by name — each item flagged logged or not. Always call this first when the user wants to do a guided run-through of today (e.g. 'let's log today', 'daily check-in', 'what do I still need to log'), so you only ask about what's actually missing, using the real medication/routine/step names, never a generic placeholder. The medicationId, routineId, and step index values in this result are the exact ids to pass to log_medication/log_routine_step afterward — copy them verbatim, never shorten or invent one from the name (e.g. never pass something like 'vitamin-d' as an id).",
+      "Get exactly what the user has and hasn't logged today, across habits (water/exercise/steps), sleep, mood, food (which meals are already logged, since there can be several per day), every currently-active medication by name, and every routine scheduled for today with each step by name — each item flagged logged or not. Always call this first when the user wants to do a guided run-through of today (e.g. 'let's log today', 'daily check-in', 'what do I still need to log'), so you only ask about what's actually missing, using the real medication/routine/step names, never a generic placeholder. The medicationId, routineId, and step index values in this result are the exact ids to pass to log_medication/log_routine_step afterward — copy them verbatim, never shorten or invent one from the name (e.g. never pass something like 'vitamin-d' as an id).",
     input_schema: { type: "object", properties: {} },
   },
   {
@@ -1015,11 +1024,14 @@ function buildSystemPrompt(memories: UserMemory[], goalsContext: string, isOnboa
     "first — never ask about something it shows as already logged, and never ask a generic " +
     "question when you have the real name to use instead (ask 'Did you take your Vitamin D?' " +
     "not 'Did you take your medication?'; 'Cleanser, Toner, Moisturizer done?' not 'Did you do " +
-    "your skincare steps?'). Ask through the missing items a few at a time in a warm, natural " +
-    "conversational flow, not a rigid interrogation — group small related things together (e.g. " +
-    "all three habit numbers in one message) but ask about each medication and each routine's " +
-    "steps by name. Call the matching log tool (log_habit, log_entry, log_medication, " +
-    "log_routine_step) the moment the user answers each one, don't batch them up to the end. " +
+    "your skincare steps?'). Cover every category the status tool returns — habits, sleep, " +
+    "mood, food (ask what they ate for any meal not already logged), each medication, and each " +
+    "routine's steps — don't stop after just the habits. Ask through the missing items a few " +
+    "at a time in a warm, natural conversational flow, not a rigid interrogation — group small " +
+    "related things together (e.g. all three habit numbers in one message, or sleep+mood " +
+    "together) but ask about each medication and each routine's steps by name. Call the " +
+    "matching log tool (log_habit, log_entry, log_medication, log_routine_step) the moment the " +
+    "user answers each one, don't batch them up to the end. " +
     "If everything is already logged, say so warmly instead of asking anything. Once every " +
     "missing item has an answer, close with a short, genuinely warm one- or two-line wrap-up — " +
     "not a dry recap list.\n\n" +
