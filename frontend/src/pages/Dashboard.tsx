@@ -3,8 +3,8 @@ import { Link } from "react-router-dom";
 import { useApi } from "../api/useApi";
 import Achievements from "../components/Achievements";
 import BudgetPreview from "../components/BudgetPreview";
-import CyclePreview from "../components/CyclePreview";
 import ExtractionLedger from "../components/ExtractionLedger";
+import TodayCycle from "../components/TodayCycle";
 import TodayExpenses from "../components/TodayExpenses";
 import TodayHabits from "../components/TodayHabits";
 import TodayMeals from "../components/TodayMeals";
@@ -122,6 +122,10 @@ export default function Dashboard() {
       </div>
 
       <div className="mb-6">
+        <TodayCycle />
+      </div>
+
+      <div className="mb-6">
         <ExtractionLedger />
       </div>
 
@@ -185,8 +189,6 @@ export default function Dashboard() {
         </div>
 
         <BudgetPreview />
-
-        <CyclePreview />
 
         <div className={`flex-1 ${card}`}>
           <h2 className={`mb-2 ${sectionLabel}`}>📈 Insights</h2>

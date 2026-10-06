@@ -10,7 +10,7 @@ const RETRY_DELAYS_MS = [300, 900];
 
 // Shared across every useApi() instance (module scope, not hook scope) so that the several
 // components that independently fetch the same GET on mount (e.g. /profile from Layout,
-// OnboardingGate, BudgetPreview, CyclePreview) collapse into a single network request.
+// OnboardingGate, BudgetPreview, TodayCycle) collapse into a single network request.
 // Only GET is deduped/cached — mutating methods always hit the network.
 const GET_CACHE_TTL_MS = 4000;
 const inFlightGetRequests = new Map<string, Promise<unknown>>();
