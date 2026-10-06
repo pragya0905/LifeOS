@@ -31,12 +31,21 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     : [];
   if (steps.length === 0) return errorResponse(400, "steps must be a non-empty array of strings");
 
+  let daysOfWeek: number[] | undefined;
+  if (body.daysOfWeek !== undefined) {
+    const rawDays = body.daysOfWeek;
+    const valid = Array.isArray(rawDays) && rawDays.every((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+    if (!valid) return errorResponse(400, "daysOfWeek must be an array of integers 0-6 (0=Sun..6=Sat)");
+    if ((rawDays as number[]).length > 0) daysOfWeek = rawDays as number[];
+  }
+
   const routine: RoutineTemplate = {
     userId,
     routineId: randomUUID(),
     category,
     name,
     steps,
+    ...(daysOfWeek ? { daysOfWeek } : {}),
     createdAt: new Date().toISOString(),
   };
 

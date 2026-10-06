@@ -1,8 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useApi } from "../api/useApi";
 import { todayLocal } from "../lib/date";
+import { ALL_DAYS, formatSchedule } from "../lib/weekdays";
 import { Skeleton } from "../components/Skeleton";
 import { EmptyState } from "../components/EmptyState";
+import DayOfWeekPicker from "../components/DayOfWeekPicker";
 import type { RoutineCategory, RoutineStepLog, RoutineTemplate } from "../types";
 import {
   badge,
@@ -103,27 +105,42 @@ function RoutineCard({
   removing: boolean;
   onSetStepStatus: (routineId: string, stepIndex: number, status: RoutineStepLog["status"]) => void;
   onDelete: (routineId: string) => void;
-  onSave: (routineId: string, patch: { name: string; category: RoutineCategory; steps: string[] }) => Promise<void>;
+  onSave: (
+    routineId: string,
+    patch: { name: string; category: RoutineCategory; steps: string[]; daysOfWeek: number[] },
+  ) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
   const [nameDraft, setNameDraft] = useState(routine.name);
   const [categoryDraft, setCategoryDraft] = useState<RoutineCategory>(routine.category);
   const [stepsDraft, setStepsDraft] = useState(routine.steps.join("\n"));
+  const [daysDraft, setDaysDraft] = useState<number[]>(
+    routine.daysOfWeek && routine.daysOfWeek.length > 0 ? routine.daysOfWeek : ALL_DAYS,
+  );
   const [savingEdit, setSavingEdit] = useState(false);
 
   const doneCount = routine.steps.filter(
     (_, index) => stepStatuses[`${routine.routineId}#${index}`] === "done",
   ).length;
 
+  function toggleDraftDay(day: number) {
+    setDaysDraft((prev) => (prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort()));
+  }
+
   async function handleSaveEdit() {
     const steps = stepsDraft
       .split("\n")
       .map((s) => s.trim())
       .filter(Boolean);
-    if (!nameDraft.trim() || steps.length === 0) return;
+    if (!nameDraft.trim() || steps.length === 0 || daysDraft.length === 0) return;
     setSavingEdit(true);
     try {
-      await onSave(routine.routineId, { name: nameDraft.trim(), category: categoryDraft, steps });
+      await onSave(routine.routineId, {
+        name: nameDraft.trim(),
+        category: categoryDraft,
+        steps,
+        daysOfWeek: daysDraft.length === 7 ? [] : daysDraft,
+      });
       setEditing(false);
     } finally {
       setSavingEdit(false);
@@ -165,10 +182,14 @@ function RoutineCard({
           onChange={(e) => setStepsDraft(e.target.value)}
           className={`mb-2 w-full ${input}`}
         />
+        <label className={label}>Days</label>
+        <div className="mb-2">
+          <DayOfWeekPicker selected={daysDraft} onToggle={toggleDraftDay} />
+        </div>
         <div className="flex gap-2">
           <button
             type="button"
-            disabled={savingEdit}
+            disabled={savingEdit || daysDraft.length === 0}
             onClick={handleSaveEdit}
             className={`${secondaryButton} px-3 py-1 text-xs`}
           >
@@ -198,7 +219,8 @@ function RoutineCard({
           </span>{" "}
           <span className={badge}>
             {doneCount}/{routine.steps.length} done
-          </span>
+          </span>{" "}
+          <span className={badge}>{formatSchedule(routine.daysOfWeek)}</span>
           {streak > 0 && (
             <span className="ml-1.5 rounded-full bg-amber-soft px-2 py-0.5 text-xs font-medium text-amber-ink dark:bg-amber-soft-dark dark:text-amber-ink-dark">
               🔥 {streak} day{streak === 1 ? "" : "s"}
@@ -271,6 +293,7 @@ export default function Routines() {
   const [category, setCategory] = useState<RoutineCategory>("skinCare");
   const [name, setName] = useState("");
   const [stepsText, setStepsText] = useState("");
+  const [daysOfWeek, setDaysOfWeek] = useState<number[]>(ALL_DAYS);
   const [saving, setSaving] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
@@ -315,23 +338,33 @@ export default function Routines() {
     setStepsText(template.steps.join("\n"));
   }
 
+  function toggleDay(day: number) {
+    setDaysOfWeek((prev) => (prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort()));
+  }
+
   async function handleAdd(e: FormEvent) {
     e.preventDefault();
     const steps = stepsText
       .split("\n")
       .map((s) => s.trim())
       .filter(Boolean);
-    if (!name.trim() || steps.length === 0) return;
+    if (!name.trim() || steps.length === 0 || daysOfWeek.length === 0) return;
     setSaving(true);
     setError(null);
     try {
       const routine = await request<RoutineTemplate>("/routines", {
         method: "POST",
-        body: JSON.stringify({ category, name: name.trim(), steps }),
+        body: JSON.stringify({
+          category,
+          name: name.trim(),
+          steps,
+          daysOfWeek: daysOfWeek.length === 7 ? [] : daysOfWeek,
+        }),
       });
       setRoutines((prev) => [routine, ...prev]);
       setName("");
       setStepsText("");
+      setDaysOfWeek(ALL_DAYS);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add routine");
     } finally {
@@ -357,7 +390,7 @@ export default function Routines() {
 
   async function handleSaveEdit(
     routineId: string,
-    patch: { name: string; category: RoutineCategory; steps: string[] },
+    patch: { name: string; category: RoutineCategory; steps: string[]; daysOfWeek: number[] },
   ) {
     setError(null);
     try {
@@ -454,7 +487,15 @@ export default function Routines() {
             className={`w-full ${input}`}
           />
         </div>
-        <button type="submit" disabled={saving} className={`self-start ${primaryButton}`}>
+        <div>
+          <label className={label}>Days</label>
+          <DayOfWeekPicker selected={daysOfWeek} onToggle={toggleDay} />
+        </div>
+        <button
+          type="submit"
+          disabled={saving || daysOfWeek.length === 0}
+          className={`self-start ${primaryButton}`}
+        >
           {saving ? "Adding..." : "Add routine"}
         </button>
       </form>

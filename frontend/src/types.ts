@@ -123,6 +123,9 @@ export interface RoutineTemplate {
   category: RoutineCategory;
   name: string;
   steps: string[];
+  // Days this routine runs on: 0=Sun..6=Sat (JS Date#getDay() convention). Absent or empty
+  // means every day.
+  daysOfWeek?: number[];
   createdAt: string;
 }
 
@@ -208,13 +211,26 @@ export interface MealPlanSlot {
   updatedAt: string;
 }
 
+export interface MealPlanTemplate {
+  userId: string;
+  dayMealType: string;
+  dayOfWeek: number;
+  mealType: MealType;
+  text: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type UserSex = "male" | "female" | "unspecified";
+
+export type AssistantModel = "claude-haiku-4-5" | "claude-sonnet-5" | "claude-opus-5";
 
 export interface UserProfile {
   userId: string;
   heightCm?: number;
   monthlyBudget?: number;
   sex?: UserSex;
+  assistantModel?: AssistantModel;
   onboardingCompletedAt?: string;
   updatedAt?: string;
 }

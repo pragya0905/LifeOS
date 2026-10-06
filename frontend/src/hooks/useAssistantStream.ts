@@ -21,12 +21,21 @@ export function useAssistantStream() {
       conversationId: string | undefined,
       onEvent: (event: AssistantStreamEvent) => void,
       mode?: "onboarding",
+      attachment?: { key: string; contentType: string; fileName: string },
     ): Promise<void> => {
       const token = await getIdToken();
       const res = await fetch(STREAM_URL, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ message, conversationId, mode }),
+        body: JSON.stringify({
+          message,
+          conversationId,
+          mode,
+          attachment,
+          // Always sent so the model can set a medication reminder time without ever
+          // guessing the user's timezone itself — see create_medication/update_medication.
+          timezoneOffsetMinutes: new Date().getTimezoneOffset(),
+        }),
       });
 
       if (!res.ok) {

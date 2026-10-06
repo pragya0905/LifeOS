@@ -5,7 +5,11 @@ import Achievements from "../components/Achievements";
 import BudgetPreview from "../components/BudgetPreview";
 import CyclePreview from "../components/CyclePreview";
 import ExtractionLedger from "../components/ExtractionLedger";
+import TodayExpenses from "../components/TodayExpenses";
 import TodayHabits from "../components/TodayHabits";
+import TodayMeals from "../components/TodayMeals";
+import TodayMedications from "../components/TodayMedications";
+import TodayRoutines from "../components/TodayRoutines";
 import TodaySchedule from "../components/TodaySchedule";
 import TodaySummaryRings from "../components/TodaySummaryRings";
 import WelcomeCard from "../components/WelcomeCard";
@@ -102,6 +106,22 @@ export default function Dashboard() {
       </div>
 
       <div className="mb-6">
+        <TodayRoutines />
+      </div>
+
+      <div className="mb-6">
+        <TodayMeals />
+      </div>
+
+      <div className="mb-6">
+        <TodayMedications />
+      </div>
+
+      <div className="mb-6">
+        <TodayExpenses />
+      </div>
+
+      <div className="mb-6">
         <ExtractionLedger />
       </div>
 
@@ -176,6 +196,15 @@ export default function Dashboard() {
           </Link>
         </div>
       </div>
+
+      <Link
+        to="/assistant"
+        aria-label="Open Assistant chat"
+        className="fixed right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-bloom text-2xl text-paper-card shadow-lg transition-transform hover:scale-105 active:scale-95"
+        style={{ bottom: "calc(5.5rem + env(safe-area-inset-bottom))" }}
+      >
+        💬
+      </Link>
     </div>
   );
 }

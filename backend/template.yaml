@@ -195,6 +195,26 @@ Resources:
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
 
+  MealPlanTemplatesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "LifeOs-MealPlanTemplates-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: dayMealType
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: dayMealType
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
   MedicationsTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -482,6 +502,35 @@ Resources:
             Status: Enabled
             AbortIncompleteMultipartUpload:
               DaysAfterInitiation: 1
+
+  AssistantAttachmentsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "lifeos-assistant-attachments-${Environment}-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins: !Ref AllowedOrigins
+            AllowedMethods: [PUT]
+            AllowedHeaders: ["*"]
+            MaxAge: 3000
+      LifecycleConfiguration:
+        Rules:
+          - Id: AbortIncompleteUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+          - Id: ExpireAttachments
+            Status: Enabled
+            ExpirationInDays: 1
 
   ########################
   # Frontend hosting: private S3 bucket behind CloudFront (OAC)
@@ -1067,6 +1116,93 @@ Resources:
             Auth:
               Authorizer: CognitoAuthorizer
 
+  UpsertMealPlanTemplateFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-upsert-meal-plan-template-${Environment}"
+      CodeUri: src/functions/upsertMealPlanTemplate/
+      Handler: index.handler
+      Environment:
+        Variables:
+          MEAL_PLAN_TEMPLATES_TABLE_NAME: !Ref MealPlanTemplatesTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MealPlanTemplatesTable
+      Events:
+        UpsertMealPlanTemplate:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /meal-plan-templates/{day}/{mealType}
+            Method: PATCH
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  ListMealPlanTemplatesFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-list-meal-plan-templates-${Environment}"
+      CodeUri: src/functions/listMealPlanTemplates/
+      Handler: index.handler
+      Environment:
+        Variables:
+          MEAL_PLAN_TEMPLATES_TABLE_NAME: !Ref MealPlanTemplatesTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref MealPlanTemplatesTable
+      Events:
+        ListMealPlanTemplates:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /meal-plan-templates
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  DeleteMealPlanTemplateFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-delete-meal-plan-template-${Environment}"
+      CodeUri: src/functions/deleteMealPlanTemplate/
+      Handler: index.handler
+      Environment:
+        Variables:
+          MEAL_PLAN_TEMPLATES_TABLE_NAME: !Ref MealPlanTemplatesTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MealPlanTemplatesTable
+      Events:
+        DeleteMealPlanTemplate:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /meal-plan-templates/{day}/{mealType}
+            Method: DELETE
+            Auth:
+              Authorizer: CognitoAuthorizer
+
   SuggestMealPlanFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -1187,6 +1323,35 @@ Resources:
             ApiId: !Ref HttpApi
             Path: /medications/{id}
             Method: DELETE
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  UpdateMedicationFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-update-medication-${Environment}"
+      CodeUri: src/functions/updateMedication/
+      Handler: index.handler
+      Environment:
+        Variables:
+          MEDICATIONS_TABLE_NAME: !Ref MedicationsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MedicationsTable
+      Events:
+        UpdateMedication:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /medications/{id}
+            Method: PATCH
             Auth:
               Authorizer: CognitoAuthorizer
 
@@ -2160,6 +2325,35 @@ Resources:
             Auth:
               Authorizer: CognitoAuthorizer
 
+  GetAssistantAttachmentUploadUrlFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-get-assistant-attachment-upload-url-${Environment}"
+      CodeUri: src/functions/getAssistantAttachmentUploadUrl/
+      Handler: index.handler
+      Environment:
+        Variables:
+          ASSISTANT_ATTACHMENTS_BUCKET_NAME: !Ref AssistantAttachmentsBucket
+      Policies:
+        - S3WritePolicy:
+            BucketName: !Ref AssistantAttachmentsBucket
+      Events:
+        GetAssistantAttachmentUploadUrl:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /assistant/attachments/presign
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+
   ListWishImagesFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -2674,6 +2868,7 @@ Resources:
           USER_POOL_ID: !Ref LifeOsUserPool
           WEB_CLIENT_ID: !Ref LifeOsUserPoolClient
           ALEXA_CLIENT_ID: !Ref AlexaUserPoolClient
+          ASSISTANT_ATTACHMENTS_BUCKET_NAME: !Ref AssistantAttachmentsBucket
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref AssistantConversationsTable
@@ -2681,6 +2876,8 @@ Resources:
             TableName: !Ref UserMemoryTable
         - SSMParameterReadPolicy:
             ParameterName: !Sub "lifeos/${Environment}/anthropic-api-key"
+        - S3ReadPolicy:
+            BucketName: !Ref AssistantAttachmentsBucket
       FunctionUrlConfig:
         AuthType: NONE
         InvokeMode: RESPONSE_STREAM

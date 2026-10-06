@@ -1,9 +1,20 @@
 import { useEffect, useState } from "react";
 import { useApi } from "../api/useApi";
 import { toLocalDateStr, todayLocal } from "../lib/date";
+import { DAY_LABELS } from "../lib/weekdays";
 import { SkeletonCard } from "../components/Skeleton";
-import type { MealPlanSlot, MealType } from "../types";
-import { card, errorText, input, mutedText, page, pageTitle, primaryButton, secondaryButton } from "../components/ui";
+import type { MealPlanSlot, MealPlanTemplate, MealType } from "../types";
+import {
+  card,
+  errorText,
+  input,
+  mutedText,
+  page,
+  pageTitle,
+  primaryButton,
+  secondaryButton,
+  sectionLabel,
+} from "../components/ui";
 
 const MEAL_TYPES: MealType[] = ["breakfast", "lunch", "dinner", "snack"];
 const MEAL_TYPE_LABEL: Record<MealType, string> = {
@@ -45,10 +56,16 @@ function slotKey(date: string, mealType: MealType): string {
   return `${date}#${mealType}`;
 }
 
+function templateKey(dayOfWeek: number, mealType: MealType): string {
+  return `${dayOfWeek}#${mealType}`;
+}
+
 export default function MealPlan() {
   const { request } = useApi();
   const [weekStart, setWeekStart] = useState(toLocalDateStr(startOfWeek(todayLocal())));
   const [slots, setSlots] = useState<Record<string, string>>({});
+  const [templates, setTemplates] = useState<Record<string, string>>({});
+  const [templatesLoaded, setTemplatesLoaded] = useState(false);
   const [pending, setPending] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [suggesting, setSuggesting] = useState(false);
@@ -81,6 +98,53 @@ export default function MealPlan() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to]);
+
+  useEffect(() => {
+    let ignore = false;
+    request<{ templates: MealPlanTemplate[] }>("/meal-plan-templates")
+      .then((data) => {
+        if (ignore) return;
+        const next: Record<string, string> = {};
+        for (const t of data.templates) next[templateKey(t.dayOfWeek, t.mealType)] = t.text;
+        setTemplates(next);
+      })
+      .catch((err) => {
+        if (!ignore) setError(err instanceof Error ? err.message : "Failed to load weekly defaults");
+      })
+      .finally(() => {
+        if (!ignore) setTemplatesLoaded(true);
+      });
+    return () => {
+      ignore = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function saveTemplate(dayOfWeek: number, mealType: MealType, text: string) {
+    const key = templateKey(dayOfWeek, mealType);
+    const trimmed = text.trim();
+    const existed = templates[key] !== undefined;
+    try {
+      if (!trimmed) {
+        if (existed) {
+          await request(`/meal-plan-templates/${dayOfWeek}/${mealType}`, { method: "DELETE" });
+          setTemplates((prev) => {
+            const next = { ...prev };
+            delete next[key];
+            return next;
+          });
+        }
+        return;
+      }
+      await request(`/meal-plan-templates/${dayOfWeek}/${mealType}`, {
+        method: "PATCH",
+        body: JSON.stringify({ text: trimmed }),
+      });
+      setTemplates((prev) => ({ ...prev, [key]: trimmed }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save weekly default");
+    }
+  }
 
   async function saveSlot(date: string, mealType: MealType, text: string) {
     const key = slotKey(date, mealType);
@@ -188,6 +252,58 @@ export default function MealPlan() {
         </div>
       )}
 
+      {!templatesLoaded ? (
+        <SkeletonCard lines={2} />
+      ) : (
+        <div className={`mb-4 ${card} overflow-x-auto p-3`}>
+          <h2 className={`mb-2 ${sectionLabel}`}>Weekly defaults</h2>
+          <p className={`mb-2 ${mutedText}`}>
+            Set a usual meal for a day of the week — it fills that slot every week unless you
+            change that specific date above.
+          </p>
+          <table className="w-full min-w-[860px] border-separate border-spacing-1">
+            <thead>
+              <tr>
+                <th className="w-20 shrink-0 text-left text-xs font-medium text-ink-muted dark:text-mist-muted" />
+                {DAY_LABELS.map((label) => (
+                  <th
+                    key={label}
+                    className="min-w-[140px] p-1 text-left text-xs font-medium text-ink dark:text-paper"
+                  >
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {MEAL_TYPES.map((mealType) => (
+                <tr key={mealType}>
+                  <td className="p-1 align-top text-xs text-ink-muted dark:text-mist-muted">
+                    {MEAL_TYPE_LABEL[mealType]}
+                  </td>
+                  {DAY_LABELS.map((_, dayOfWeek) => {
+                    const key = templateKey(dayOfWeek, mealType);
+                    const value = templates[key] ?? "";
+                    return (
+                      <td key={dayOfWeek} className="p-1 align-top">
+                        <input
+                          type="text"
+                          defaultValue={value}
+                          key={value}
+                          placeholder="No default"
+                          onBlur={(e) => saveTemplate(dayOfWeek, mealType, e.target.value)}
+                          className={`w-full ${input} text-xs`}
+                        />
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {loading ? (
         <SkeletonCard lines={4} />
       ) : (
@@ -216,7 +332,11 @@ export default function MealPlan() {
                   {dates.map((date) => {
                     const key = slotKey(date, mealType);
                     const pendingText = pending[key];
-                    const value = pendingText ?? slots[key] ?? "";
+                    const hasExplicitSlot = slots[key] !== undefined;
+                    const dayOfWeek = new Date(`${date}T00:00:00`).getDay();
+                    const inheritedText = templates[templateKey(dayOfWeek, mealType)];
+                    const value = pendingText ?? slots[key] ?? inheritedText ?? "";
+                    const isInherited = !hasExplicitSlot && pendingText === undefined && Boolean(inheritedText);
                     return (
                       <td key={date} className="p-1 align-top">
                         <input
@@ -233,11 +353,14 @@ export default function MealPlan() {
                                 else delete next[key];
                                 return next;
                               });
-                            } else {
+                            } else if (hasExplicitSlot || e.target.value.trim() !== value.trim()) {
+                              // Only persist a per-date override when the text actually changed
+                              // from what was shown — an untouched cell inheriting a weekly
+                              // default shouldn't silently create a redundant row every week.
                               saveSlot(date, mealType, e.target.value);
                             }
                           }}
-                          className={`w-full ${input} text-xs ${pendingText !== undefined ? "border-bloom" : ""}`}
+                          className={`w-full ${input} text-xs ${pendingText !== undefined ? "border-bloom" : ""} ${isInherited ? "italic text-ink-muted dark:text-mist-muted" : ""}`}
                         />
                       </td>
                     );

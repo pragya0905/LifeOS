@@ -1,4 +1,5 @@
 import AssistantMemory from "../components/AssistantMemory";
+import AssistantModelPicker from "../components/AssistantModelPicker";
 import DataExport from "../components/DataExport";
 import DeleteAccount from "../components/DeleteAccount";
 import Profile from "../components/Profile";
@@ -20,6 +21,7 @@ export default function Settings() {
 
       <p className={`mb-2 ${sectionLabel}`}>Assistant</p>
       <div className="mb-8 flex flex-col gap-6">
+        <AssistantModelPicker />
         <AssistantMemory />
       </div>
 

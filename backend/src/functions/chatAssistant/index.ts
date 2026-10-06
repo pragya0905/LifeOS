@@ -2,9 +2,11 @@ import type { APIGatewayProxyEventV2 } from "aws-lambda";
 import Anthropic from "@anthropic-ai/sdk";
 import { PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { SSMClient, GetParameterCommand } from "@aws-sdk/client-ssm";
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { randomUUID } from "node:crypto";
 import { ddb } from "../../common/dynamo";
 import { verifyIdToken } from "../../common/jwtVerify";
+import { EXPENSE_CATEGORIES } from "../../common/expenseCategories";
 import type {
   AssistantConversationTurn,
   Budget,
@@ -48,6 +50,54 @@ function writeEvent(stream: NodeJS.WritableStream, event: Record<string, unknown
 
 const MAX_TOOL_ITERATIONS = 5;
 const HISTORY_TURN_LIMIT = 40; // ~20 exchanges of conversational context
+
+const s3 = new S3Client({});
+const ATTACHMENT_CONTENT_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"];
+const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
+
+interface AssistantAttachment {
+  key: string;
+  contentType: string;
+  fileName: string;
+}
+
+function parseAttachment(body: Record<string, unknown>): AssistantAttachment | undefined {
+  const raw = body.attachment;
+  if (!raw || typeof raw !== "object") return undefined;
+  const { key, contentType, fileName } = raw as Record<string, unknown>;
+  if (typeof key !== "string" || typeof contentType !== "string" || typeof fileName !== "string") {
+    return undefined;
+  }
+  if (!ATTACHMENT_CONTENT_TYPES.includes(contentType)) return undefined;
+  return { key, contentType, fileName };
+}
+
+// Fetches the just-uploaded file from AssistantAttachmentsBucket and turns it into the
+// content block Claude expects, confirmed against the current Anthropic docs (not guessed):
+// image/* -> an "image" block, application/pdf -> a "document" block, both base64-encoded.
+async function buildAttachmentBlock(
+  userId: string,
+  attachment: AssistantAttachment,
+): Promise<Anthropic.ImageBlockParam | Anthropic.DocumentBlockParam> {
+  if (!attachment.key.startsWith(`${userId}/`)) {
+    throw new Error("Attachment key does not belong to this user");
+  }
+  const obj = await s3.send(
+    new GetObjectCommand({ Bucket: process.env.ASSISTANT_ATTACHMENTS_BUCKET_NAME, Key: attachment.key }),
+  );
+  const bytes = await obj.Body!.transformToByteArray();
+  if (bytes.length > MAX_ATTACHMENT_BYTES) {
+    throw new Error("Attachment is too large (max 15MB)");
+  }
+  const data = Buffer.from(bytes).toString("base64");
+  if (attachment.contentType === "application/pdf") {
+    return { type: "document", source: { type: "base64", media_type: "application/pdf", data } };
+  }
+  return {
+    type: "image",
+    source: { type: "base64", media_type: attachment.contentType as "image/jpeg" | "image/png" | "image/webp" | "image/gif", data },
+  };
+}
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -308,7 +358,7 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "log_routine_step",
     description:
-      "Mark a routine checklist step done or skipped for a date. routineId and stepIndex must be exact values already known from conversation context or a prior tool result — never guess them.",
+      "Mark a routine checklist step done or skipped for a date. routineId and stepIndex must be exact values already known from conversation context or a prior tool result — never guess them; call get_routines first if you don't have them.",
     input_schema: {
       type: "object",
       properties: {
@@ -323,7 +373,7 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "log_medication",
     description:
-      "Mark a medication taken or missed for a date. medicationId must be an exact value already known from conversation context or a prior tool result — never guess it.",
+      "Mark a medication taken or missed for a date. medicationId must be an exact value already known from conversation context or a prior tool result — never guess it; call get_medications first if you don't have it.",
     input_schema: {
       type: "object",
       properties: {
@@ -416,23 +466,83 @@ const TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "get_meal_plan_template",
+    description:
+      "Get the user's weekly default meals (e.g. 'what do I usually have on Mondays') — these are the recurring defaults that fill a day unless a specific date was overridden.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "set_meal_plan_template",
+    description:
+      "Set a recurring weekly default meal for a day of the week (e.g. 'I usually have oatmeal on weekday mornings' — call once per weekday). This does not touch any specific date's plan, only the default that future dates fall back to.",
+    input_schema: {
+      type: "object",
+      properties: {
+        dayOfWeek: { type: "integer", minimum: 0, maximum: 6, description: "0=Sunday..6=Saturday." },
+        mealType: { type: "string", enum: ["breakfast", "lunch", "dinner", "snack"] },
+        text: { type: "string" },
+      },
+      required: ["dayOfWeek", "mealType", "text"],
+    },
+  },
+  {
     name: "create_routine_template",
     description:
-      "Create a new multi-step routine checklist (e.g. a skincare or morning routine) when the user describes one. Each step is a short text description, not a tool with its own fields.",
+      "Create a new multi-step routine checklist (e.g. a skincare or morning routine) when the user describes one. Each step is a short text description, not a tool with its own fields. If the user says it only happens on certain days (e.g. 'every Sunday' or 'weekdays'), set daysOfWeek instead of just putting the day in the name — leave daysOfWeek unset for a routine done every day.",
     input_schema: {
       type: "object",
       properties: {
         category: { type: "string", enum: ["skinCare", "hairCare", "dailyRoutine", "custom"] },
         name: { type: "string" },
         steps: { type: "array", items: { type: "string" }, description: "One entry per step, in order." },
+        daysOfWeek: {
+          type: "array",
+          items: { type: "integer", minimum: 0, maximum: 6 },
+          description: "Days this routine runs on: 0=Sunday, 1=Monday, ..., 6=Saturday. Omit entirely if it runs every day.",
+        },
       },
       required: ["category", "name", "steps"],
     },
   },
   {
+    name: "get_routines",
+    description: "List all of the user's routine checklists — call this to find a routineId before update_routine_template/delete_routine_template/log_routine_step, if you don't already have it.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "update_routine_template",
+    description:
+      "Change an existing routine's name, category, steps, or day-of-week schedule. routineId must be an exact value already known from conversation context or a prior tool result — never guess it; call get_routines first if you don't have it. Only include the fields that are changing.",
+    input_schema: {
+      type: "object",
+      properties: {
+        routineId: { type: "string" },
+        name: { type: "string" },
+        category: { type: "string", enum: ["skinCare", "hairCare", "dailyRoutine", "custom"] },
+        steps: { type: "array", items: { type: "string" } },
+        daysOfWeek: {
+          type: "array",
+          items: { type: "integer", minimum: 0, maximum: 6 },
+          description: "0=Sunday..6=Saturday. Pass every day (or omit this field) to make it run daily again.",
+        },
+      },
+      required: ["routineId"],
+    },
+  },
+  {
+    name: "delete_routine_template",
+    description:
+      "Permanently remove a routine checklist. routineId must be an exact value already known from conversation context or a prior tool result — never guess it; call get_routines first if you don't have it.",
+    input_schema: {
+      type: "object",
+      properties: { routineId: { type: "string" } },
+      required: ["routineId"],
+    },
+  },
+  {
     name: "create_medication",
     description:
-      "Add a new medication the user says they're taking. durationDays is required — if the user gives an end date or doesn't say how long, work out a reasonable number of days (e.g. 'ongoing' or no end mentioned → a large number like 365). A reminder time can't be set this way — if the user wants a daily reminder, tell them to set the time on the Medications page.",
+      "Add a new medication the user says they're taking. durationDays is required — if the user gives an end date or doesn't say how long, work out a reasonable number of days (e.g. 'ongoing' or no end mentioned → a large number like 365). If they mention a reminder time, set timeOfDay — never guess timezoneOffsetMinutes yourself, it's filled in automatically.",
     input_schema: {
       type: "object",
       properties: {
@@ -441,8 +551,42 @@ const TOOLS: Anthropic.Tool[] = [
         notes: { type: "string", description: "e.g. 'take with food'" },
         startDate: { type: "string", description: "YYYY-MM-DD. Defaults to today if omitted." },
         durationDays: { type: "integer", minimum: 1 },
+        timeOfDay: { type: "string", description: "HH:MM 24-hour — when to send a daily reminder, if the user wants one." },
       },
       required: ["name", "durationDays"],
+    },
+  },
+  {
+    name: "get_medications",
+    description: "List all of the user's medications — call this to find a medicationId before update_medication/delete_medication, if you don't already have it.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "update_medication",
+    description:
+      "Change an existing medication's name, dosage, notes, duration, or reminder time. medicationId must be an exact value already known from conversation context or a prior tool result — never guess it; call get_medications first if you don't have it.",
+    input_schema: {
+      type: "object",
+      properties: {
+        medicationId: { type: "string" },
+        name: { type: "string" },
+        dosage: { type: "string" },
+        notes: { type: "string" },
+        startDate: { type: "string", description: "YYYY-MM-DD" },
+        durationDays: { type: "integer", minimum: 1 },
+        timeOfDay: { type: "string", description: "HH:MM 24-hour, or omit to leave unchanged." },
+      },
+      required: ["medicationId"],
+    },
+  },
+  {
+    name: "delete_medication",
+    description:
+      "Permanently remove a medication. medicationId must be an exact value already known from conversation context or a prior tool result — never guess it; call get_medications first if you don't have it.",
+    input_schema: {
+      type: "object",
+      properties: { medicationId: { type: "string" } },
+      required: ["medicationId"],
     },
   },
   {
@@ -465,6 +609,72 @@ const TOOLS: Anthropic.Tool[] = [
         habitLinkTargetValue: { type: "number", description: "Required for habit_linked mode — the cumulative target." },
       },
       required: ["title", "type", "progressMode"],
+    },
+  },
+  {
+    name: "create_expense",
+    description: "Log a new expense when the user mentions spending money, e.g. 'I spent 400 on groceries'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        category: { type: "string", enum: EXPENSE_CATEGORIES },
+        amount: { type: "number", minimum: 0 },
+        note: { type: "string" },
+        date: { type: "string", description: "YYYY-MM-DD. Defaults to today if omitted." },
+      },
+      required: ["category", "amount"],
+    },
+  },
+  {
+    name: "get_expenses",
+    description:
+      "Look up recently logged expenses — e.g. to answer 'how much did I spend on food this week' or to find an expenseId before calling update_expense/delete_expense.",
+    input_schema: {
+      type: "object",
+      properties: {
+        category: { type: "string", enum: EXPENSE_CATEGORIES },
+        from: { type: "string", description: "YYYY-MM-DD" },
+        to: { type: "string", description: "YYYY-MM-DD" },
+      },
+    },
+  },
+  {
+    name: "update_expense",
+    description:
+      "Correct an existing expense's category, amount, note, or date. expenseId must be an exact value already known from conversation context or a prior tool result — never guess it; use get_expenses first if you don't have it.",
+    input_schema: {
+      type: "object",
+      properties: {
+        expenseId: { type: "string" },
+        category: { type: "string", enum: EXPENSE_CATEGORIES },
+        amount: { type: "number", minimum: 0 },
+        note: { type: "string" },
+        date: { type: "string", description: "YYYY-MM-DD" },
+      },
+      required: ["expenseId"],
+    },
+  },
+  {
+    name: "delete_expense",
+    description:
+      "Permanently remove a logged expense. expenseId must be an exact value already known from conversation context or a prior tool result — never guess it.",
+    input_schema: {
+      type: "object",
+      properties: { expenseId: { type: "string" } },
+      required: ["expenseId"],
+    },
+  },
+  {
+    name: "set_budget",
+    description:
+      "Set the user's monthly spending limit for one expense category, e.g. 'cap my food spending at 8000 a month'. This is separate from update_profile's overall monthlyBudget.",
+    input_schema: {
+      type: "object",
+      properties: {
+        category: { type: "string", enum: EXPENSE_CATEGORIES },
+        monthlyLimit: { type: "number", minimum: 0 },
+      },
+      required: ["category", "monthlyLimit"],
     },
   },
   {
@@ -522,6 +732,7 @@ async function executeTool(
   name: string,
   input: Record<string, unknown>,
   authHeader: string,
+  timezoneOffsetMinutes: number | undefined,
 ): Promise<{ content: string; isError: boolean }> {
   try {
     let result: { status: number; data: unknown };
@@ -617,12 +828,48 @@ async function executeTool(
         );
         break;
       }
+      case "get_meal_plan_template": {
+        result = await callApi(apiUrl, authHeader, "/meal-plan-templates", "GET");
+        break;
+      }
+      case "set_meal_plan_template": {
+        result = await callApi(
+          apiUrl,
+          authHeader,
+          `/meal-plan-templates/${input.dayOfWeek}/${input.mealType}`,
+          "PATCH",
+          { text: input.text },
+        );
+        break;
+      }
+      case "get_routines": {
+        result = await callApi(apiUrl, authHeader, "/routines", "GET");
+        break;
+      }
       case "create_routine_template": {
         result = await callApi(apiUrl, authHeader, "/routines", "POST", {
           category: input.category,
           name: input.name,
           steps: input.steps,
+          daysOfWeek: input.daysOfWeek,
         });
+        break;
+      }
+      case "update_routine_template": {
+        result = await callApi(apiUrl, authHeader, `/routines/${input.routineId}`, "PATCH", {
+          name: input.name,
+          category: input.category,
+          steps: input.steps,
+          daysOfWeek: input.daysOfWeek,
+        });
+        break;
+      }
+      case "delete_routine_template": {
+        result = await callApi(apiUrl, authHeader, `/routines/${input.routineId}`, "DELETE");
+        break;
+      }
+      case "get_medications": {
+        result = await callApi(apiUrl, authHeader, "/medications", "GET");
         break;
       }
       case "create_medication": {
@@ -632,7 +879,25 @@ async function executeTool(
           notes: input.notes,
           startDate: input.startDate,
           durationDays: input.durationDays,
+          timeOfDay: input.timeOfDay,
+          timezoneOffsetMinutes: input.timeOfDay ? timezoneOffsetMinutes : undefined,
         });
+        break;
+      }
+      case "update_medication": {
+        result = await callApi(apiUrl, authHeader, `/medications/${input.medicationId}`, "PATCH", {
+          name: input.name,
+          dosage: input.dosage,
+          notes: input.notes,
+          startDate: input.startDate,
+          durationDays: input.durationDays,
+          timeOfDay: input.timeOfDay,
+          timezoneOffsetMinutes: input.timeOfDay ? timezoneOffsetMinutes : undefined,
+        });
+        break;
+      }
+      case "delete_medication": {
+        result = await callApi(apiUrl, authHeader, `/medications/${input.medicationId}`, "DELETE");
         break;
       }
       case "create_wish": {
@@ -645,6 +910,43 @@ async function executeTool(
           quantityUnit: input.quantityUnit,
           linkedHabitType: input.linkedHabitType,
           habitLinkTargetValue: input.habitLinkTargetValue,
+        });
+        break;
+      }
+      case "create_expense": {
+        result = await callApi(apiUrl, authHeader, "/expenses", "POST", {
+          category: input.category,
+          amount: input.amount,
+          note: input.note,
+          date: (input.date as string) || today(),
+        });
+        break;
+      }
+      case "get_expenses": {
+        const params = new URLSearchParams();
+        if (input.category) params.set("category", input.category as string);
+        if (input.from) params.set("from", input.from as string);
+        if (input.to) params.set("to", input.to as string);
+        const qs = params.toString();
+        result = await callApi(apiUrl, authHeader, `/expenses${qs ? `?${qs}` : ""}`, "GET");
+        break;
+      }
+      case "update_expense": {
+        result = await callApi(apiUrl, authHeader, `/expenses/${input.expenseId}`, "PATCH", {
+          category: input.category,
+          amount: input.amount,
+          note: input.note,
+          date: input.date,
+        });
+        break;
+      }
+      case "delete_expense": {
+        result = await callApi(apiUrl, authHeader, `/expenses/${input.expenseId}`, "DELETE");
+        break;
+      }
+      case "set_budget": {
+        result = await callApi(apiUrl, authHeader, `/budgets/${input.category}`, "PUT", {
+          monthlyLimit: input.monthlyLimit,
         });
         break;
       }
@@ -725,17 +1027,21 @@ const ONBOARDING_SYSTEM_PROMPT_ADDITION =
 function buildSystemPrompt(memories: UserMemory[], goalsContext: string, isOnboarding: boolean): string {
   const base =
     "You are the LifeOs assistant — a supportive, conversational personal life-management " +
-    "companion. You can read, log, and create the user's tasks, habits, logs (food/sleep/weight/" +
-    "mood/calls/cycle), routines, medications, wishes, goals, profile details, and journal via " +
-    "the tools available to you. " +
+    "companion. You can read, log, create, edit, and delete the user's tasks, habits, logs " +
+    "(food/sleep/weight/mood/calls/cycle), routines (including their day-of-week schedule), " +
+    "medications (including reminder times), expenses and budgets (with category), meal plans " +
+    "(both a specific date and recurring weekly defaults), wishes, goals, profile details, and " +
+    "journal via the tools available to you. " +
     `Today's date is ${today()}. When the user reports something that maps to a tool (a habit ` +
-    "amount, a food/sleep/mood/etc. entry, a task, a routine or medication tick, a new routine/" +
-    "medication/wish/goal/profile detail), call the matching tool rather than just acknowledging " +
-    "it in text — logging and creating things is the point of this chat. Keep replies short and " +
-    "natural, like a real conversation, since they may be spoken aloud. Never invent numbers or " +
-    "facts you don't have — call a get_* tool to check before answering a question about the " +
-    "user's own data. When the user shares something durable worth remembering for future " +
-    "conversations that doesn't fit one of the other tools, call remember_fact.\n\n" +
+    "amount, a food/sleep/mood/etc. entry, a task, a routine or medication tick, an expense, a " +
+    "new or edited routine/medication/expense/budget/meal-plan-default/wish/goal/profile " +
+    "detail), call the matching tool rather than just acknowledging it in text — logging, " +
+    "planning, and editing things is the point of this chat, not just talking about them. Keep " +
+    "replies short and natural, like a real conversation, since they may be spoken aloud. Never " +
+    "invent numbers or facts you don't have — call a get_* tool to check before answering a " +
+    "question about the user's own data. When the user shares something durable worth " +
+    "remembering for future conversations that doesn't fit one of the other tools, call " +
+    "remember_fact.\n\n" +
     "Coaching style — honest accountability, not pure cheerleading: when discussing the " +
     "user's wishes, habits, or budget, call get_progress_summary first and ground everything " +
     "in its numbers. If it shows a wish falling behind schedule, a broken habit streak, or " +
@@ -789,7 +1095,12 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
 
     const userMessage = typeof body.message === "string" ? body.message.trim() : "";
     const isOnboarding = body.mode === "onboarding";
-    if (!userMessage) {
+    const attachment = parseAttachment(body);
+    // Only ever sourced from the client's own clock (JS Date#getTimezoneOffset() convention),
+    // never from the model — see create_medication/update_medication's tool descriptions.
+    const timezoneOffsetMinutes =
+      typeof body.timezoneOffsetMinutes === "number" ? body.timezoneOffsetMinutes : undefined;
+    if (!userMessage && !attachment) {
       writeEvent(responseStream, { type: "error", message: "message is required" });
       responseStream.end();
       return;
@@ -797,7 +1108,7 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
     const conversationId =
       typeof body.conversationId === "string" && body.conversationId ? body.conversationId : randomUUID();
 
-    const [historyResult, memoryResult, goalsContext] = await Promise.all([
+    const [historyResult, memoryResult, goalsContext, profileResult] = await Promise.all([
       ddb.send(
         new QueryCommand({
           TableName: process.env.ASSISTANT_CONVERSATIONS_TABLE_NAME,
@@ -815,13 +1126,40 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
         }),
       ),
       fetchGoalsContext(API_URL, authHeader as string),
+      callApi(API_URL, authHeader as string, "/profile", "GET"),
     ]);
     const historyItems = ((historyResult.Items ?? []) as AssistantConversationTurn[]).slice(-HISTORY_TURN_LIMIT);
     const memories = (memoryResult.Items ?? []) as UserMemory[];
+    const assistantModel =
+      ((profileResult.data as { assistantModel?: string } | undefined)?.assistantModel) || "claude-haiku-4-5";
+
+    // Persisted history always stays a plain string — base64 attachment data can be
+    // megabytes, far past DynamoDB's 400KB item cap, and there's no need to replay a file
+    // back to the model on every later turn anyway. The real content block is only built for
+    // this request; later turns just see the placeholder text below.
+    let userContent: Anthropic.MessageParam["content"] = userMessage;
+    let persistedUserText = userMessage;
+    if (attachment) {
+      try {
+        const attachmentBlock = await buildAttachmentBlock(userId, attachment);
+        userContent = [
+          attachmentBlock,
+          { type: "text", text: userMessage || "Here's a file I wanted to share." },
+        ];
+        persistedUserText = `${userMessage ? `${userMessage}\n\n` : ""}[Attached ${attachment.fileName}]`;
+      } catch (err) {
+        writeEvent(responseStream, {
+          type: "error",
+          message: err instanceof Error ? err.message : "Failed to read the attached file",
+        });
+        responseStream.end();
+        return;
+      }
+    }
 
     const messages: Anthropic.MessageParam[] = [
       ...historyItems.map((item) => ({ role: item.role, content: item.content }) as Anthropic.MessageParam),
-      { role: "user", content: userMessage },
+      { role: "user", content: userContent },
     ];
 
     const client = await getClient();
@@ -830,7 +1168,7 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
 
     for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
       const stream = client.messages.stream({
-        model: "claude-haiku-4-5",
+        model: assistantModel,
         max_tokens: 1024,
         system: systemPrompt,
         tools: TOOLS,
@@ -862,6 +1200,7 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
           tool.name,
           tool.input as Record<string, unknown>,
           authHeader as string,
+          timezoneOffsetMinutes,
         );
         toolResults.push({ type: "tool_result", tool_use_id: tool.id, content, is_error: isError });
       }
@@ -882,7 +1221,7 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
           conversationTurn: `${conversationId}#${String(now).padStart(15, "0")}`,
           conversationId,
           role: "user",
-          content: userMessage,
+          content: persistedUserText,
           createdAt: nowIso,
         } satisfies AssistantConversationTurn,
       }),

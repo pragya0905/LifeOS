@@ -3,9 +3,10 @@ import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb } from "../../common/dynamo";
 import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
-import type { UserSex } from "../../common/types";
+import type { AssistantModel, UserSex } from "../../common/types";
 
 const SEX_VALUES: UserSex[] = ["male", "female", "unspecified"];
+const ASSISTANT_MODEL_VALUES: AssistantModel[] = ["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5"];
 
 export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) => {
   const userId = getUserId(event);
@@ -35,11 +36,15 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
   if (body.sex !== undefined && !SEX_VALUES.includes(body.sex as UserSex)) {
     return errorResponse(400, `sex must be one of ${SEX_VALUES.join(", ")}`);
   }
+  if (body.assistantModel !== undefined && !ASSISTANT_MODEL_VALUES.includes(body.assistantModel as AssistantModel)) {
+    return errorResponse(400, `assistantModel must be one of ${ASSISTANT_MODEL_VALUES.join(", ")}`);
+  }
   if (
     body.heightCm === undefined &&
     body.monthlyBudget === undefined &&
     body.onboardingCompleted === undefined &&
-    body.sex === undefined
+    body.sex === undefined &&
+    body.assistantModel === undefined
   ) {
     return errorResponse(400, "No updatable fields provided");
   }
@@ -63,6 +68,11 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     names["#sex"] = "sex";
     values[":sex"] = body.sex;
     setClauses.push("#sex = :sex");
+  }
+  if (body.assistantModel !== undefined) {
+    names["#assistantModel"] = "assistantModel";
+    values[":assistantModel"] = body.assistantModel;
+    setClauses.push("#assistantModel = :assistantModel");
   }
   if (body.onboardingCompleted === true) {
     // Stamped server-side (not client-supplied) so it can't be forged/skewed by the client clock.

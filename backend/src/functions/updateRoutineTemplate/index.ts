@@ -6,7 +6,7 @@ import { jsonResponse, errorResponse } from "../../common/http";
 import type { RoutineCategory } from "../../common/types";
 
 const CATEGORIES: RoutineCategory[] = ["skinCare", "hairCare", "dailyRoutine", "custom"];
-const UPDATABLE_FIELDS = ["name", "category", "steps"] as const;
+const UPDATABLE_FIELDS = ["name", "category", "steps", "daysOfWeek"] as const;
 
 export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) => {
   const userId = getUserId(event);
@@ -35,6 +35,13 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     body.steps = (body.steps as string[]).map((s) => s.trim());
   }
   if (typeof body.name === "string") body.name = body.name.trim();
+
+  if (body.daysOfWeek !== undefined) {
+    const valid =
+      Array.isArray(body.daysOfWeek) &&
+      body.daysOfWeek.every((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+    if (!valid) return errorResponse(400, "daysOfWeek must be an array of integers 0-6 (0=Sun..6=Sat)");
+  }
 
   const updates = UPDATABLE_FIELDS.filter((field) => body[field] !== undefined);
   if (updates.length === 0) return errorResponse(400, "No updatable fields provided");

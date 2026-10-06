@@ -20,10 +20,19 @@ import {
 
 const CONVERSATION_ID_KEY = "lifeos_assistant_conversation_id";
 const MUTED_KEY = "lifeos_assistant_muted";
+const ALLOWED_ATTACHMENT_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"];
+const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
 
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  attachmentLabel?: string;
+}
+
+interface PendingAttachment {
+  key: string;
+  contentType: string;
+  fileName: string;
 }
 
 interface ConversationSummary {
@@ -106,6 +115,9 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
   const [voiceModeOpen, setVoiceModeOpen] = useState(false);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
+  const [attaching, setAttaching] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   // Onboarding always starts a brand-new conversation rather than picking up whatever
   // conversationId happens to be in localStorage from a prior session.
   const conversationIdRef = useRef<string | undefined>(onboarding ? undefined : loadConversationId());
@@ -196,9 +208,45 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
     }
   }
 
+  async function handleFileSelected(file: File) {
+    if (!ALLOWED_ATTACHMENT_TYPES.includes(file.type)) {
+      setError("Only JPEG, PNG, WEBP, GIF images or PDFs are supported");
+      return;
+    }
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      setError("That file is too large (max 15MB)");
+      return;
+    }
+    setAttaching(true);
+    setError(null);
+    try {
+      const { uploadUrl, key } = await request<{ uploadUrl: string; key: string }>(
+        "/assistant/attachments/presign",
+        { method: "POST", body: JSON.stringify({ contentType: file.type }) },
+      );
+      const putResponse = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!putResponse.ok) throw new Error("Upload to storage failed");
+      setPendingAttachment({ key, contentType: file.type, fileName: file.name });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to attach file");
+    } finally {
+      setAttaching(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
   async function sendMessage(message: string) {
     if (listening) stopListening();
-    setMessages((prev) => [...prev, { role: "user", content: message }]);
+    const attachment = pendingAttachment;
+    setPendingAttachment(null);
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", content: message, attachmentLabel: attachment?.fileName },
+    ]);
     setSending(true);
     setError(null);
 
@@ -240,6 +288,7 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
           }
         },
         onboarding ? "onboarding" : undefined,
+        attachment ?? undefined,
       );
       if (finalReply) speak(finalReply);
     } catch (err) {
@@ -252,7 +301,7 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const trimmed = text.trim();
-    if (!trimmed || sending) return;
+    if ((!trimmed && !pendingAttachment) || sending) return;
     setText("");
     await sendMessage(trimmed);
   }
@@ -343,6 +392,9 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
                     : "bg-stone/40 text-ink dark:bg-stone-dark/40 dark:text-paper"
                 }`}
               >
+                {m.attachmentLabel && (
+                  <div className="mb-1 text-xs opacity-80">📎 {m.attachmentLabel}</div>
+                )}
                 {m.role === "assistant" ? (
                   <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                     {m.content}
@@ -368,7 +420,39 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
 
       {error && <p className={`mb-4 ${errorText}`}>{error}</p>}
 
+      {pendingAttachment && (
+        <div className="mb-2 flex items-center gap-2 text-xs text-ink-muted dark:text-mist-muted">
+          <span>📎 {pendingAttachment.fileName}</span>
+          <button
+            type="button"
+            onClick={() => setPendingAttachment(null)}
+            aria-label="Remove attachment"
+            className="text-alert hover:underline"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="flex items-center gap-2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={ALLOWED_ATTACHMENT_TYPES.join(",")}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleFileSelected(file);
+          }}
+          className="hidden"
+          id="assistant-attachment-input"
+        />
+        <label
+          htmlFor="assistant-attachment-input"
+          aria-label="Attach a photo or document"
+          className={`${pillButton} ${pillButtonInactive} cursor-pointer px-3 py-2 ${attaching ? "opacity-50" : ""}`}
+        >
+          {attaching ? "…" : "📎"}
+        </label>
         <input
           type="text"
           value={text}
@@ -397,7 +481,11 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
             🎙️
           </button>
         )}
-        <button type="submit" disabled={sending || !text.trim()} className={secondaryButton}>
+        <button
+          type="submit"
+          disabled={sending || (!text.trim() && !pendingAttachment)}
+          className={secondaryButton}
+        >
           Send
         </button>
       </form>
