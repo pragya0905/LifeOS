@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "build": "PATH=\"$PWD/node_modules/.bin:$PATH\" sam build",
     "deploy": "npm run build && sam deploy"
   },
@@ -16,6 +17,8 @@
     "@types/web-push": "^3.6.4",
     "esbuild": "^0.24.0",
     "typescript": "^5.6.0",
+    "vite": "^7.3.7",
+    "vitest": "^5.0.3",
     "zod": "^4.4.3"
   },
   "dependencies": {
