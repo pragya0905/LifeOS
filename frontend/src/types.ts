@@ -149,6 +149,31 @@ export interface Insights {
   suggestions: string[];
 }
 
+export interface ProgressSummary {
+  todaysDate: string;
+  wishes: {
+    title: string;
+    targetDate: string;
+    progressPercent: number | null;
+    elapsedPercent: number | null;
+    fallingBehind: boolean;
+  }[];
+  habits: {
+    habitType: "water" | "exercise" | "steps";
+    currentStreakDays: number;
+    missedInLast7Days: number;
+    missedInLast30Days: number;
+  }[];
+  budgets: {
+    category: ExpenseCategory;
+    monthlyLimit: number;
+    spentSoFar: number;
+    remainingThisMonth: number;
+    projectedMonthEndTotal: number;
+    projectedOverBy: number;
+  }[];
+}
+
 export type ExpenseCategory =
   | "food"
   | "groceries"

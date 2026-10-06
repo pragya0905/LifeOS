@@ -3,8 +3,8 @@ import { useApi } from "../api/useApi";
 import LineChart from "../components/LineChart";
 import WeightTrend from "../components/WeightTrend";
 import { toLocalDateStr } from "../lib/date";
-import { formatINR } from "../lib/expenseCategories";
-import type { Expense, HabitLog, Insights as InsightsData, LogEntry } from "../types";
+import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_BAR, EXPENSE_CATEGORY_EMOJI, EXPENSE_CATEGORY_LABEL, formatINR } from "../lib/expenseCategories";
+import type { Expense, HabitLog, Insights as InsightsData, LogEntry, ProgressSummary } from "../types";
 import {
   card,
   errorText,
@@ -71,6 +71,9 @@ export default function Insights() {
   const [stepsWeekly, setStepsWeekly] = useState<{ date: string; value: number }[]>([]);
   const [moodWeekly, setMoodWeekly] = useState<{ date: string; value: number }[]>([]);
   const [spendingWeekly, setSpendingWeekly] = useState<{ date: string; value: number }[]>([]);
+  const [categoryBreakdown, setCategoryBreakdown] = useState<{ category: Expense["category"]; total: number }[]>([]);
+
+  const [progressSummary, setProgressSummary] = useState<ProgressSummary | null>(null);
 
   useEffect(() => {
     let ignore = false;
@@ -137,6 +140,16 @@ export default function Insights() {
         }
         setSpendingTrend(spendingDays);
         setSpendingWeekly(weeklyBuckets(spendByDate, "sum"));
+
+        const spendByCategory = new Map<Expense["category"], number>();
+        for (const expense of expensesData.expenses) {
+          spendByCategory.set(expense.category, (spendByCategory.get(expense.category) ?? 0) + expense.amount);
+        }
+        setCategoryBreakdown(
+          EXPENSE_CATEGORIES.map((category) => ({ category, total: spendByCategory.get(category) ?? 0 }))
+            .filter((c) => c.total > 0)
+            .sort((a, b) => b.total - a.total),
+        );
       } catch {
         // Trend charts are a bonus view — the on-demand AI insights below still work.
       } finally {
@@ -144,6 +157,21 @@ export default function Insights() {
       }
     }
     loadTrend();
+    return () => {
+      ignore = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    let ignore = false;
+    request<ProgressSummary>("/progress-summary")
+      .then((data) => {
+        if (!ignore) setProgressSummary(data);
+      })
+      .catch(() => {
+        // Optional card — the rest of the page still works without it.
+      });
     return () => {
       ignore = true;
     };
@@ -261,6 +289,89 @@ export default function Insights() {
           </div>
         </div>
       )}
+
+      {categoryBreakdown.length > 0 && (
+        <div className={`mb-6 ${card}`}>
+          <h2 className={`mb-3 ${sectionLabel}`}>Spending by category ({WEEKLY_WEEKS} weeks)</h2>
+          <ul className="flex flex-col gap-2">
+            {categoryBreakdown.map(({ category, total }) => (
+              <li key={category}>
+                <div className="mb-1 flex items-center justify-between text-sm">
+                  <span className="text-ink dark:text-paper">
+                    {EXPENSE_CATEGORY_EMOJI[category]} {EXPENSE_CATEGORY_LABEL[category]}
+                  </span>
+                  <span className="font-medium text-ink dark:text-paper">{formatINR(total)}</span>
+                </div>
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-stone dark:bg-stone-dark">
+                  <div
+                    className={`h-full ${EXPENSE_CATEGORY_BAR[category]}`}
+                    style={{ width: `${(total / categoryBreakdown[0].total) * 100}%` }}
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {progressSummary &&
+        (progressSummary.wishes.length > 0 || progressSummary.budgets.length > 0 || progressSummary.habits.length > 0) && (
+          <div className={`mb-6 flex flex-col gap-4 ${card}`}>
+            <h2 className={sectionLabel}>Your progress</h2>
+
+            {progressSummary.wishes.length > 0 && (
+              <div>
+                <p className={`mb-1.5 text-xs font-medium uppercase tracking-wide ${mutedText}`}>Wishes</p>
+                <ul className="flex flex-col gap-1">
+                  {progressSummary.wishes.map((w) => (
+                    <li key={w.title} className="flex items-center justify-between gap-2 text-sm">
+                      <span className="truncate text-ink dark:text-paper">{w.title}</span>
+                      <span className={w.fallingBehind ? "shrink-0 font-medium text-alert" : `shrink-0 ${mutedText}`}>
+                        {w.progressPercent ?? 0}% done{w.fallingBehind ? " · falling behind" : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {progressSummary.habits.some((h) => h.currentStreakDays > 0 || h.missedInLast7Days > 0) && (
+              <div>
+                <p className={`mb-1.5 text-xs font-medium uppercase tracking-wide ${mutedText}`}>Habit streaks</p>
+                <ul className="flex flex-col gap-1">
+                  {progressSummary.habits.map((h) => (
+                    <li key={h.habitType} className="flex items-center justify-between gap-2 text-sm">
+                      <span className="capitalize text-ink dark:text-paper">{h.habitType}</span>
+                      <span className={mutedText}>
+                        {h.currentStreakDays > 0 ? `🔥 ${h.currentStreakDays}d streak` : "No current streak"} · missed{" "}
+                        {h.missedInLast7Days}/7d
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {progressSummary.budgets.length > 0 && (
+              <div>
+                <p className={`mb-1.5 text-xs font-medium uppercase tracking-wide ${mutedText}`}>Budgets this month</p>
+                <ul className="flex flex-col gap-1">
+                  {progressSummary.budgets.map((b) => (
+                    <li key={b.category} className="flex items-center justify-between gap-2 text-sm">
+                      <span className="text-ink dark:text-paper">
+                        {EXPENSE_CATEGORY_EMOJI[b.category]} {EXPENSE_CATEGORY_LABEL[b.category]}
+                      </span>
+                      <span className={b.projectedOverBy > 0 ? "font-medium text-alert" : mutedText}>
+                        {formatINR(b.remainingThisMonth)} left
+                        {b.projectedOverBy > 0 && ` · pace projects ${formatINR(b.projectedOverBy)} over`}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
 
       <div className={`mb-6 flex flex-wrap items-center gap-3 ${card}`}>
         <div className="flex gap-1.5">

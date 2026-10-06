@@ -1859,6 +1859,45 @@ Resources:
             Auth:
               Authorizer: CognitoAuthorizer
 
+  GetProgressSummaryFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-get-progress-summary-${Environment}"
+      CodeUri: src/functions/getProgressSummary/
+      Handler: index.handler
+      Timeout: 15
+      Environment:
+        Variables:
+          WISHES_TABLE_NAME: !Ref WishesTable
+          HABITS_TABLE_NAME: !Ref HabitLogsTable
+          BUDGETS_TABLE_NAME: !Ref BudgetsTable
+          EXPENSES_TABLE_NAME: !Ref ExpensesTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref WishesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref HabitLogsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref BudgetsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref ExpensesTable
+      Events:
+        GetProgressSummary:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /progress-summary
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
   ########################
   # Lambda — Goals (numeric daily targets on water/exercise/meditation)
   ########################

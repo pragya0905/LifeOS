@@ -7,16 +7,13 @@ import { randomUUID } from "node:crypto";
 import { ddb } from "../../common/dynamo";
 import { verifyIdToken } from "../../common/jwtVerify";
 import { EXPENSE_CATEGORIES } from "../../common/expenseCategories";
+import { computeProgressSummary, progressFractionForWish, type WishWithProgress } from "../../common/progressSummary";
 import type {
   AssistantConversationTurn,
-  Budget,
-  Expense,
   Goal,
   HabitLog,
-  HabitType,
   MemoryCategory,
   UserMemory,
-  Wish,
 } from "../../common/types";
 
 // This function runs behind a Lambda Function URL, not the shared HttpApi — response
@@ -120,29 +117,6 @@ async function callApi(
   return { status: res.status, data };
 }
 
-type WishWithProgress = Wish & { habitLinkedProgress: number | null };
-const HABIT_TYPES: HabitType[] = ["water", "exercise", "steps"];
-
-// Same progress-fraction logic wishReminderScheduler uses for its one-time push nudge,
-// duplicated here (not imported) since that function computes it inline rather than
-// exporting it — reused conceptually, not literally shared code.
-function progressFractionForWish(wish: WishWithProgress): number | null {
-  switch (wish.progressMode) {
-    case "percentage":
-      return wish.percentage !== undefined ? wish.percentage / 100 : null;
-    case "milestone":
-      if (!wish.milestones || wish.milestones.length === 0) return null;
-      return wish.milestones.filter((m) => m.done).length / wish.milestones.length;
-    case "quantity":
-      if (!wish.quantityTarget) return null;
-      return Math.min((wish.quantityCurrent ?? 0) / wish.quantityTarget, 1);
-    case "habit_linked":
-      return wish.habitLinkedProgress !== null ? wish.habitLinkedProgress / 100 : null;
-    default:
-      return null;
-  }
-}
-
 // Best-effort, non-blocking context for the system prompt on every turn — separate from (and
 // much cheaper than) the on-demand get_progress_summary tool below, so the assistant always
 // knows what the user is working toward without paying for the full deterministic computation
@@ -186,104 +160,6 @@ async function fetchGoalsContext(apiUrl: string, authHeader: string): Promise<st
   }
 }
 
-function daysInMonth(year: number, monthIndex0: number): number {
-  return new Date(Date.UTC(year, monthIndex0 + 1, 0)).getUTCDate();
-}
-
-// The deterministic engine behind get_progress_summary — every number here is computed in
-// code, never left to the model. Claude only narrates what this returns.
-async function computeProgressSummary(apiUrl: string, authHeader: string): Promise<Record<string, unknown>> {
-  const now = new Date();
-  const todayStr = today();
-  const monthStart = `${todayStr.slice(0, 7)}-01`;
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-
-  const [wishesRes, habitsRes, budgetsRes, expensesRes] = await Promise.all([
-    callApi(apiUrl, authHeader, "/wishes", "GET"),
-    callApi(apiUrl, authHeader, `/habits?from=${thirtyDaysAgo}&to=${todayStr}`, "GET"),
-    callApi(apiUrl, authHeader, "/budgets", "GET"),
-    callApi(apiUrl, authHeader, `/expenses?from=${monthStart}&to=${todayStr}`, "GET"),
-  ]);
-
-  // Falling-behind detection per wish — same elapsed-time-vs-progress comparison and 0.5/0.3
-  // thresholds wishReminderScheduler uses for its one-time push nudge, exposed here as an
-  // on-demand answer instead of only a background notification.
-  const wishes = (wishesRes.data as { wishes: WishWithProgress[] } | undefined)?.wishes ?? [];
-  const wishSummaries = wishes
-    .filter((w) => w.status === "active" && w.targetDate)
-    .map((wish) => {
-      const created = new Date(wish.createdAt);
-      const targetAt = new Date(`${wish.targetDate}T23:59:59.000Z`);
-      const totalMs = targetAt.getTime() - created.getTime();
-      const elapsedFraction = totalMs > 0 ? Math.min((now.getTime() - created.getTime()) / totalMs, 1) : null;
-      const progress = progressFractionForWish(wish);
-      const fallingBehind =
-        progress !== null &&
-        elapsedFraction !== null &&
-        elapsedFraction > 0.5 &&
-        elapsedFraction - progress > 0.3;
-      return {
-        title: wish.title,
-        targetDate: wish.targetDate,
-        progressPercent: progress !== null ? Math.round(progress * 100) : null,
-        elapsedPercent: elapsedFraction !== null ? Math.round(elapsedFraction * 100) : null,
-        fallingBehind,
-      };
-    });
-
-  // Habit consistency — current streak (consecutive days ending today with status "done")
-  // and missed-day counts over the last 7/30 days, per habit.
-  const habitLogs = (habitsRes.data as { habits: HabitLog[] } | undefined)?.habits ?? [];
-  const habitSummaries = HABIT_TYPES.map((type) => {
-    const logsByDate = new Map(habitLogs.filter((h) => h.habitType === type).map((h) => [h.date, h]));
-    let currentStreakDays = 0;
-    for (let i = 0; ; i++) {
-      const d = new Date(now.getTime() - i * 86400000).toISOString().slice(0, 10);
-      const log = logsByDate.get(d);
-      if (log && log.status === "done") currentStreakDays++;
-      else break;
-    }
-    let missedInLast7Days = 0;
-    let missedInLast30Days = 0;
-    for (let i = 0; i < 30; i++) {
-      const d = new Date(now.getTime() - i * 86400000).toISOString().slice(0, 10);
-      const log = logsByDate.get(d);
-      const isMissed = !log || log.status !== "done";
-      if (isMissed) {
-        missedInLast30Days++;
-        if (i < 7) missedInLast7Days++;
-      }
-    }
-    return { habitType: type, currentStreakDays, missedInLast7Days, missedInLast30Days };
-  });
-
-  // Budget pace projection — new calculation, not reused from anywhere: linear projection of
-  // this month's spend based on the daily rate so far, vs. each category's monthly limit.
-  const budgets = (budgetsRes.data as { budgets: Budget[] } | undefined)?.budgets ?? [];
-  const expenses = (expensesRes.data as { expenses: Expense[] } | undefined)?.expenses ?? [];
-  const dayOfMonth = now.getUTCDate();
-  const totalDaysInMonth = daysInMonth(now.getUTCFullYear(), now.getUTCMonth());
-  const round2 = (n: number) => Math.round(n * 100) / 100;
-  const budgetSummaries = budgets.map((budget) => {
-    const spentSoFar = expenses
-      .filter((e) => e.category === budget.category)
-      .reduce((sum, e) => sum + (e.amount ?? 0), 0);
-    const projectedMonthEndTotal =
-      dayOfMonth > 0 ? (spentSoFar / dayOfMonth) * totalDaysInMonth : spentSoFar;
-    return {
-      category: budget.category,
-      monthlyLimit: budget.monthlyLimit,
-      spentSoFar: round2(spentSoFar),
-      // Deterministic, not left for the model to subtract itself — same reasoning as every
-      // other number in this summary.
-      remainingThisMonth: round2(budget.monthlyLimit - spentSoFar),
-      projectedMonthEndTotal: round2(projectedMonthEndTotal),
-      projectedOverBy: round2(projectedMonthEndTotal - budget.monthlyLimit),
-    };
-  });
-
-  return { todaysDate: todayStr, wishes: wishSummaries, habits: habitSummaries, budgets: budgetSummaries };
-}
 
 const MEMORY_CATEGORIES: MemoryCategory[] = ["health", "financial", "emotional", "consistency", "general"];
 
