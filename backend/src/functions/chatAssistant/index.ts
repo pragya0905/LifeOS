@@ -492,7 +492,8 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: "create_expense",
-    description: "Log a new expense when the user mentions spending money, e.g. 'I spent 400 on groceries'.",
+    description:
+      "Log a new expense when the user mentions spending money, e.g. 'I spent 400 on groceries', or when they attach a photo of a receipt/bill — read the amount, merchant, and date off the image and call this directly rather than just describing what you see.",
     input_schema: {
       type: "object",
       properties: {
@@ -921,6 +922,15 @@ function buildSystemPrompt(memories: UserMemory[], goalsContext: string, isOnboa
     "question about the user's own data. When the user shares something durable worth " +
     "remembering for future conversations that doesn't fit one of the other tools, call " +
     "remember_fact.\n\n" +
+    "Receipts and bills: when the user attaches a photo or PDF of a receipt, bill, or expense " +
+    "screenshot, read it and call create_expense yourself — don't just describe what's in the " +
+    "image. Use the amount and date printed on it (fall back to today if no date is visible), " +
+    "pick the best-fitting category, and write a short note naming the merchant or items. If " +
+    "the image is too blurry to read the amount, or the category is genuinely ambiguous (e.g. " +
+    "a store that sells both groceries and household goods), ask the user to confirm the " +
+    "specific unclear detail rather than guessing — never invent a number you can't actually " +
+    "read. If the receipt clearly lists several distinct purchases that belong in different " +
+    "categories, log them as separate create_expense calls instead of one combined total.\n\n" +
     "Coaching style — honest accountability, not pure cheerleading: when discussing the " +
     "user's wishes, habits, or budget, call get_progress_summary first and ground everything " +
     "in its numbers. If it shows a wish falling behind schedule, a broken habit streak, or " +
