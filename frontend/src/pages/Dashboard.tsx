@@ -11,7 +11,6 @@ import TodayMeals from "../components/TodayMeals";
 import TodayMedications from "../components/TodayMedications";
 import TodayRoutines from "../components/TodayRoutines";
 import TodaySchedule from "../components/TodaySchedule";
-import TodaySummaryRings from "../components/TodaySummaryRings";
 import WelcomeCard from "../components/WelcomeCard";
 import { Skeleton } from "../components/Skeleton";
 import { todayLocal } from "../lib/date";
@@ -90,10 +89,6 @@ export default function Dashboard() {
       <p className={`-mt-4 mb-6 ${mutedText}`}>{formattedDate()}</p>
 
       <WelcomeCard />
-
-      <div className="mb-6">
-        <TodaySummaryRings />
-      </div>
 
       <Achievements />
 
