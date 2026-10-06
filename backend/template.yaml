@@ -391,6 +391,26 @@ Resources:
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
 
+  AchievementsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "LifeOs-Achievements-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: badgeKey
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: badgeKey
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
   ExpensesTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -1900,6 +1920,54 @@ Resources:
           Properties:
             ApiId: !Ref HttpApi
             Path: /progress-summary
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  GetAchievementsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node20"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-get-achievements-${Environment}"
+      CodeUri: src/functions/getAchievements/
+      Handler: index.handler
+      Timeout: 15
+      Environment:
+        Variables:
+          TASKS_TABLE_NAME: !Ref TasksTable
+          JOURNAL_TABLE_NAME: !Ref JournalEntriesTable
+          HABITS_TABLE_NAME: !Ref HabitLogsTable
+          ROUTINE_LOGS_TABLE_NAME: !Ref RoutineLogsTable
+          MEDICATION_LOGS_TABLE_NAME: !Ref MedicationLogsTable
+          WISHES_TABLE_NAME: !Ref WishesTable
+          ACHIEVEMENTS_TABLE_NAME: !Ref AchievementsTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref TasksTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref JournalEntriesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref HabitLogsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref RoutineLogsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref MedicationLogsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref WishesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AchievementsTable
+      Events:
+        GetAchievements:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /achievements
             Method: GET
             Auth:
               Authorizer: CognitoAuthorizer

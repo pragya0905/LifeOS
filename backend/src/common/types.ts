@@ -304,3 +304,9 @@ export interface MealPlanTemplate {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface Achievement {
+  userId: string;
+  badgeKey: string;
+  earnedAt: string;
+}

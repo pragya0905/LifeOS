@@ -1,97 +1,95 @@
 import { useEffect, useState } from "react";
 import { useApi } from "../api/useApi";
-import { toLocalDateStr } from "../lib/date";
-import type { HabitLog, JournalEntry, Task } from "../types";
-import { badge, card, sectionLabel } from "./ui";
+import type { Badge } from "../types";
+import { Skeleton } from "./Skeleton";
+import { card, mutedText, sectionLabel } from "./ui";
 
-interface Badge {
-  key: string;
-  label: string;
-  unlocked: boolean;
-}
-
-const STREAK_LOOKBACK_DAYS = 30;
-
-function dateOffset(daysAgo: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - daysAgo);
-  return toLocalDateStr(d);
-}
-
-function bestStreak(dailyValues: number[]): number {
-  let best = 0;
-  let current = 0;
-  for (const value of dailyValues) {
-    if (value > 0) {
-      current += 1;
-      best = Math.max(best, current);
-    } else {
-      current = 0;
-    }
-  }
-  return best;
+function formatEarnedDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
 export default function Achievements() {
   const { request } = useApi();
   const [badges, setBadges] = useState<Badge[] | null>(null);
+  const [celebrating, setCelebrating] = useState<Badge[]>([]);
 
   useEffect(() => {
     let ignore = false;
-    async function load() {
-      try {
-        const from = dateOffset(STREAK_LOOKBACK_DAYS - 1);
-        const to = dateOffset(0);
-        const [tasksData, journalData, habitsData] = await Promise.all([
-          request<{ tasks: Task[] }>("/tasks"),
-          request<{ entries: JournalEntry[] }>("/journal"),
-          request<{ habits: HabitLog[] }>(`/habits?from=${from}&to=${to}`),
-        ]);
+    request<{ badges: Badge[] }>("/achievements")
+      .then((data) => {
         if (ignore) return;
-
-        const doneTasks = tasksData.tasks.filter((t) => t.status === "done").length;
-
-        // Reconstruct the last 30 days in order (oldest first) since the range
-        // endpoint returns items unordered, then take the best run of consecutive
-        // logged days across water/exercise/steps combined.
-        const dates = Array.from({ length: STREAK_LOOKBACK_DAYS }, (_, i) =>
-          dateOffset(STREAK_LOOKBACK_DAYS - 1 - i),
-        );
-        const loggedAnyHabit = (d: string) =>
-          habitsData.habits.some((h) => h.date === d && (h.value ?? 0) > 0) ? 1 : 0;
-        const longestStreak = bestStreak(dates.map(loggedAnyHabit));
-
-        setBadges([
-          { key: "first-task", label: "First task done", unlocked: doneTasks >= 1 },
-          { key: "task-master", label: "10 tasks done", unlocked: doneTasks >= 10 },
-          { key: "streak-3", label: "3-day streak", unlocked: longestStreak >= 3 },
-          { key: "streak-7", label: "7-day streak", unlocked: longestStreak >= 7 },
-          { key: "journaler", label: "5 journal entries", unlocked: journalData.entries.length >= 5 },
-        ]);
-      } catch {
-        // Best-effort — badges just don't render if this fails.
-      }
-    }
-    load();
+        setBadges(data.badges);
+        const newlyUnlocked = data.badges.filter((b) => b.justUnlocked);
+        if (newlyUnlocked.length > 0) {
+          setCelebrating(newlyUnlocked);
+          setTimeout(() => setCelebrating([]), 6000);
+        }
+      })
+      .catch(() => {
+        // Best-effort — the dashboard works fine without this card.
+      });
     return () => {
       ignore = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const unlocked = badges?.filter((b) => b.unlocked) ?? [];
-  if (!badges || unlocked.length === 0) return null;
+  const unlockedCount = badges?.filter((b) => b.earnedAt).length ?? 0;
 
   return (
     <div className={`mb-6 ${card}`}>
-      <h2 className={`mb-2 ${sectionLabel}`}>Achievements</h2>
-      <div className="flex flex-wrap gap-1.5">
-        {unlocked.map((b) => (
-          <span key={b.key} className={badge}>
-            {b.label}
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className={sectionLabel}>🏆 Achievements</h2>
+        {badges && (
+          <span className={mutedText}>
+            {unlockedCount} / {badges.length}
           </span>
-        ))}
+        )}
       </div>
+
+      {celebrating.length > 0 && (
+        <div className="mb-3 flex flex-col gap-1.5 rounded-xl bg-bloom-soft px-3 py-2.5 dark:bg-bloom-soft-dark">
+          {celebrating.map((b) => (
+            <p key={b.key} className="text-sm font-medium text-bloom dark:text-bloom-light">
+              {b.emoji} New achievement: {b.label}!
+            </p>
+          ))}
+        </div>
+      )}
+
+      {!badges ? (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-16 w-full" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {badges.map((b) => (
+            <div
+              key={b.key}
+              title={b.description}
+              className={`rounded-xl border px-3 py-2.5 text-center transition-opacity ${
+                b.earnedAt
+                  ? "border-bloom/40 bg-bloom-soft dark:border-bloom-light/30 dark:bg-bloom-soft-dark"
+                  : "border-stone opacity-50 dark:border-stone-dark"
+              }`}
+            >
+              <div className="text-xl">{b.emoji}</div>
+              <p
+                className={`mt-0.5 text-xs font-medium ${
+                  b.earnedAt ? "text-bloom dark:text-bloom-light" : "text-ink dark:text-paper"
+                }`}
+              >
+                {b.label}
+              </p>
+              <p className={`mt-0.5 text-[10px] ${mutedText}`}>
+                {b.earnedAt ? formatEarnedDate(b.earnedAt) : b.description}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

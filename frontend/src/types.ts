@@ -306,3 +306,12 @@ export interface WishImage {
   key: string;
   url: string;
 }
+
+export interface Badge {
+  key: string;
+  label: string;
+  description: string;
+  emoji: string;
+  earnedAt: string | null;
+  justUnlocked: boolean;
+}
