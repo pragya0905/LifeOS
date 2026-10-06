@@ -63,8 +63,12 @@ export const LOG_ENTRY_SCHEMAS: Record<LogType, z.ZodTypeAny> = {
 
 export const LOG_TYPES = Object.keys(LOG_ENTRY_SCHEMAS) as LogType[];
 
-// Sleep/weight/mood/cycle are naturally one-value-per-day concepts, so both manual saves
-// and AI-journal writes target the same deterministic logId (date + logType) instead of a
-// random one — otherwise a manual entry and an AI-extracted entry for the same day become
-// two separate items, and which one displays becomes an arbitrary query-order coin flip.
-export const SINGULAR_LOG_TYPES: LogType[] = ["sleep", "weight", "mood", "cycle"];
+// Sleep/weight/mood are naturally one-value-per-day concepts, so both manual saves and
+// AI-journal writes target the same deterministic logId (date + logType) instead of a random
+// one — otherwise a manual entry and an AI-extracted entry for the same day become two
+// separate items, and which one displays becomes an arbitrary query-order coin flip.
+// Cycle is deliberately NOT included here even though it looks similar: a single day can
+// legitimately hold multiple distinct cycle entries (a period_start/period_end AND one or
+// more symptoms), distinguished by data.event — a shared "{date}-cycle" id would make the
+// second entry silently overwrite the first instead of coexisting.
+export const SINGULAR_LOG_TYPES: LogType[] = ["sleep", "weight", "mood"];
