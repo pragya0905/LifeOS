@@ -1,4 +1,14 @@
-import type { HabitLog, JournalEntry, MedicationLog, RoutineStepLog, Task, Wish } from "./types";
+import { computeEndDate } from "./medications";
+import type {
+  HabitLog,
+  JournalEntry,
+  Medication,
+  MedicationLog,
+  RoutineStepLog,
+  RoutineTemplate,
+  Task,
+  Wish,
+} from "./types";
 
 export interface BadgeDefinition {
   key: string;
@@ -21,12 +31,17 @@ export const BADGE_DEFINITIONS: BadgeDefinition[] = [
   { key: "streak-7", label: "7-day streak", description: "Log a habit 7 days in a row.", emoji: "🔥" },
   { key: "streak-30", label: "30-day streak", description: "Log a habit 30 days in a row.", emoji: "🔥" },
   { key: "routine-starter", label: "Routine starter", description: "Complete your first routine step.", emoji: "🪞" },
-  { key: "routine-consistent", label: "Routine regular", description: "Complete 20 routine steps.", emoji: "🌟" },
+  {
+    key: "routine-consistent",
+    label: "Routine regular",
+    description: "Finish an entire routine, every step, 7 days in a row.",
+    emoji: "🌟",
+  },
   { key: "medication-starter", label: "On schedule", description: "Log your first medication taken.", emoji: "💊" },
   {
     key: "medication-consistent",
     label: "Consistent care",
-    description: "Log 20 medications taken.",
+    description: "Take every active medication 7 days in a row.",
     emoji: "💙",
   },
   { key: "first-wish", label: "First wish", description: "Create your first wish.", emoji: "🌠" },
@@ -40,7 +55,7 @@ function daysBetween(a: string, b: string): number {
 }
 
 // Longest run of calendar-consecutive dates in a sorted, deduplicated list of YYYY-MM-DD
-// strings — used for every streak badge (habits today, extendable to other domains later).
+// strings — the shared engine behind every streak badge (habits, routines, medications).
 function bestStreak(sortedDates: string[]): number {
   if (sortedDates.length === 0) return 0;
   let best = 1;
@@ -56,12 +71,62 @@ function bestStreak(sortedDates: string[]): number {
   return best;
 }
 
+// A day counts toward the routine streak if ANY of the user's routines had every one of its
+// (current) steps logged done that day — same all-or-nothing rule Routines.tsx's own streak
+// display uses, just rolled up across every routine instead of per-routine.
+function computeRoutineBestStreak(routineLogs: RoutineStepLog[], routines: RoutineTemplate[]): number {
+  const routineById = new Map(routines.map((r) => [r.routineId, r]));
+  const logsByDateRoutine = new Map<string, RoutineStepLog[]>();
+  for (const log of routineLogs) {
+    const key = `${log.date}#${log.routineId}`;
+    const list = logsByDateRoutine.get(key) ?? [];
+    list.push(log);
+    logsByDateRoutine.set(key, list);
+  }
+
+  const fullyCompletedDays = new Set<string>();
+  for (const [key, logs] of logsByDateRoutine) {
+    const [date, routineId] = key.split("#");
+    const routine = routineById.get(routineId);
+    if (!routine || routine.steps.length === 0) continue;
+    const allDone = routine.steps.every((_, index) => logs.some((l) => l.stepIndex === index && l.status === "done"));
+    if (allDone) fullyCompletedDays.add(date);
+  }
+
+  return bestStreak([...fullyCompletedDays].sort());
+}
+
+// A day counts toward the medication streak if every medication that was active on that
+// specific date (by its own startDate/durationDays, not today's date) was logged taken.
+function computeMedicationBestStreak(medicationLogs: MedicationLog[], medications: Medication[]): number {
+  const logsByDate = new Map<string, MedicationLog[]>();
+  for (const log of medicationLogs) {
+    const list = logsByDate.get(log.date) ?? [];
+    list.push(log);
+    logsByDate.set(log.date, list);
+  }
+
+  const perfectDays = new Set<string>();
+  for (const [date, logs] of logsByDate) {
+    const activeThatDay = medications.filter((m) => date >= m.startDate && date <= computeEndDate(m.startDate, m.durationDays));
+    if (activeThatDay.length === 0) continue;
+    const allTaken = activeThatDay.every((m) => logs.some((l) => l.medicationId === m.medicationId && l.status === "taken"));
+    if (allTaken) perfectDays.add(date);
+  }
+
+  return bestStreak([...perfectDays].sort());
+}
+
 export interface AchievementInputs {
   doneTasks: number;
   journalEntries: number;
   habitLogs: HabitLog[];
   routineLogsDone: number;
+  routineLogs: RoutineStepLog[];
+  routines: RoutineTemplate[];
   medicationLogsTaken: number;
+  medicationLogs: MedicationLog[];
+  medications: Medication[];
   wishes: Wish[];
 }
 
@@ -85,10 +150,10 @@ export function computeEligibleBadgeKeys(inputs: AchievementInputs): Set<string>
   if (longestHabitStreak >= 30) earned.add("streak-30");
 
   if (inputs.routineLogsDone >= 1) earned.add("routine-starter");
-  if (inputs.routineLogsDone >= 20) earned.add("routine-consistent");
+  if (computeRoutineBestStreak(inputs.routineLogs, inputs.routines) >= 7) earned.add("routine-consistent");
 
   if (inputs.medicationLogsTaken >= 1) earned.add("medication-starter");
-  if (inputs.medicationLogsTaken >= 20) earned.add("medication-consistent");
+  if (computeMedicationBestStreak(inputs.medicationLogs, inputs.medications) >= 7) earned.add("medication-consistent");
 
   if (inputs.wishes.length >= 1) earned.add("first-wish");
   if (inputs.wishes.some((w) => w.status === "completed")) earned.add("wish-achiever");

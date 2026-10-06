@@ -1944,7 +1944,9 @@ Resources:
           JOURNAL_TABLE_NAME: !Ref JournalEntriesTable
           HABITS_TABLE_NAME: !Ref HabitLogsTable
           ROUTINE_LOGS_TABLE_NAME: !Ref RoutineLogsTable
+          ROUTINE_TEMPLATES_TABLE_NAME: !Ref RoutineTemplatesTable
           MEDICATION_LOGS_TABLE_NAME: !Ref MedicationLogsTable
+          MEDICATIONS_TABLE_NAME: !Ref MedicationsTable
           WISHES_TABLE_NAME: !Ref WishesTable
           ACHIEVEMENTS_TABLE_NAME: !Ref AchievementsTable
       Policies:
@@ -1954,6 +1956,10 @@ Resources:
             TableName: !Ref JournalEntriesTable
         - DynamoDBReadPolicy:
             TableName: !Ref HabitLogsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref RoutineTemplatesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref MedicationsTable
         - DynamoDBReadPolicy:
             TableName: !Ref RoutineLogsTable
         - DynamoDBReadPolicy:

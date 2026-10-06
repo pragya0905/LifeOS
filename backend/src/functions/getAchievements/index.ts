@@ -15,8 +15,10 @@ import type {
   Achievement,
   HabitLog,
   JournalEntry,
+  Medication,
   MedicationLog,
   RoutineStepLog,
+  RoutineTemplate,
   Task,
   Wish,
 } from "../../common/types";
@@ -41,22 +43,29 @@ async function queryAll<T>(tableName: string | undefined, userId: string): Promi
 export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) => {
   const userId = getUserId(event);
 
-  const [tasks, journalEntries, habitLogs, routineLogs, medicationLogs, wishes, existing] = await Promise.all([
-    queryAll<Task>(process.env.TASKS_TABLE_NAME, userId),
-    queryAll<JournalEntry>(process.env.JOURNAL_TABLE_NAME, userId),
-    queryAll<HabitLog>(process.env.HABITS_TABLE_NAME, userId),
-    queryAll<RoutineStepLog>(process.env.ROUTINE_LOGS_TABLE_NAME, userId),
-    queryAll<MedicationLog>(process.env.MEDICATION_LOGS_TABLE_NAME, userId),
-    queryAll<Wish>(process.env.WISHES_TABLE_NAME, userId),
-    queryAll<Achievement>(process.env.ACHIEVEMENTS_TABLE_NAME, userId),
-  ]);
+  const [tasks, journalEntries, habitLogs, routineLogs, routines, medicationLogs, medications, wishes, existing] =
+    await Promise.all([
+      queryAll<Task>(process.env.TASKS_TABLE_NAME, userId),
+      queryAll<JournalEntry>(process.env.JOURNAL_TABLE_NAME, userId),
+      queryAll<HabitLog>(process.env.HABITS_TABLE_NAME, userId),
+      queryAll<RoutineStepLog>(process.env.ROUTINE_LOGS_TABLE_NAME, userId),
+      queryAll<RoutineTemplate>(process.env.ROUTINE_TEMPLATES_TABLE_NAME, userId),
+      queryAll<MedicationLog>(process.env.MEDICATION_LOGS_TABLE_NAME, userId),
+      queryAll<Medication>(process.env.MEDICATIONS_TABLE_NAME, userId),
+      queryAll<Wish>(process.env.WISHES_TABLE_NAME, userId),
+      queryAll<Achievement>(process.env.ACHIEVEMENTS_TABLE_NAME, userId),
+    ]);
 
   const eligible = computeEligibleBadgeKeys({
     doneTasks: countDoneTasks(tasks),
     journalEntries: countJournalEntries(journalEntries),
     habitLogs,
     routineLogsDone: countRoutineLogsDone(routineLogs),
+    routineLogs,
+    routines,
     medicationLogsTaken: countMedicationLogsTaken(medicationLogs),
+    medicationLogs,
+    medications,
     wishes,
   });
 
