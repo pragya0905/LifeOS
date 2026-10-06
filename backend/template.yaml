@@ -18,7 +18,7 @@ Parameters:
 
 Globals:
   Function:
-    Runtime: nodejs20.x
+    Runtime: nodejs22.x
     Architectures: [arm64]
     Timeout: 10
     MemorySize: 256
@@ -653,7 +653,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -679,7 +679,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -712,7 +712,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -741,7 +741,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -777,7 +777,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -838,7 +838,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -867,7 +867,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -928,7 +928,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -965,7 +965,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -994,7 +994,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1023,7 +1023,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1055,7 +1055,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1084,7 +1084,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1113,7 +1113,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1142,7 +1142,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1171,7 +1171,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1200,7 +1200,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1229,7 +1229,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1265,7 +1265,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1294,7 +1294,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1323,7 +1323,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1352,7 +1352,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1381,7 +1381,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1413,7 +1413,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1442,7 +1442,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1474,7 +1474,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1503,7 +1503,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1532,7 +1532,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1561,7 +1561,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1593,7 +1593,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1622,7 +1622,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1651,7 +1651,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1680,7 +1680,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1709,7 +1709,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1741,7 +1741,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1770,7 +1770,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1802,7 +1802,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1837,7 +1837,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1891,7 +1891,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1930,7 +1930,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -1987,7 +1987,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2016,7 +2016,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2048,7 +2048,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2128,7 +2128,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2157,7 +2157,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2186,7 +2186,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2227,7 +2227,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2256,7 +2256,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2288,7 +2288,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2317,7 +2317,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2349,7 +2349,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2389,7 +2389,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2421,7 +2421,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2450,7 +2450,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2479,7 +2479,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2511,7 +2511,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2543,7 +2543,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2582,7 +2582,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2611,7 +2611,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2640,7 +2640,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2669,7 +2669,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2701,7 +2701,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2730,7 +2730,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2759,7 +2759,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2788,7 +2788,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2851,7 +2851,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2890,7 +2890,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2932,7 +2932,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -2964,7 +2964,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -3014,7 +3014,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -3043,7 +3043,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -3075,7 +3075,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -3104,7 +3104,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
@@ -3133,7 +3133,7 @@ Resources:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
-        Target: "node20"
+        Target: "node22"
         Sourcemap: false
         EntryPoints: ["index.ts"]
     Properties:
