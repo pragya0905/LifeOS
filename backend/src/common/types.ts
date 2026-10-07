@@ -272,6 +272,7 @@ export interface UserMemory {
   text: string;
   category: MemoryCategory;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface AssistantConversationTurn {

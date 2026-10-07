@@ -1,6 +1,6 @@
 import type { APIGatewayProxyEventV2 } from "aws-lambda";
 import Anthropic from "@anthropic-ai/sdk";
-import { PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { PutCommand, QueryCommand, UpdateCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
 import { SSMClient, GetParameterCommand } from "@aws-sdk/client-ssm";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { randomUUID } from "node:crypto";
@@ -688,6 +688,32 @@ const TOOLS: Anthropic.Tool[] = [
       required: ["text", "category"],
     },
   },
+  {
+    name: "update_memory",
+    description:
+      "Correct or refine a previously remembered fact when it's gone stale or the user says something that changes it (e.g. they finished the trip you remembered them saving for, or clarify a detail you got slightly wrong). Use the exact memoryId from the 'What you already know about this user' list in your context — never invent one.",
+    input_schema: {
+      type: "object",
+      properties: {
+        memoryId: { type: "string", description: "The exact memoryId of the fact to update, copied from context." },
+        text: { type: "string", description: "The corrected fact, written concisely in third person." },
+        category: { type: "string", enum: MEMORY_CATEGORIES },
+      },
+      required: ["memoryId", "text", "category"],
+    },
+  },
+  {
+    name: "forget_fact",
+    description:
+      "Permanently delete a previously remembered fact that's no longer true or relevant (e.g. a goal the user abandoned, a struggle they've resolved) — or that the user explicitly asks you to forget. Use the exact memoryId from the 'What you already know about this user' list in your context — never invent one.",
+    input_schema: {
+      type: "object",
+      properties: {
+        memoryId: { type: "string", description: "The exact memoryId of the fact to forget, copied from context." },
+      },
+      required: ["memoryId"],
+    },
+  },
 ];
 
 async function executeTool(
@@ -950,6 +976,47 @@ async function executeTool(
         await ddb.send(new PutCommand({ TableName: process.env.USER_MEMORY_TABLE_NAME, Item: item }));
         return { content: "Remembered.", isError: false };
       }
+      case "update_memory": {
+        try {
+          await ddb.send(
+            new UpdateCommand({
+              TableName: process.env.USER_MEMORY_TABLE_NAME,
+              Key: { userId, memoryId: input.memoryId as string },
+              ConditionExpression: "attribute_exists(memoryId)",
+              UpdateExpression: "SET #text = :text, category = :category, updatedAt = :now",
+              ExpressionAttributeNames: { "#text": "text" },
+              ExpressionAttributeValues: {
+                ":text": input.text as string,
+                ":category": input.category as MemoryCategory,
+                ":now": new Date().toISOString(),
+              },
+            }),
+          );
+        } catch (err) {
+          if (err instanceof Error && err.name === "ConditionalCheckFailedException") {
+            return { content: "No memory found with that memoryId.", isError: true };
+          }
+          throw err;
+        }
+        return { content: "Updated.", isError: false };
+      }
+      case "forget_fact": {
+        try {
+          await ddb.send(
+            new DeleteCommand({
+              TableName: process.env.USER_MEMORY_TABLE_NAME,
+              Key: { userId, memoryId: input.memoryId as string },
+              ConditionExpression: "attribute_exists(memoryId)",
+            }),
+          );
+        } catch (err) {
+          if (err instanceof Error && err.name === "ConditionalCheckFailedException") {
+            return { content: "No memory found with that memoryId.", isError: true };
+          }
+          throw err;
+        }
+        return { content: "Forgotten.", isError: false };
+      }
       default:
         return { content: `Unknown tool: ${name}`, isError: true };
     }
@@ -1010,7 +1077,11 @@ function buildSystemPrompt(memories: UserMemory[], goalsContext: string, isOnboa
     "invent numbers or facts you don't have — call a get_* tool to check before answering a " +
     "question about the user's own data. When the user shares something durable worth " +
     "remembering for future conversations that doesn't fit one of the other tools, call " +
-    "remember_fact.\n\n" +
+    "remember_fact. If something you already know (listed below) has become outdated or " +
+    "wrong — the user finished a goal you remembered them working toward, resolved a struggle, " +
+    "or corrects a detail — call update_memory to fix it, or forget_fact if it's no longer " +
+    "relevant at all and the user asks you to forget something; don't just leave stale facts " +
+    "sitting in context.\n\n" +
     "Receipts and bills: when the user attaches a photo or PDF of a receipt, bill, or expense " +
     "screenshot, read it and call create_expense yourself — don't just describe what's in the " +
     "image. Use the amount and date printed on it (fall back to today if no date is visible), " +
@@ -1049,8 +1120,11 @@ function buildSystemPrompt(memories: UserMemory[], goalsContext: string, isOnboa
 }
 
 function memoryText(memories: UserMemory[]): string {
-  const memoryLines = memories.map((m) => `- (${m.category}) ${m.text}`).join("\n");
-  return `What you already know about this user, from past conversations:\n${memoryLines}`;
+  const memoryLines = memories.map((m) => `- [${m.memoryId}] (${m.category}) ${m.text}`).join("\n");
+  return (
+    "What you already know about this user, from past conversations (the bracketed id is " +
+    `its memoryId — use it verbatim with update_memory/forget_fact):\n${memoryLines}`
+  );
 }
 
 export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxyEventV2, rawStream) => {
