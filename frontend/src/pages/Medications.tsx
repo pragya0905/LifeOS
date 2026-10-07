@@ -73,6 +73,210 @@ function computeAdherence(
   return activeDays > 0 ? Math.round((takenDays / activeDays) * 100) : null;
 }
 
+function MedicationCard({
+  medication,
+  adherence,
+  pending,
+  removing,
+  onDelete,
+  onSave,
+}: {
+  medication: Medication;
+  adherence: number | null;
+  pending: boolean;
+  removing: boolean;
+  onDelete: (medicationId: string) => void;
+  onSave: (
+    medicationId: string,
+    patch: {
+      name: string;
+      dosage?: string;
+      notes?: string;
+      startDate: string;
+      durationDays: number;
+      timeOfDay?: string;
+      timezoneOffsetMinutes?: number;
+      daysOfWeek: number[];
+    },
+  ) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [nameDraft, setNameDraft] = useState(medication.name);
+  const [dosageDraft, setDosageDraft] = useState(medication.dosage ?? "");
+  const [notesDraft, setNotesDraft] = useState(medication.notes ?? "");
+  const [timeOfDayDraft, setTimeOfDayDraft] = useState(medication.timeOfDay ?? "");
+  const [startDateDraft, setStartDateDraft] = useState(medication.startDate);
+  const [durationDaysDraft, setDurationDaysDraft] = useState(medication.durationDays);
+  const [daysOfWeekDraft, setDaysOfWeekDraft] = useState<number[]>(
+    medication.daysOfWeek && medication.daysOfWeek.length > 0 ? medication.daysOfWeek : ALL_DAYS,
+  );
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  function toggleDraftDay(day: number) {
+    setDaysOfWeekDraft((prev) => (prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort()));
+  }
+
+  async function handleSaveEdit() {
+    if (!nameDraft.trim() || daysOfWeekDraft.length === 0 || durationDaysDraft < 1) return;
+    setSavingEdit(true);
+    try {
+      await onSave(medication.medicationId, {
+        name: nameDraft.trim(),
+        dosage: dosageDraft.trim() || undefined,
+        notes: notesDraft.trim() || undefined,
+        startDate: startDateDraft,
+        durationDays: durationDaysDraft,
+        timeOfDay: timeOfDayDraft || undefined,
+        timezoneOffsetMinutes: timeOfDayDraft ? new Date().getTimezoneOffset() : undefined,
+        daysOfWeek: daysOfWeekDraft.length === 7 ? [] : daysOfWeekDraft,
+      });
+      setEditing(false);
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <li className={card}>
+        <div className="mb-2 flex flex-wrap gap-3">
+          <div className="min-w-[200px] flex-1">
+            <label className={label}>Name</label>
+            <input
+              type="text"
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              className={`w-full ${input}`}
+            />
+          </div>
+          <div>
+            <label className={label}>Dosage</label>
+            <input
+              type="text"
+              value={dosageDraft}
+              onChange={(e) => setDosageDraft(e.target.value)}
+              placeholder="e.g. 500mg"
+              className={`w-32 ${input}`}
+            />
+          </div>
+          <div>
+            <label className={label}>Reminder time</label>
+            <input
+              type="time"
+              value={timeOfDayDraft}
+              onChange={(e) => setTimeOfDayDraft(e.target.value)}
+              className={input}
+            />
+          </div>
+        </div>
+        <label className={label}>Notes</label>
+        <input
+          type="text"
+          value={notesDraft}
+          onChange={(e) => setNotesDraft(e.target.value)}
+          placeholder="e.g. take with food"
+          className={`mb-2 w-full ${input}`}
+        />
+        <div className="mb-2 flex flex-wrap gap-3">
+          <div>
+            <label className={label}>Start date</label>
+            <input
+              type="date"
+              value={startDateDraft}
+              onChange={(e) => setStartDateDraft(e.target.value)}
+              className={input}
+            />
+          </div>
+          <div>
+            <label className={label}>Duration (days)</label>
+            <input
+              type="number"
+              min={1}
+              value={durationDaysDraft}
+              onChange={(e) => setDurationDaysDraft(Number(e.target.value))}
+              className={`w-24 ${input}`}
+            />
+          </div>
+        </div>
+        <label className={label}>Days</label>
+        <div className="mb-2">
+          <DayOfWeekPicker selected={daysOfWeekDraft} onToggle={toggleDraftDay} />
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled={savingEdit || daysOfWeekDraft.length === 0 || !nameDraft.trim() || durationDaysDraft < 1}
+            onClick={handleSaveEdit}
+            className={`${secondaryButton} px-3 py-1 text-xs`}
+          >
+            {savingEdit ? "Saving..." : "Save"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditing(false)}
+            className={`${secondaryButton} px-3 py-1 text-xs`}
+          >
+            Cancel
+          </button>
+        </div>
+      </li>
+    );
+  }
+
+  return (
+    <li
+      className={`flex flex-wrap items-center justify-between gap-3 transition-all duration-200 ${card} ${removing ? "scale-[0.98] opacity-0" : "scale-100 opacity-100"}`}
+    >
+      <div>
+        <p className="text-sm font-medium text-ink dark:text-paper">
+          {medication.name}
+          {medication.dosage && <span className={`ml-1.5 font-normal ${mutedText}`}>{medication.dosage}</span>}
+        </p>
+        <p className="text-xs text-ink-muted dark:text-mist-muted">
+          {medication.startDate} → {medication.endDate} ({medication.durationDays} days)
+          {medication.timeOfDay && ` · 🔔 ${medication.timeOfDay}`}
+          {medication.daysOfWeek && medication.daysOfWeek.length > 0 && medication.daysOfWeek.length < 7
+            ? ` · ${formatSchedule(medication.daysOfWeek)}`
+            : ""}
+        </p>
+        {medication.notes && (
+          <p className="mt-0.5 text-xs italic text-ink-muted dark:text-mist-muted">{medication.notes}</p>
+        )}
+        {adherence !== null && (
+          <span
+            className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+              adherence >= 80
+                ? "bg-bloom-soft text-bloom dark:bg-bloom-soft-dark dark:text-bloom-light"
+                : adherence >= 50
+                  ? "bg-amber-soft text-amber-ink dark:bg-amber-soft-dark dark:text-amber-ink-dark"
+                  : "bg-alert-soft text-alert dark:bg-alert-soft-dark dark:text-alert-light"
+            }`}
+          >
+            {adherence}% adherence (last {ADHERENCE_WINDOW_DAYS}d)
+          </span>
+        )}
+      </div>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="text-xs text-bloom hover:underline"
+        >
+          Edit
+        </button>
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => onDelete(medication.medicationId)}
+          className={`${secondaryButton} px-3 py-1.5 text-xs`}
+        >
+          Delete
+        </button>
+      </div>
+    </li>
+  );
+}
+
 export default function Medications() {
   const { request } = useApi();
   const [medications, setMedications] = useState<Medication[]>([]);
@@ -179,6 +383,32 @@ export default function Medications() {
     } finally {
       setPending(null);
       setRemovingId(null);
+    }
+  }
+
+  async function handleSaveEdit(
+    medicationId: string,
+    patch: {
+      name: string;
+      dosage?: string;
+      notes?: string;
+      startDate: string;
+      durationDays: number;
+      timeOfDay?: string;
+      timezoneOffsetMinutes?: number;
+      daysOfWeek: number[];
+    },
+  ) {
+    setError(null);
+    try {
+      const updated = await request<Medication>(`/medications/${medicationId}`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      });
+      setMedications((prev) => prev.map((m) => (m.medicationId === medicationId ? updated : m)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save medication");
+      throw err;
     }
   }
 
@@ -372,63 +602,17 @@ export default function Medications() {
             <EmptyState icon="💊" title="No medications added yet" hint="Add your first medication above." />
           ) : (
             <ul className="flex flex-col gap-2">
-              {medications.map((medication) => {
-                const adherence = computeAdherence(
-                  medication,
-                  recentLogs,
-                  daysAgo(ADHERENCE_WINDOW_DAYS - 1),
-                  today(),
-                );
-                const isRemoving = removingId === medication.medicationId;
-                return (
-                  <li
-                    key={medication.medicationId}
-                    className={`flex flex-wrap items-center justify-between gap-3 transition-all duration-200 ${card} ${isRemoving ? "scale-[0.98] opacity-0" : "scale-100 opacity-100"}`}
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-ink dark:text-paper">
-                        {medication.name}
-                        {medication.dosage && (
-                          <span className={`ml-1.5 font-normal ${mutedText}`}>{medication.dosage}</span>
-                        )}
-                      </p>
-                      <p className="text-xs text-ink-muted dark:text-mist-muted">
-                        {medication.startDate} → {medication.endDate} ({medication.durationDays} days)
-                        {medication.timeOfDay && ` · 🔔 ${medication.timeOfDay}`}
-                        {medication.daysOfWeek && medication.daysOfWeek.length > 0 && medication.daysOfWeek.length < 7
-                          ? ` · ${formatSchedule(medication.daysOfWeek)}`
-                          : ""}
-                      </p>
-                      {medication.notes && (
-                        <p className="mt-0.5 text-xs italic text-ink-muted dark:text-mist-muted">
-                          {medication.notes}
-                        </p>
-                      )}
-                      {adherence !== null && (
-                        <span
-                          className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                            adherence >= 80
-                              ? "bg-bloom-soft text-bloom dark:bg-bloom-soft-dark dark:text-bloom-light"
-                              : adherence >= 50
-                                ? "bg-amber-soft text-amber-ink dark:bg-amber-soft-dark dark:text-amber-ink-dark"
-                                : "bg-alert-soft text-alert dark:bg-alert-soft-dark dark:text-alert-light"
-                          }`}
-                        >
-                          {adherence}% adherence (last {ADHERENCE_WINDOW_DAYS}d)
-                        </span>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      disabled={pending === medication.medicationId}
-                      onClick={() => handleDelete(medication.medicationId)}
-                      className={`${secondaryButton} px-3 py-1.5 text-xs`}
-                    >
-                      Delete
-                    </button>
-                  </li>
-                );
-              })}
+              {medications.map((medication) => (
+                <MedicationCard
+                  key={medication.medicationId}
+                  medication={medication}
+                  adherence={computeAdherence(medication, recentLogs, daysAgo(ADHERENCE_WINDOW_DAYS - 1), today())}
+                  pending={pending === medication.medicationId}
+                  removing={removingId === medication.medicationId}
+                  onDelete={handleDelete}
+                  onSave={handleSaveEdit}
+                />
+              ))}
             </ul>
           )}
         </>

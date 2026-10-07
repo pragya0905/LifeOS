@@ -3,6 +3,8 @@ import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb } from "../../common/dynamo";
 import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
+import { computeEndDate } from "../../common/medications";
+import type { Medication } from "../../common/types";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^\d{2}:\d{2}$/;
@@ -98,7 +100,11 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
         ReturnValues: "ALL_NEW",
       }),
     );
-    return jsonResponse(200, result.Attributes);
+    // createMedication/listMedications both add a computed endDate — PATCH had never been
+    // called from the frontend until now, so this gap was dormant: the response was missing
+    // endDate entirely, which Medication's type treats as required.
+    const medication = result.Attributes as Medication;
+    return jsonResponse(200, { ...medication, endDate: computeEndDate(medication.startDate, medication.durationDays) });
   } catch (err) {
     if (err instanceof Error && err.name === "ConditionalCheckFailedException") {
       return errorResponse(404, "Medication not found");
