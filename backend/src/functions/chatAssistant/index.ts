@@ -11,6 +11,7 @@ import { computeProgressSummary, progressFractionForWish, type WishWithProgress 
 import { computeEndDate } from "../../common/medications";
 import type {
   AssistantConversationTurn,
+  AssistantTone,
   Goal,
   HabitLog,
   Medication,
@@ -19,6 +20,7 @@ import type {
   RoutineStepLog,
   RoutineTemplate,
   UserMemory,
+  UserProfile,
 } from "../../common/types";
 
 // This function runs behind a Lambda Function URL, not the shared HttpApi — response
@@ -105,6 +107,12 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function daysAgo(n: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
 async function callApi(
   apiUrl: string,
   authHeader: string,
@@ -128,10 +136,12 @@ async function callApi(
 // on every single message.
 async function fetchGoalsContext(apiUrl: string, authHeader: string): Promise<string> {
   try {
-    const [wishesRes, goalsRes, todayHabitsRes] = await Promise.all([
+    const [wishesRes, goalsRes, todayHabitsRes, achievementsRes, moodRes] = await Promise.all([
       callApi(apiUrl, authHeader, "/wishes", "GET"),
       callApi(apiUrl, authHeader, "/goals", "GET"),
       callApi(apiUrl, authHeader, `/habits/${today()}`, "GET"),
+      callApi(apiUrl, authHeader, "/achievements", "GET"),
+      callApi(apiUrl, authHeader, `/logs?logType=mood&from=${daysAgo(6)}&to=${today()}`, "GET"),
     ]);
 
     const wishes = (
@@ -139,6 +149,10 @@ async function fetchGoalsContext(apiUrl: string, authHeader: string): Promise<st
     ).filter((w) => w.status === "active");
     const goals = (goalsRes.data as { goals: Goal[] } | undefined)?.goals ?? [];
     const todayHabits = (todayHabitsRes.data as { habits: HabitLog[] } | undefined)?.habits ?? [];
+    const justUnlocked = (
+      (achievementsRes.data as { badges: { label: string; description: string; justUnlocked: boolean }[] } | undefined)
+        ?.badges ?? []
+    ).filter((b) => b.justUnlocked);
 
     const lines: string[] = [];
     if (wishes.length > 0) {
@@ -158,11 +172,47 @@ async function fetchGoalsContext(apiUrl: string, authHeader: string): Promise<st
       });
       lines.push(`Daily habit goals: ${goalLines.join("; ")}`);
     }
+    if (justUnlocked.length > 0) {
+      const badgeLines = justUnlocked.map((b) => `"${b.label}" (${b.description})`);
+      lines.push(
+        `IMPORTANT, ACT ON THIS NOW: the user just unlocked ${badgeLines.join(" and ")} — this literally ` +
+          "just happened and hasn't been shown to them anywhere yet. No matter what your reply is otherwise " +
+          "about, you MUST open or close this reply with a short, genuinely excited congratulations naming " +
+          "the badge by name. This is non-negotiable — skipping it means they never find out.",
+      );
+    }
+
+    const moodDip = detectMoodDip(
+      (moodRes.data as { entries: { date: string; data: Record<string, unknown> }[] } | undefined)?.entries ?? [],
+    );
+    if (moodDip) lines.push(moodDip);
+
     return lines.join("\n");
   } catch (err) {
     console.error("Failed to load goals context for chatAssistant (non-blocking):", err);
     return "";
   }
+}
+
+// Deterministic, not model-judged: a real friend notices a pattern of several bad days in a
+// row, not a single rough one — so this only fires on 3+ *consecutive most-recent* low ratings,
+// never a one-off dip or an old streak since recovered.
+function detectMoodDip(entries: { date: string; data: Record<string, unknown> }[]): string | null {
+  const ratings = entries
+    .slice()
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((e) => e.data.rating)
+    .filter((r): r is number => typeof r === "number");
+  if (ratings.length < 3) return null;
+  const lastThree = ratings.slice(-3);
+  if (lastThree.every((r) => r <= 2)) {
+    return (
+      "Mood check: the last 3 logged mood ratings have all been low (≤2/5). If it comes up " +
+      "naturally, check in gently about how they're doing rather than only moving on to logistics " +
+      "— but don't force it or diagnose anything."
+    );
+  }
+  return null;
 }
 
 // The deterministic engine behind get_daily_checkin_status — tells the model exactly what the
@@ -637,13 +687,20 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: "update_profile",
-    description: "Update the user's height, sex, or monthly budget when they mention one in conversation.",
+    description:
+      "Update the user's height, sex, monthly budget, preferred name, or conversational tone when they mention one. Call with preferredName if they tell you what to call them (a nickname, a correction to how you've been addressing them). Call with assistantTone if they describe how they want you to talk to them generally (e.g. 'be more direct with me', 'you can be playful/funny').",
     input_schema: {
       type: "object",
       properties: {
         heightCm: { type: "number" },
         sex: { type: "string", enum: ["male", "female", "unspecified"] },
         monthlyBudget: { type: "number" },
+        preferredName: { type: "string", description: "What the user wants to be called." },
+        assistantTone: {
+          type: "string",
+          enum: ["warm", "direct", "playful"],
+          description: "warm (default, supportive and gentle), direct (brief, no cushioning), or playful (lighter, more humor).",
+        },
       },
     },
   },
@@ -945,6 +1002,8 @@ async function executeTool(
           heightCm: input.heightCm,
           sex: input.sex,
           monthlyBudget: input.monthlyBudget,
+          preferredName: input.preferredName,
+          assistantTone: input.assistantTone,
         });
         break;
       }
@@ -1060,7 +1119,19 @@ const ONBOARDING_SYSTEM_PROMPT_ADDITION =
   "genuinely qualitative context that doesn't fit one of those tools — a motivation, a " +
   "struggle, a preference.";
 
-function buildSystemPrompt(memories: UserMemory[], goalsContext: string, isOnboarding: boolean): string {
+const TONE_INSTRUCTIONS: Record<AssistantTone, string> = {
+  warm: "Default tone: warm, supportive, and gentle.",
+  direct: "Tone preference: direct and brief — skip the cushioning and get straight to the point, while staying respectful.",
+  playful: "Tone preference: playful and lighter — a bit of humor and informality is welcome, not just straight logistics.",
+};
+
+function buildSystemPrompt(
+  memories: UserMemory[],
+  goalsContext: string,
+  isOnboarding: boolean,
+  preferredName: string | undefined,
+  assistantTone: AssistantTone | undefined,
+): string {
   const base =
     "You are the LifeOs assistant — a supportive, conversational personal life-management " +
     "companion. You can read, log, create, edit, and delete the user's tasks, habits, logs " +
@@ -1068,6 +1139,8 @@ function buildSystemPrompt(memories: UserMemory[], goalsContext: string, isOnboa
     "medications (including reminder times), expenses and budgets (with category), meal plans " +
     "(both a specific date and recurring weekly defaults), wishes, goals, profile details, and " +
     "journal via the tools available to you. " +
+    (preferredName ? `Call the user "${preferredName}" rather than anything generic. ` : "") +
+    `${TONE_INSTRUCTIONS[assistantTone ?? "warm"]} ` +
     `Today's date is ${today()}. When the user reports something that maps to a tool (a habit ` +
     "amount, a food/sleep/mood/etc. entry, a task, a routine or medication tick, an expense, a " +
     "new or edited routine/medication/expense/budget/meal-plan-default/wish/goal/profile " +
@@ -1107,6 +1180,13 @@ function buildSystemPrompt(memories: UserMemory[], goalsContext: string, isOnboa
     "If everything is already logged, say so warmly instead of asking anything. Once every " +
     "missing item has an answer, close with a short, genuinely warm one- or two-line wrap-up — " +
     "not a dry recap list.\n\n" +
+    "Being a friend, not a form: a real friend doesn't only recall things when asked — they " +
+    "bring them up. If something in what you already know about the user (listed below) or in " +
+    "their goals/wishes context is genuinely relevant to what's being discussed, weave it in " +
+    "yourself rather than waiting to be asked ('how's the Japan savings coming along?', 'last " +
+    "time we talked you mentioned your knee was bothering you on runs — how's that doing?'). Do " +
+    "this occasionally and naturally, not in every message — forcing a callback into an " +
+    "unrelated reply feels worse than not doing it at all.\n\n" +
     "Coaching style — honest accountability, not pure cheerleading: when discussing the " +
     "user's wishes, habits, or budget, call get_progress_summary first and ground everything " +
     "in its numbers. If it shows a wish falling behind schedule, a broken habit streak, or " +
@@ -1198,8 +1278,8 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
     ]);
     const historyItems = ((historyResult.Items ?? []) as AssistantConversationTurn[]).slice(-HISTORY_TURN_LIMIT);
     const memories = (memoryResult.Items ?? []) as UserMemory[];
-    const assistantModel =
-      ((profileResult.data as { assistantModel?: string } | undefined)?.assistantModel) || "claude-haiku-4-5";
+    const profile = profileResult.data as Partial<UserProfile> | undefined;
+    const assistantModel = profile?.assistantModel || "claude-haiku-4-5";
 
     // Persisted history always stays a plain string — base64 attachment data can be
     // megabytes, far past DynamoDB's 400KB item cap, and there's no need to replay a file
@@ -1231,7 +1311,13 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
     ];
 
     const client = await getClient();
-    const systemPrompt = buildSystemPrompt(memories, goalsContext, isOnboarding);
+    const systemPrompt = buildSystemPrompt(
+      memories,
+      goalsContext,
+      isOnboarding,
+      profile?.preferredName,
+      profile?.assistantTone,
+    );
     let finalText = "";
 
     for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {

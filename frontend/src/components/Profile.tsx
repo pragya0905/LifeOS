@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useApi } from "../api/useApi";
-import type { Goal, UserProfile, UserSex } from "../types";
+import type { AssistantTone, Goal, UserProfile, UserSex } from "../types";
 import {
   card,
   errorText,
@@ -20,17 +20,28 @@ const SEX_OPTIONS: { value: UserSex; label: string }[] = [
   { value: "unspecified", label: "Prefer not to say" },
 ];
 
+const TONE_OPTIONS: { value: AssistantTone; label: string; hint: string }[] = [
+  { value: "warm", label: "Warm", hint: "Supportive and gentle (default)" },
+  { value: "direct", label: "Direct", hint: "Brief, straight to the point" },
+  { value: "playful", label: "Playful", hint: "Lighter, more humor" },
+];
+
 export default function Profile() {
   const { request } = useApi();
   const [loading, setLoading] = useState(true);
   const [heightDraft, setHeightDraft] = useState("");
   const [weightTargetDraft, setWeightTargetDraft] = useState("");
   const [sex, setSex] = useState<UserSex | null>(null);
+  const [preferredNameDraft, setPreferredNameDraft] = useState("");
+  const [tone, setTone] = useState<AssistantTone>("warm");
   const [savingHeight, setSavingHeight] = useState(false);
   const [savingWeightTarget, setSavingWeightTarget] = useState(false);
   const [savingSex, setSavingSex] = useState(false);
+  const [savingPreferredName, setSavingPreferredName] = useState(false);
+  const [savingTone, setSavingTone] = useState(false);
   const [savedHeight, setSavedHeight] = useState(false);
   const [savedWeightTarget, setSavedWeightTarget] = useState(false);
+  const [savedPreferredName, setSavedPreferredName] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -45,6 +56,8 @@ export default function Profile() {
         if (ignore) return;
         if (profile.heightCm) setHeightDraft(String(profile.heightCm));
         if (profile.sex) setSex(profile.sex);
+        if (profile.preferredName) setPreferredNameDraft(profile.preferredName);
+        if (profile.assistantTone) setTone(profile.assistantTone);
         const weightGoal = goalsData.goals.find((g) => g.metric === "weight");
         if (weightGoal) setWeightTargetDraft(String(weightGoal.targetValue));
       } catch (err) {
@@ -72,6 +85,40 @@ export default function Profile() {
       setError(err instanceof Error ? err.message : "Failed to save sex");
     } finally {
       setSavingSex(false);
+    }
+  }
+
+  async function handleSavePreferredName() {
+    const preferredName = preferredNameDraft.trim();
+    if (!preferredName) {
+      setError("Enter a name");
+      return;
+    }
+    setSavingPreferredName(true);
+    setError(null);
+    try {
+      await request("/profile", { method: "PATCH", body: JSON.stringify({ preferredName }) });
+      setSavedPreferredName(true);
+      setTimeout(() => setSavedPreferredName(false), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save name");
+    } finally {
+      setSavingPreferredName(false);
+    }
+  }
+
+  async function handleSetTone(next: AssistantTone) {
+    const previous = tone;
+    setTone(next);
+    setSavingTone(true);
+    setError(null);
+    try {
+      await request("/profile", { method: "PATCH", body: JSON.stringify({ assistantTone: next }) });
+    } catch (err) {
+      setTone(previous);
+      setError(err instanceof Error ? err.message : "Failed to save tone");
+    } finally {
+      setSavingTone(false);
     }
   }
 
@@ -120,6 +167,50 @@ export default function Profile() {
         <p className={mutedText}>Loading...</p>
       ) : (
         <div className="flex flex-col gap-3">
+          <div>
+            <label className={label}>What should the Assistant call you?</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                maxLength={40}
+                value={preferredNameDraft}
+                onChange={(e) => setPreferredNameDraft(e.target.value)}
+                placeholder="e.g. Pragya"
+                className={`w-40 ${input}`}
+              />
+              <button
+                type="button"
+                onClick={handleSavePreferredName}
+                disabled={savingPreferredName}
+                className={`${primaryButton} px-3 py-1.5 text-xs`}
+              >
+                {savingPreferredName ? "Saving..." : "Save"}
+              </button>
+              {savedPreferredName && <span className="text-sm text-bloom">Saved ✓</span>}
+            </div>
+            <p className={`mt-1 ${mutedText}`}>Used by the Assistant in chat and voice mode instead of nothing at all.</p>
+          </div>
+
+          <div>
+            <label className={label}>Assistant tone</label>
+            <div className="flex flex-wrap gap-1.5">
+              {TONE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  disabled={savingTone}
+                  onClick={() => handleSetTone(opt.value)}
+                  className={`${pillButton} flex-col items-start gap-0.5 px-3 py-1.5 text-left ${
+                    tone === opt.value ? pillButtonDone : pillButtonInactive
+                  }`}
+                >
+                  <span className="text-sm font-medium">{opt.label}</span>
+                  <span className={`text-xs ${tone === opt.value ? "" : mutedText}`}>{opt.hint}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div>
             <label className={label}>Sex</label>
             <div className="flex flex-wrap gap-1.5">

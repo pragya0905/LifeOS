@@ -3,10 +3,12 @@ import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb } from "../../common/dynamo";
 import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
-import type { AssistantModel, UserSex } from "../../common/types";
+import type { AssistantModel, AssistantTone, UserSex } from "../../common/types";
 
 const SEX_VALUES: UserSex[] = ["male", "female", "unspecified"];
 const ASSISTANT_MODEL_VALUES: AssistantModel[] = ["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5"];
+const ASSISTANT_TONE_VALUES: AssistantTone[] = ["warm", "direct", "playful"];
+const MAX_PREFERRED_NAME_LENGTH = 40;
 
 export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) => {
   const userId = getUserId(event);
@@ -40,11 +42,24 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     return errorResponse(400, `assistantModel must be one of ${ASSISTANT_MODEL_VALUES.join(", ")}`);
   }
   if (
+    body.preferredName !== undefined &&
+    (typeof body.preferredName !== "string" ||
+      body.preferredName.trim().length === 0 ||
+      body.preferredName.length > MAX_PREFERRED_NAME_LENGTH)
+  ) {
+    return errorResponse(400, `preferredName must be a non-empty string up to ${MAX_PREFERRED_NAME_LENGTH} characters`);
+  }
+  if (body.assistantTone !== undefined && !ASSISTANT_TONE_VALUES.includes(body.assistantTone as AssistantTone)) {
+    return errorResponse(400, `assistantTone must be one of ${ASSISTANT_TONE_VALUES.join(", ")}`);
+  }
+  if (
     body.heightCm === undefined &&
     body.monthlyBudget === undefined &&
     body.onboardingCompleted === undefined &&
     body.sex === undefined &&
-    body.assistantModel === undefined
+    body.assistantModel === undefined &&
+    body.preferredName === undefined &&
+    body.assistantTone === undefined
   ) {
     return errorResponse(400, "No updatable fields provided");
   }
@@ -73,6 +88,16 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     names["#assistantModel"] = "assistantModel";
     values[":assistantModel"] = body.assistantModel;
     setClauses.push("#assistantModel = :assistantModel");
+  }
+  if (body.preferredName !== undefined) {
+    names["#preferredName"] = "preferredName";
+    values[":preferredName"] = (body.preferredName as string).trim();
+    setClauses.push("#preferredName = :preferredName");
+  }
+  if (body.assistantTone !== undefined) {
+    names["#assistantTone"] = "assistantTone";
+    values[":assistantTone"] = body.assistantTone;
+    setClauses.push("#assistantTone = :assistantTone");
   }
   if (body.onboardingCompleted === true) {
     // Stamped server-side (not client-supplied) so it can't be forged/skewed by the client clock.

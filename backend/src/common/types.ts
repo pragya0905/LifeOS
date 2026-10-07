@@ -24,6 +24,7 @@ export interface Task {
 export type UserSex = "male" | "female" | "unspecified";
 
 export type AssistantModel = "claude-haiku-4-5" | "claude-sonnet-5" | "claude-opus-5";
+export type AssistantTone = "warm" | "direct" | "playful";
 
 export interface UserProfile {
   userId: string;
@@ -31,6 +32,8 @@ export interface UserProfile {
   monthlyBudget?: number;
   sex?: UserSex;
   assistantModel?: AssistantModel;
+  preferredName?: string;
+  assistantTone?: AssistantTone;
   lastWeeklyDigestSentAt?: string;
   onboardingCompletedAt?: string;
   updatedAt: string;

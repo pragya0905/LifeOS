@@ -250,12 +250,16 @@ export type UserSex = "male" | "female" | "unspecified";
 
 export type AssistantModel = "claude-haiku-4-5" | "claude-sonnet-5" | "claude-opus-5";
 
+export type AssistantTone = "warm" | "direct" | "playful";
+
 export interface UserProfile {
   userId: string;
   heightCm?: number;
   monthlyBudget?: number;
   sex?: UserSex;
   assistantModel?: AssistantModel;
+  preferredName?: string;
+  assistantTone?: AssistantTone;
   onboardingCompletedAt?: string;
   updatedAt?: string;
 }
