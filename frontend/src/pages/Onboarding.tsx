@@ -32,9 +32,9 @@ interface FieldConfig {
 const FIELDS: FieldConfig[] = [
   { key: "heightCm", label: "Height (cm)", placeholder: "e.g. 170", hint: "Used to calculate BMI.", step: "0.1" },
   { key: "weightTarget", label: "Weight target (kg)", placeholder: "e.g. 65", hint: "Shown on your weight trend chart.", step: "0.1" },
-  { key: "water", label: "Water target (ml/day)", placeholder: "e.g. 2500", hint: "Tracked on your daily water ring." },
-  { key: "exercise", label: "Exercise target (min/day)", placeholder: "e.g. 30", hint: "Tracked on your daily exercise ring." },
-  { key: "steps", label: "Steps target (steps/day)", placeholder: "e.g. 8000", hint: "Tracked on your daily steps ring." },
+  { key: "water", label: "Water target (ml/day)", placeholder: "e.g. 2500", hint: "Shown as your daily goal on the Dashboard's water habit." },
+  { key: "exercise", label: "Exercise target (min/day)", placeholder: "e.g. 30", hint: "Shown as your daily goal on the Dashboard's exercise habit." },
+  { key: "steps", label: "Steps target (steps/day)", placeholder: "e.g. 8000", hint: "Shown as your daily goal on the Dashboard's steps habit." },
 ];
 
 const GOAL_METRIC: Partial<Record<FieldConfig["key"], "water" | "exercise" | "steps" | "weight">> = {

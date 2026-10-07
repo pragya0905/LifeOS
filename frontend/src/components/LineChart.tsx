@@ -7,8 +7,8 @@ export interface LineChartPoint {
   value: number;
 }
 
-// Small dependency-free trend chart — same pure-SVG approach as Ring, rather than
-// pulling in a charting library for what's a handful of simple sparkline-style views.
+// Small dependency-free trend chart — same pure-SVG approach as Tasks' DeadlineRing, rather
+// than pulling in a charting library for what's a handful of simple sparkline-style views.
 export default function LineChart({
   points,
   color = "stroke-bloom",

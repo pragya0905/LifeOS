@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import { useApi } from "../api/useApi";
 import { useAssistantStream, type AssistantStreamEvent } from "../hooks/useAssistantStream";
 import { useSpeechToText } from "../hooks/useSpeechToText";
+import { describeToolUse } from "../lib/toolLabels";
 import VoiceMode from "../components/VoiceMode";
 import {
   card,
@@ -115,6 +116,7 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
   );
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [statusLabel, setStatusLabel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [muted, setMuted] = useState(loadMuted);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -248,6 +250,7 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
       { role: "user", content: message, attachmentLabel: attachment?.fileName },
     ]);
     setSending(true);
+    setStatusLabel(null);
     setError(null);
 
     // No placeholder assistant bubble is pushed up front — the typing indicator covers that
@@ -261,6 +264,7 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
     function appendToLastAssistantMessage(delta: string) {
       if (!assistantMessageStarted) {
         assistantMessageStarted = true;
+        setStatusLabel(null);
         setMessages((prev) => [...prev, { role: "assistant", content: delta }]);
       } else {
         setMessages((prev) => {
@@ -278,6 +282,8 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
         (event: AssistantStreamEvent) => {
           if (event.type === "text") {
             appendToLastAssistantMessage(event.delta);
+          } else if (event.type === "tool_use") {
+            setStatusLabel(describeToolUse(event.name));
           } else if (event.type === "done") {
             conversationIdRef.current = event.conversationId;
             persistConversationId(event.conversationId);
@@ -292,6 +298,7 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
       setError(err instanceof Error ? err.message : "Failed to reach the assistant");
     } finally {
       setSending(false);
+      setStatusLabel(null);
     }
   }
 
@@ -421,10 +428,13 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
         )}
         {awaitingFirstToken && (
           <div className="flex justify-start">
-            <div className="flex gap-1 rounded-2xl bg-stone/40 px-4 py-3 dark:bg-stone-dark/40">
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-muted [animation-delay:-0.3s] dark:bg-mist-muted" />
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-muted [animation-delay:-0.15s] dark:bg-mist-muted" />
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-muted dark:bg-mist-muted" />
+            <div className="flex items-center gap-2 rounded-2xl bg-stone/40 px-4 py-3 dark:bg-stone-dark/40">
+              <div className="flex gap-1">
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-muted [animation-delay:-0.3s] dark:bg-mist-muted" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-muted [animation-delay:-0.15s] dark:bg-mist-muted" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-muted dark:bg-mist-muted" />
+              </div>
+              {statusLabel && <span className={mutedText}>{statusLabel}</span>}
             </div>
           </div>
         )}

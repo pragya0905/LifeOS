@@ -177,9 +177,9 @@ function StatusToggle({ status, onCycle }: { status: TaskStatus; onCycle: () => 
   );
 }
 
-// Small ring (visually consistent with the Dashboard's habit rings) showing how much of the
-// remaining time-before-due the estimated effort would consume — inverted color from the
-// Dashboard rings on purpose: here a HIGH fraction means urgent (red), not "closer to goal".
+// Small ring showing how much of the remaining time-before-due the estimated effort would
+// consume — a HIGH fraction means urgent (red), not "closer to a goal" the way a progress
+// ring normally reads, since this is measuring how little slack is left, not how much is done.
 function DeadlineRing({ task }: { task: Task }) {
   if (!task.dueDate) return null;
   const remaining = hoursUntilDue(task, new Date());

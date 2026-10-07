@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useAssistantStream, type AssistantStreamEvent } from "../hooks/useAssistantStream";
 import { useSpeechToText } from "../hooks/useSpeechToText";
+import { describeToolUse } from "../lib/toolLabels";
 import { errorText, mutedText } from "./ui";
 
 type VoiceState = "idle" | "listening" | "thinking" | "speaking";
@@ -34,6 +35,7 @@ export default function VoiceMode({ conversationId, onConversationId, muted, onC
   const [state, setState] = useState<VoiceState>("idle");
   const [lastHeard, setLastHeard] = useState("");
   const [lastReply, setLastReply] = useState("");
+  const [statusLabel, setStatusLabel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const conversationIdRef = useRef(conversationId);
 
@@ -47,12 +49,15 @@ export default function VoiceMode({ conversationId, onConversationId, muted, onC
 
   async function handleTurn(message: string) {
     setState("thinking");
+    setStatusLabel(null);
     setError(null);
     let fullReply = "";
     try {
       await sendMessage(message, conversationIdRef.current, (event: AssistantStreamEvent) => {
         if (event.type === "text") {
           fullReply += event.delta;
+        } else if (event.type === "tool_use") {
+          setStatusLabel(describeToolUse(event.name));
         } else if (event.type === "done") {
           conversationIdRef.current = event.conversationId;
           onConversationId(event.conversationId);
@@ -128,7 +133,9 @@ export default function VoiceMode({ conversationId, onConversationId, muted, onC
             state === "listening" ? "animate-pulse" : ""
           } ${STATE_COLOR[state]}`}
         />
-        <p className="text-sm font-medium text-ink dark:text-paper">{STATE_LABEL[state]}</p>
+        <p className="text-sm font-medium text-ink dark:text-paper">
+          {state === "thinking" && statusLabel ? statusLabel : STATE_LABEL[state]}
+        </p>
         {lastHeard && state === "listening" && (
           <p className={`max-w-xs text-center text-sm ${mutedText}`}>"{lastHeard}"</p>
         )}
