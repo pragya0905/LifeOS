@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../api/useApi";
 import { todayLocal } from "../lib/date";
+import { appliesOnDate } from "../lib/weekdays";
 import type { Medication, MedicationLog, MedicationLogStatus } from "../types";
 import { EmptyState } from "./EmptyState";
 import { Skeleton } from "./Skeleton";
@@ -67,7 +68,10 @@ export default function TodayMedications() {
     }
   }
 
-  const activeMedications = medications?.filter((m) => today() >= m.startDate && today() <= m.endDate) ?? null;
+  const activeMedications =
+    medications?.filter(
+      (m) => today() >= m.startDate && today() <= m.endDate && appliesOnDate(m.daysOfWeek, new Date()),
+    ) ?? null;
 
   return (
     <div className={card}>

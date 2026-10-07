@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { ddb } from "./dynamo";
 import { extractJournalInfo } from "./claude";
 import { embedText } from "./bedrock";
-import { computeEndDate } from "./medications";
+import { isMedicationActiveOnDate } from "./medications";
 import { LOG_ENTRY_SCHEMAS, SINGULAR_LOG_TYPES } from "./logEntrySchemas";
 import type {
   Expense,
@@ -313,9 +313,7 @@ async function fetchActiveMedications(userId: string): Promise<Medication[]> {
     }),
   );
   const today = new Date().toISOString().slice(0, 10);
-  return ((result.Items ?? []) as Medication[]).filter(
-    (m) => today >= m.startDate && today <= computeEndDate(m.startDate, m.durationDays),
-  );
+  return ((result.Items ?? []) as Medication[]).filter((m) => isMedicationActiveOnDate(m, today));
 }
 
 async function fetchRoutineTemplates(userId: string): Promise<RoutineTemplate[]> {

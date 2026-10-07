@@ -159,6 +159,10 @@ export interface Medication {
   lastReminderSentDate?: string;
   startDate: string;
   durationDays: number;
+  // Days this medication is taken on: 0=Sun..6=Sat (JS Date#getDay() convention), same
+  // meaning as RoutineTemplate.daysOfWeek. Absent or empty means every day within the
+  // startDate/durationDays range — the only state every pre-existing medication can be in.
+  daysOfWeek?: number[];
   createdAt: string;
 }
 

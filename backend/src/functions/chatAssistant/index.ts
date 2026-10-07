@@ -8,7 +8,7 @@ import { ddb } from "../../common/dynamo";
 import { verifyIdToken } from "../../common/jwtVerify";
 import { EXPENSE_CATEGORIES } from "../../common/expenseCategories";
 import { computeProgressSummary, progressFractionForWish, type WishWithProgress } from "../../common/progressSummary";
-import { computeEndDate } from "../../common/medications";
+import { isMedicationActiveOnDate } from "../../common/medications";
 import { geocodeLocation, fetchWeather } from "../../common/weather";
 import type {
   AssistantConversationTurn,
@@ -280,9 +280,7 @@ async function computeDailyCheckinStatus(apiUrl: string, authHeader: string): Pr
   };
 
   const medications = (medicationsRes.data as { medications: Medication[] } | undefined)?.medications ?? [];
-  const activeMedications = medications.filter(
-    (m) => todayStr >= m.startDate && todayStr <= computeEndDate(m.startDate, m.durationDays),
-  );
+  const activeMedications = medications.filter((m) => isMedicationActiveOnDate(m, todayStr));
   const medicationLogs = (medicationLogsRes.data as { logs: MedicationLog[] } | undefined)?.logs ?? [];
   const medicationsStatus = activeMedications.map((m) => ({
     medicationId: m.medicationId,
@@ -623,7 +621,7 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "create_medication",
     description:
-      "Add a new medication the user says they're taking. durationDays is required — if the user gives an end date or doesn't say how long, work out a reasonable number of days (e.g. 'ongoing' or no end mentioned → a large number like 365). If they mention a reminder time, set timeOfDay — never guess timezoneOffsetMinutes yourself, it's filled in automatically.",
+      "Add a new medication the user says they're taking. durationDays is required — if the user gives an end date or doesn't say how long, work out a reasonable number of days (e.g. 'ongoing' or no end mentioned → a large number like 365). If they mention a reminder time, set timeOfDay — never guess timezoneOffsetMinutes yourself, it's filled in automatically. If it's only taken on certain days (e.g. 'once a week on Sundays', 'Mon/Wed/Fri'), set daysOfWeek instead of leaving it as every day.",
     input_schema: {
       type: "object",
       properties: {
@@ -633,6 +631,11 @@ const TOOLS: Anthropic.Tool[] = [
         startDate: { type: "string", description: "YYYY-MM-DD. Defaults to today if omitted." },
         durationDays: { type: "integer", minimum: 1 },
         timeOfDay: { type: "string", description: "HH:MM 24-hour — when to send a daily reminder, if the user wants one." },
+        daysOfWeek: {
+          type: "array",
+          items: { type: "integer", minimum: 0, maximum: 6 },
+          description: "Days this is taken: 0=Sunday, 1=Monday, ..., 6=Saturday. Omit entirely if it's taken every day.",
+        },
       },
       required: ["name", "durationDays"],
     },
@@ -645,7 +648,7 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "update_medication",
     description:
-      "Change an existing medication's name, dosage, notes, duration, or reminder time. medicationId must be an exact value already known from conversation context or a prior tool result — never guess it; call get_medications first if you don't have it.",
+      "Change an existing medication's name, dosage, notes, duration, reminder time, or day-of-week schedule. medicationId must be an exact value already known from conversation context or a prior tool result — never guess it; call get_medications first if you don't have it.",
     input_schema: {
       type: "object",
       properties: {
@@ -656,6 +659,11 @@ const TOOLS: Anthropic.Tool[] = [
         startDate: { type: "string", description: "YYYY-MM-DD" },
         durationDays: { type: "integer", minimum: 1 },
         timeOfDay: { type: "string", description: "HH:MM 24-hour, or omit to leave unchanged." },
+        daysOfWeek: {
+          type: "array",
+          items: { type: "integer", minimum: 0, maximum: 6 },
+          description: "0=Sunday..6=Saturday. Pass every day (or omit this field) to make it run daily again.",
+        },
       },
       required: ["medicationId"],
     },
@@ -1052,6 +1060,7 @@ async function executeTool(
           durationDays: input.durationDays,
           timeOfDay: input.timeOfDay,
           timezoneOffsetMinutes: input.timeOfDay ? timezoneOffsetMinutes : undefined,
+          daysOfWeek: input.daysOfWeek,
         });
         break;
       }
@@ -1063,6 +1072,7 @@ async function executeTool(
           startDate: input.startDate,
           durationDays: input.durationDays,
           timeOfDay: input.timeOfDay,
+          daysOfWeek: input.daysOfWeek,
           timezoneOffsetMinutes: input.timeOfDay ? timezoneOffsetMinutes : undefined,
         });
         break;

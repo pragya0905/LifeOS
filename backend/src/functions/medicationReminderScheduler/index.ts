@@ -2,7 +2,7 @@ import type { ScheduledHandler } from "aws-lambda";
 import { GetCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb } from "../../common/dynamo";
 import { scanAllPushSubscriptions, sendPushNotification } from "../../common/pushNotifications";
-import { computeEndDate } from "../../common/medications";
+import { isMedicationActiveOnDate } from "../../common/medications";
 import type { Medication, MedicationLog, PushSubscription } from "../../common/types";
 
 // Fires every 15 minutes, same cadence as the Task/Wish schedulers. A medication's
@@ -53,8 +53,7 @@ export const handler: ScheduledHandler = async () => {
       if (!medication.timeOfDay || medication.timezoneOffsetMinutes === undefined) continue;
       if (medication.lastReminderSentDate === today) continue;
 
-      const endDate = computeEndDate(medication.startDate, medication.durationDays);
-      if (today < medication.startDate || today > endDate) continue;
+      if (!isMedicationActiveOnDate(medication, today)) continue;
 
       const target = targetUtcInstant(today, medication.timeOfDay, medication.timezoneOffsetMinutes);
       if (target < now || target > windowEnd) continue;

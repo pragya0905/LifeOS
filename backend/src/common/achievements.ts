@@ -1,4 +1,4 @@
-import { computeEndDate } from "./medications";
+import { isMedicationActiveOnDate } from "./medications";
 import type {
   HabitLog,
   JournalEntry,
@@ -97,7 +97,7 @@ function computeRoutineBestStreak(routineLogs: RoutineStepLog[], routines: Routi
 }
 
 // A day counts toward the medication streak if every medication that was active on that
-// specific date (by its own startDate/durationDays, not today's date) was logged taken.
+// specific date (by its own startDate/durationDays/daysOfWeek, not today's date) was logged taken.
 function computeMedicationBestStreak(medicationLogs: MedicationLog[], medications: Medication[]): number {
   const logsByDate = new Map<string, MedicationLog[]>();
   for (const log of medicationLogs) {
@@ -108,7 +108,7 @@ function computeMedicationBestStreak(medicationLogs: MedicationLog[], medication
 
   const perfectDays = new Set<string>();
   for (const [date, logs] of logsByDate) {
-    const activeThatDay = medications.filter((m) => date >= m.startDate && date <= computeEndDate(m.startDate, m.durationDays));
+    const activeThatDay = medications.filter((m) => isMedicationActiveOnDate(m, date));
     if (activeThatDay.length === 0) continue;
     const allTaken = activeThatDay.every((m) => logs.some((l) => l.medicationId === m.medicationId && l.status === "taken"));
     if (allTaken) perfectDays.add(date);

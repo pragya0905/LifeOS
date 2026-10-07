@@ -78,6 +78,8 @@ export interface Medication {
   startDate: string;
   durationDays: number;
   endDate: string;
+  // Days this is taken on: 0=Sun..6=Sat. Absent or empty means every day.
+  daysOfWeek?: number[];
   createdAt: string;
 }
 

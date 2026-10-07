@@ -1,8 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useApi } from "../api/useApi";
 import { todayLocal, toLocalDateStr } from "../lib/date";
+import { ALL_DAYS, appliesOnDate, formatSchedule } from "../lib/weekdays";
 import { Skeleton } from "../components/Skeleton";
 import { EmptyState } from "../components/EmptyState";
+import DayOfWeekPicker from "../components/DayOfWeekPicker";
 import type { Medication, MedicationLog, MedicationLogStatus } from "../types";
 import {
   card,
@@ -34,8 +36,9 @@ function daysAgo(n: number): string {
 const DURATION_PRESETS = [7, 30];
 const ADHERENCE_WINDOW_DAYS = 14;
 
-// % of active days (within the last 14 days, clamped to the medication's own start/end)
-// logged as "taken". Days with no log at all count against adherence, same as "missed".
+// % of scheduled days (within the last 14 days, clamped to the medication's own start/end
+// date range and its own daysOfWeek) logged as "taken". Days with no log at all count
+// against adherence, same as "missed" — but a day it isn't even scheduled for doesn't count.
 function computeAdherence(
   medication: Medication,
   logs: MedicationLog[],
@@ -57,9 +60,14 @@ function computeAdherence(
   const cursor = new Date(`${activeStart}T00:00:00Z`);
   const end = new Date(`${activeEnd}T00:00:00Z`);
   while (cursor <= end) {
-    const d = cursor.toISOString().slice(0, 10);
-    activeDays += 1;
-    if (takenDates.has(d)) takenDays += 1;
+    // Skip days this medication isn't actually scheduled for (e.g. a weekly medication's
+    // off-days) — otherwise those would count as "missed" and drag adherence down for
+    // something that was never supposed to be taken that day in the first place.
+    if (!medication.daysOfWeek || medication.daysOfWeek.length === 0 || medication.daysOfWeek.includes(cursor.getUTCDay())) {
+      const d = cursor.toISOString().slice(0, 10);
+      activeDays += 1;
+      if (takenDates.has(d)) takenDays += 1;
+    }
     cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
   return activeDays > 0 ? Math.round((takenDays / activeDays) * 100) : null;
@@ -77,6 +85,7 @@ export default function Medications() {
   const [notes, setNotes] = useState("");
   const [timeOfDay, setTimeOfDay] = useState("");
   const [durationDays, setDurationDays] = useState(7);
+  const [daysOfWeek, setDaysOfWeek] = useState<number[]>(ALL_DAYS);
   const [saving, setSaving] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
   const [recentLogs, setRecentLogs] = useState<MedicationLog[]>([]);
@@ -118,9 +127,13 @@ export default function Medications() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  function toggleDay(day: number) {
+    setDaysOfWeek((prev) => (prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort()));
+  }
+
   async function handleAdd(e: FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || daysOfWeek.length === 0) return;
     setSaving(true);
     setError(null);
     try {
@@ -133,6 +146,7 @@ export default function Medications() {
           notes: notes.trim() || undefined,
           timeOfDay: timeOfDay || undefined,
           timezoneOffsetMinutes: timeOfDay ? new Date().getTimezoneOffset() : undefined,
+          daysOfWeek: daysOfWeek.length === 7 ? [] : daysOfWeek,
         }),
       });
       setMedications((prev) => [medication, ...prev]);
@@ -141,6 +155,7 @@ export default function Medications() {
       setNotes("");
       setTimeOfDay("");
       setDurationDays(7);
+      setDaysOfWeek(ALL_DAYS);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add medication");
     } finally {
@@ -186,7 +201,7 @@ export default function Medications() {
   }
 
   const activeMedications = medications.filter(
-    (m) => today() >= m.startDate && today() <= m.endDate,
+    (m) => today() >= m.startDate && today() <= m.endDate && appliesOnDate(m.daysOfWeek, new Date()),
   );
 
   return (
@@ -261,13 +276,26 @@ export default function Medications() {
             <span className={mutedText}>days</span>
           </div>
         </div>
+        <div>
+          <label className={label}>Days</label>
+          <DayOfWeekPicker selected={daysOfWeek} onToggle={toggleDay} />
+          <p className={`mt-1 ${mutedText}`}>
+            {daysOfWeek.length === 7
+              ? "Taken every day of the week."
+              : `Taken on: ${formatSchedule(daysOfWeek)} — e.g. for something you only take weekly.`}
+          </p>
+        </div>
         {timeOfDay && (
           <p className={mutedText}>
-            🔔 You'll get a push reminder around {timeOfDay} each day this medication is active,
-            unless you've already marked it taken.
+            🔔 You'll get a push reminder around {timeOfDay} on days this medication is scheduled
+            for, unless you've already marked it taken.
           </p>
         )}
-        <button type="submit" disabled={saving} className={`self-start ${primaryButton}`}>
+        <button
+          type="submit"
+          disabled={saving || daysOfWeek.length === 0}
+          className={`self-start ${primaryButton}`}
+        >
           {saving ? "Adding..." : "Add medication"}
         </button>
       </form>
@@ -355,6 +383,9 @@ export default function Medications() {
                       <p className="text-xs text-ink-muted dark:text-mist-muted">
                         {medication.startDate} → {medication.endDate} ({medication.durationDays} days)
                         {medication.timeOfDay && ` · 🔔 ${medication.timeOfDay}`}
+                        {medication.daysOfWeek && medication.daysOfWeek.length > 0 && medication.daysOfWeek.length < 7
+                          ? ` · ${formatSchedule(medication.daysOfWeek)}`
+                          : ""}
                       </p>
                       {medication.notes && (
                         <p className="mt-0.5 text-xs italic text-ink-muted dark:text-mist-muted">

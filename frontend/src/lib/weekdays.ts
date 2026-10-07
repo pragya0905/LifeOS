@@ -11,3 +11,9 @@ export function formatSchedule(daysOfWeek: number[] | undefined): string {
     .map((d) => DAY_LABELS[d])
     .join(", ");
 }
+
+// Shared by Routines and Medications' "today" filtering — absent/empty daysOfWeek means every
+// day, same convention formatSchedule renders as "Daily".
+export function appliesOnDate(daysOfWeek: number[] | undefined, date: Date): boolean {
+  return !daysOfWeek || daysOfWeek.length === 0 || daysOfWeek.includes(date.getDay());
+}
