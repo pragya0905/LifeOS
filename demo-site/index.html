@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="description" content="LifeOs — a personal life-tracking app with AI-driven journal extraction and a voice/chat assistant. Live screenshots, engineering highlights, and the full stack." />
+<meta name="description" content="LifeOs — a personal life-tracking app built around LLM inference: RAG over a user's own journal, structured-output extraction, multi-model tiering, and a self-correcting memory system. Live screenshots, engineering highlights, and the full stack." />
 <title>LifeOs</title>
 <style>
   :root {
@@ -317,7 +317,7 @@
 
 <section class="highlights wrap" id="highlights">
   <div class="section-head">
-    <div class="kicker">Engineering</div>
+    <div class="kicker">Engineering — LLM inference, RAG, and the serverless backend underneath</div>
     <h2>A few decisions worth asking about</h2>
     <p>Real tradeoffs made while building and operating this, not a features list.</p>
   </div>
@@ -325,7 +325,7 @@
     <div class="highlight-card">
       <span class="h-icon">🔐</span>
       <h3>Cross-user data leaks are structurally impossible</h3>
-      <p>Every one of 17 DynamoDB tables partitions by the authenticated user's ID, resolved once from a verified JWT claim — never a client-supplied field. The key needed to reach another user's row never appears in a request built from your own auth context.</p>
+      <p>Every one of 19 DynamoDB tables partitions by the authenticated user's ID, resolved once from a verified JWT claim — never a client-supplied field. The key needed to reach another user's row never appears in a request built from your own auth context.</p>
     </div>
     <div class="highlight-card">
       <span class="h-icon">🐛</span>
@@ -367,6 +367,21 @@
       <h3>Real token streaming meant leaving API Gateway for one route</h3>
       <p>API Gateway's proxy integration buffers a Lambda's whole response before returning it — no way to stream through it. The Assistant's chat now runs behind its own Lambda Function URL with response streaming instead, which doesn't support the shared Cognito authorizer, so that one function verifies the JWT itself (via AWS's own aws-jwt-verify library) before committing to any HTTP status — checked with both a valid and a deliberately invalid token before calling it done, since that's the one place auth isn't the platform's problem anymore.</p>
     </div>
+    <div class="highlight-card">
+      <span class="h-icon">🧩</span>
+      <h3>Inference constrained to a schema, not parsed from prose</h3>
+      <p>Journal extraction, insights, task-priority, and meal-plan suggestions all call Claude through the SDK's schema-constrained output helper against a Zod schema — the response is guaranteed-shape JSON, never regex'd out of freeform text. Every field stays optional/nullable so the model leaves things unset rather than inventing a value for something the entry never mentioned.</p>
+    </div>
+    <div class="highlight-card">
+      <span class="h-icon">🧪</span>
+      <h3>Measured a model's reliability instead of assuming it</h3>
+      <p>Wiring a newly-unlocked achievement into the Assistant's context worked immediately on Sonnet but silently didn't fire on Haiku — even after rewriting the instruction as a hard imperative. Isolated by swapping only the model with identical code and prompt: a genuine instruction-following gap between tiers, not a bug. Documented and left as a known cost/capability tradeoff rather than papered over with a forced workaround.</p>
+    </div>
+    <div class="highlight-card">
+      <span class="h-icon">🧠</span>
+      <h3>A memory system that can forget, not just accumulate</h3>
+      <p>The Assistant can save a short durable fact about the user mid-conversation — but for months that was write-only: nothing let it correct or retract one once the context changed. Added update/forget as first-class tool calls alongside remember, so a finished goal or a wrong detail doesn't sit in every future prompt forever. Verified live: a corrected preference lands with the same memory id and a fresh timestamp; a resolved one disappears outright.</p>
+    </div>
   </div>
 </section>
 
@@ -376,13 +391,13 @@
     <h2>The whole system, quantified</h2>
   </div>
   <div class="stats-grid">
-    <div class="stat"><span class="n">67</span><span class="l">Lambda functions</span></div>
-    <div class="stat"><span class="n">60</span><span class="l">API routes</span></div>
-    <div class="stat"><span class="n">17</span><span class="l">DynamoDB tables</span></div>
+    <div class="stat"><span class="n">74</span><span class="l">Lambda functions</span></div>
+    <div class="stat"><span class="n">67</span><span class="l">API routes</span></div>
+    <div class="stat"><span class="n">19</span><span class="l">DynamoDB tables</span></div>
     <div class="stat"><span class="n">0</span><span class="l">GSIs — by design</span></div>
-    <div class="stat"><span class="n">20</span><span class="l">frontend routes</span></div>
+    <div class="stat"><span class="n">21</span><span class="l">frontend routes</span></div>
     <div class="stat"><span class="n">5</span><span class="l">scheduled jobs</span></div>
-    <div class="stat"><span class="n">12</span><span class="l">tracked life domains</span></div>
+    <div class="stat"><span class="n">59</span><span class="l">automated unit tests</span></div>
     <div class="stat"><span class="n">1</span><span class="l">person, built &amp; runs it solo</span></div>
   </div>
 </section>
@@ -397,15 +412,17 @@
     <span class="stack-pill">TypeScript</span>
     <span class="stack-pill">Tailwind CSS 4</span>
     <span class="stack-pill">Vite</span>
+    <span class="stack-pill">Vitest</span>
     <span class="stack-pill">PWA / Service Worker</span>
-    <span class="stack-pill">AWS Lambda (Node 20, arm64)</span>
+    <span class="stack-pill">AWS Lambda (Node 22, arm64)</span>
     <span class="stack-pill">API Gateway (HTTP API)</span>
     <span class="stack-pill">DynamoDB</span>
     <span class="stack-pill">Cognito</span>
     <span class="stack-pill">S3 + CloudFront</span>
     <span class="stack-pill">AWS SAM</span>
-    <span class="stack-pill">Claude (Anthropic)</span>
+    <span class="stack-pill">Claude (Anthropic) — multi-model inference</span>
     <span class="stack-pill">Amazon Bedrock (Titan Embeddings)</span>
+    <span class="stack-pill">Zod (schema-constrained inference)</span>
     <span class="stack-pill">Web Push / VAPID</span>
     <span class="stack-pill">Web Speech API</span>
   </div>
