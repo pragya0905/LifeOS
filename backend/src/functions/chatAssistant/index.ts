@@ -519,7 +519,10 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: "object",
       properties: {
-        category: { type: "string", enum: ["skinCare", "hairCare", "dailyRoutine", "custom"] },
+        category: {
+          type: "string",
+          description: "A short category name — 'skinCare', 'hairCare', and 'dailyRoutine' are common, but any free text the user implies (e.g. 'bodycare') is fine too.",
+        },
         name: { type: "string" },
         steps: { type: "array", items: { type: "string" }, description: "One entry per step, in order." },
         daysOfWeek: {
@@ -545,7 +548,10 @@ const TOOLS: Anthropic.Tool[] = [
       properties: {
         routineId: { type: "string" },
         name: { type: "string" },
-        category: { type: "string", enum: ["skinCare", "hairCare", "dailyRoutine", "custom"] },
+        category: {
+          type: "string",
+          description: "A short category name — 'skinCare', 'hairCare', and 'dailyRoutine' are common, but any free text the user implies (e.g. 'bodycare') is fine too.",
+        },
         steps: { type: "array", items: { type: "string" } },
         daysOfWeek: {
           type: "array",

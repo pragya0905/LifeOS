@@ -3,9 +3,8 @@ import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb } from "../../common/dynamo";
 import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
-import type { RoutineCategory } from "../../common/types";
 
-const CATEGORIES: RoutineCategory[] = ["skinCare", "hairCare", "dailyRoutine", "custom"];
+const MAX_CATEGORY_LENGTH = 40;
 const UPDATABLE_FIELDS = ["name", "category", "steps", "daysOfWeek"] as const;
 
 export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) => {
@@ -20,8 +19,11 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     return errorResponse(400, "Invalid JSON body");
   }
 
-  if (body.category !== undefined && !CATEGORIES.includes(body.category as RoutineCategory)) {
-    return errorResponse(400, `category must be one of ${CATEGORIES.join(", ")}`);
+  if (body.category !== undefined) {
+    if (typeof body.category !== "string" || !body.category.trim() || body.category.length > MAX_CATEGORY_LENGTH) {
+      return errorResponse(400, `category must be a non-empty string up to ${MAX_CATEGORY_LENGTH} characters`);
+    }
+    body.category = body.category.trim();
   }
   if (body.name !== undefined && (typeof body.name !== "string" || !body.name.trim())) {
     return errorResponse(400, "name must be a non-empty string");

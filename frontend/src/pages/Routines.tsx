@@ -27,10 +27,24 @@ const CATEGORY_LABEL: Record<RoutineCategory, string> = {
   skinCare: "Skin care",
   hairCare: "Hair care",
   dailyRoutine: "Daily routine",
-  custom: "Custom",
 };
 
 const CATEGORIES = Object.keys(CATEGORY_LABEL) as RoutineCategory[];
+
+// Sentinel for "Custom…" in the category <select> — never itself persisted. category is a
+// free-text string on RoutineTemplate, so this just switches the picker to a text input instead
+// of one of the three named presets.
+const CUSTOM_CATEGORY_OPTION = "__custom__";
+
+function isPresetCategory(category: string): category is RoutineCategory {
+  return (CATEGORIES as string[]).includes(category);
+}
+
+// Falls back to the raw stored value for a category that isn't one of the three presets
+// (e.g. "bodycare") rather than showing nothing or an "undefined" label.
+function categoryLabel(category: string): string {
+  return isPresetCategory(category) ? CATEGORY_LABEL[category] : category;
+}
 
 const ROUTINE_TEMPLATES: { label: string; category: RoutineCategory; name: string; steps: string[] }[] = [
   {
@@ -107,12 +121,17 @@ function RoutineCard({
   onDelete: (routineId: string) => void;
   onSave: (
     routineId: string,
-    patch: { name: string; category: RoutineCategory; steps: string[]; daysOfWeek: number[] },
+    patch: { name: string; category: string; steps: string[]; daysOfWeek: number[] },
   ) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
   const [nameDraft, setNameDraft] = useState(routine.name);
-  const [categoryDraft, setCategoryDraft] = useState<RoutineCategory>(routine.category);
+  const [categorySelect, setCategorySelect] = useState(
+    isPresetCategory(routine.category) ? routine.category : CUSTOM_CATEGORY_OPTION,
+  );
+  const [customCategoryDraft, setCustomCategoryDraft] = useState(
+    isPresetCategory(routine.category) ? "" : routine.category,
+  );
   const [stepsDraft, setStepsDraft] = useState(routine.steps.join("\n"));
   const [daysDraft, setDaysDraft] = useState<number[]>(
     routine.daysOfWeek && routine.daysOfWeek.length > 0 ? routine.daysOfWeek : ALL_DAYS,
@@ -127,12 +146,14 @@ function RoutineCard({
     setDaysDraft((prev) => (prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort()));
   }
 
+  const categoryDraft = categorySelect === CUSTOM_CATEGORY_OPTION ? customCategoryDraft.trim() : categorySelect;
+
   async function handleSaveEdit() {
     const steps = stepsDraft
       .split("\n")
       .map((s) => s.trim())
       .filter(Boolean);
-    if (!nameDraft.trim() || steps.length === 0 || daysDraft.length === 0) return;
+    if (!nameDraft.trim() || !categoryDraft || steps.length === 0 || daysDraft.length === 0) return;
     setSavingEdit(true);
     try {
       await onSave(routine.routineId, {
@@ -154,8 +175,8 @@ function RoutineCard({
           <div>
             <label className={label}>Category</label>
             <select
-              value={categoryDraft}
-              onChange={(e) => setCategoryDraft(e.target.value as RoutineCategory)}
+              value={categorySelect}
+              onChange={(e) => setCategorySelect(e.target.value)}
               className={input}
             >
               {CATEGORIES.map((c) => (
@@ -163,7 +184,18 @@ function RoutineCard({
                   {CATEGORY_LABEL[c]}
                 </option>
               ))}
+              <option value={CUSTOM_CATEGORY_OPTION}>Custom…</option>
             </select>
+            {categorySelect === CUSTOM_CATEGORY_OPTION && (
+              <input
+                type="text"
+                value={customCategoryDraft}
+                onChange={(e) => setCustomCategoryDraft(e.target.value)}
+                placeholder="e.g. Bodycare"
+                maxLength={40}
+                className={`mt-1.5 w-full ${input}`}
+              />
+            )}
           </div>
           <div className="min-w-[200px] flex-1">
             <label className={label}>Name</label>
@@ -189,7 +221,7 @@ function RoutineCard({
         <div className="flex gap-2">
           <button
             type="button"
-            disabled={savingEdit || daysDraft.length === 0}
+            disabled={savingEdit || daysDraft.length === 0 || !categoryDraft}
             onClick={handleSaveEdit}
             className={`${secondaryButton} px-3 py-1 text-xs`}
           >
@@ -215,7 +247,7 @@ function RoutineCard({
         <p className="text-sm font-medium text-ink dark:text-paper">
           {routine.name}{" "}
           <span className="font-normal text-ink-muted dark:text-mist-muted">
-            ({CATEGORY_LABEL[routine.category]})
+            ({categoryLabel(routine.category)})
           </span>{" "}
           <span className={badge}>
             {doneCount}/{routine.steps.length} done
@@ -290,7 +322,8 @@ export default function Routines() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [category, setCategory] = useState<RoutineCategory>("skinCare");
+  const [categorySelect, setCategorySelect] = useState<string>("skinCare");
+  const [customCategoryDraft, setCustomCategoryDraft] = useState("");
   const [name, setName] = useState("");
   const [stepsText, setStepsText] = useState("");
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>(ALL_DAYS);
@@ -333,7 +366,8 @@ export default function Routines() {
   }, []);
 
   function applyTemplate(template: (typeof ROUTINE_TEMPLATES)[number]) {
-    setCategory(template.category);
+    setCategorySelect(template.category);
+    setCustomCategoryDraft("");
     setName(template.name);
     setStepsText(template.steps.join("\n"));
   }
@@ -344,11 +378,12 @@ export default function Routines() {
 
   async function handleAdd(e: FormEvent) {
     e.preventDefault();
+    const category = categorySelect === CUSTOM_CATEGORY_OPTION ? customCategoryDraft.trim() : categorySelect;
     const steps = stepsText
       .split("\n")
       .map((s) => s.trim())
       .filter(Boolean);
-    if (!name.trim() || steps.length === 0 || daysOfWeek.length === 0) return;
+    if (!name.trim() || !category || steps.length === 0 || daysOfWeek.length === 0) return;
     setSaving(true);
     setError(null);
     try {
@@ -390,7 +425,7 @@ export default function Routines() {
 
   async function handleSaveEdit(
     routineId: string,
-    patch: { name: string; category: RoutineCategory; steps: string[]; daysOfWeek: number[] },
+    patch: { name: string; category: string; steps: string[]; daysOfWeek: number[] },
   ) {
     setError(null);
     try {
@@ -453,8 +488,8 @@ export default function Routines() {
           <div>
             <label className={label}>Category</label>
             <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value as RoutineCategory)}
+              value={categorySelect}
+              onChange={(e) => setCategorySelect(e.target.value)}
               className={input}
             >
               {CATEGORIES.map((c) => (
@@ -462,7 +497,18 @@ export default function Routines() {
                   {CATEGORY_LABEL[c]}
                 </option>
               ))}
+              <option value={CUSTOM_CATEGORY_OPTION}>Custom…</option>
             </select>
+            {categorySelect === CUSTOM_CATEGORY_OPTION && (
+              <input
+                type="text"
+                value={customCategoryDraft}
+                onChange={(e) => setCustomCategoryDraft(e.target.value)}
+                placeholder="e.g. Bodycare"
+                maxLength={40}
+                className={`mt-1.5 w-full ${input}`}
+              />
+            )}
           </div>
           <div className="min-w-[200px] flex-1">
             <label className={label}>Name</label>
@@ -493,7 +539,11 @@ export default function Routines() {
         </div>
         <button
           type="submit"
-          disabled={saving || daysOfWeek.length === 0}
+          disabled={
+            saving ||
+            daysOfWeek.length === 0 ||
+            (categorySelect === CUSTOM_CATEGORY_OPTION && !customCategoryDraft.trim())
+          }
           className={`self-start ${primaryButton}`}
         >
           {saving ? "Adding..." : "Add routine"}

@@ -4,9 +4,9 @@ import { randomUUID } from "node:crypto";
 import { ddb } from "../../common/dynamo";
 import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
-import type { RoutineCategory, RoutineTemplate } from "../../common/types";
+import type { RoutineTemplate } from "../../common/types";
 
-const CATEGORIES: RoutineCategory[] = ["skinCare", "hairCare", "dailyRoutine", "custom"];
+const MAX_CATEGORY_LENGTH = 40;
 
 export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) => {
   const userId = getUserId(event);
@@ -18,9 +18,11 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     return errorResponse(400, "Invalid JSON body");
   }
 
-  const category = body.category as RoutineCategory;
-  if (!CATEGORIES.includes(category)) {
-    return errorResponse(400, `category must be one of ${CATEGORIES.join(", ")}`);
+  // Free text, not a fixed enum — "skinCare"/"hairCare"/"dailyRoutine" are just the presets a
+  // picker offers; anything else (e.g. "bodycare") is equally valid.
+  const category = typeof body.category === "string" ? body.category.trim() : "";
+  if (!category || category.length > MAX_CATEGORY_LENGTH) {
+    return errorResponse(400, `category must be a non-empty string up to ${MAX_CATEGORY_LENGTH} characters`);
   }
 
   const name = typeof body.name === "string" ? body.name.trim() : "";

@@ -115,12 +115,15 @@ export interface LogEntry {
   updatedAt: string;
 }
 
-export type RoutineCategory = "skinCare" | "hairCare" | "dailyRoutine" | "custom";
+// The three built-in presets a picker can offer — not an exhaustive list of valid values.
+// RoutineTemplate.category itself is a free-text string so a user can type their own (e.g.
+// "bodycare") instead of being stuck with "custom" as a generic, unnamed catch-all.
+export type RoutineCategory = "skinCare" | "hairCare" | "dailyRoutine";
 
 export interface RoutineTemplate {
   userId: string;
   routineId: string;
-  category: RoutineCategory;
+  category: string;
   name: string;
   steps: string[];
   // Days this routine runs on: 0=Sun..6=Sat (JS Date#getDay() convention). Absent or empty

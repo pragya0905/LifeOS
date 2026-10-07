@@ -16,12 +16,17 @@ import {
   sectionLabel,
 } from "./ui";
 
-const CATEGORY_LABEL: Record<RoutineTemplate["category"], string> = {
+// Only the three built-in presets — category is free text (e.g. "bodycare"), so this falls
+// back to the raw stored value for anything else rather than showing "undefined".
+const CATEGORY_LABEL: Record<string, string> = {
   skinCare: "Skin care",
   hairCare: "Hair care",
   dailyRoutine: "Daily routine",
-  custom: "Custom",
 };
+
+function categoryLabel(category: string): string {
+  return CATEGORY_LABEL[category] ?? category;
+}
 
 function today(): string {
   return todayLocal();
@@ -121,7 +126,7 @@ export default function TodayRoutines() {
                 <p className="mb-1.5 text-sm font-medium text-ink dark:text-paper">
                   {routine.name}{" "}
                   <span className="font-normal text-ink-muted dark:text-mist-muted">
-                    ({CATEGORY_LABEL[routine.category]})
+                    ({categoryLabel(routine.category)})
                   </span>{" "}
                   <span className={badge}>
                     {doneCount}/{routine.steps.length} done
