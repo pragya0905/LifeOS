@@ -107,12 +107,26 @@ async function buildAttachmentBlock(
   };
 }
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
+// Confirmed live bug (not theoretical): with no offset, "today" is the Lambda's UTC server
+// date — for a user in IST (UTC+5:30), that's the WRONG calendar day for roughly 00:00-05:30
+// IST every night, since UTC hasn't rolled over to the new day yet. timezoneOffsetMinutes uses
+// JS Date#getTimezoneOffset() convention (IST = -330), so local = UTC - offsetMinutes.
+function localNow(timezoneOffsetMinutes: number | undefined): Date {
+  return timezoneOffsetMinutes === undefined
+    ? new Date()
+    : new Date(Date.now() - timezoneOffsetMinutes * 60000);
 }
 
-function daysAgo(n: number): string {
-  const d = new Date();
+function today(timezoneOffsetMinutes?: number): string {
+  return localNow(timezoneOffsetMinutes).toISOString().slice(0, 10);
+}
+
+function currentLocalTime(timezoneOffsetMinutes: number | undefined): string {
+  return localNow(timezoneOffsetMinutes).toISOString().slice(11, 16);
+}
+
+function daysAgo(n: number, timezoneOffsetMinutes?: number): string {
+  const d = localNow(timezoneOffsetMinutes);
   d.setUTCDate(d.getUTCDate() - n);
   return d.toISOString().slice(0, 10);
 }
@@ -138,14 +152,23 @@ async function callApi(
 // much cheaper than) the on-demand get_progress_summary tool below, so the assistant always
 // knows what the user is working toward without paying for the full deterministic computation
 // on every single message.
-async function fetchGoalsContext(apiUrl: string, authHeader: string): Promise<string> {
+async function fetchGoalsContext(
+  apiUrl: string,
+  authHeader: string,
+  timezoneOffsetMinutes: number | undefined,
+): Promise<string> {
   try {
     const [wishesRes, goalsRes, todayHabitsRes, achievementsRes, moodRes, journalRes] = await Promise.all([
       callApi(apiUrl, authHeader, "/wishes", "GET"),
       callApi(apiUrl, authHeader, "/goals", "GET"),
-      callApi(apiUrl, authHeader, `/habits/${today()}`, "GET"),
+      callApi(apiUrl, authHeader, `/habits/${today(timezoneOffsetMinutes)}`, "GET"),
       callApi(apiUrl, authHeader, "/achievements", "GET"),
-      callApi(apiUrl, authHeader, `/logs?logType=mood&from=${daysAgo(6)}&to=${today()}`, "GET"),
+      callApi(
+        apiUrl,
+        authHeader,
+        `/logs?logType=mood&from=${daysAgo(6, timezoneOffsetMinutes)}&to=${today(timezoneOffsetMinutes)}`,
+        "GET",
+      ),
       callApi(apiUrl, authHeader, "/journal", "GET"),
     ]);
 
@@ -239,8 +262,12 @@ function detectMoodDip(entries: { date: string; data: Record<string, unknown> }[
 // user has and hasn't logged today, across every domain, so a guided "let's log today" chat
 // only asks about what's actually missing (and, for medications/routines, by their real names
 // and steps) instead of guessing or re-asking about things already logged.
-async function computeDailyCheckinStatus(apiUrl: string, authHeader: string): Promise<Record<string, unknown>> {
-  const todayStr = today();
+async function computeDailyCheckinStatus(
+  apiUrl: string,
+  authHeader: string,
+  timezoneOffsetMinutes: number | undefined,
+): Promise<Record<string, unknown>> {
+  const todayStr = today(timezoneOffsetMinutes);
   const dayOfWeek = new Date(`${todayStr}T00:00:00Z`).getUTCDay();
 
   const [habitsRes, sleepRes, moodRes, foodRes, medicationsRes, medicationLogsRes, routinesRes, routineLogsRes] =
@@ -874,7 +901,7 @@ async function executeTool(
     let result: { status: number; data: unknown };
     switch (name) {
       case "log_habit": {
-        const date = (input.date as string) || today();
+        const date = (input.date as string) || today(timezoneOffsetMinutes);
         result = await callApi(apiUrl, authHeader, `/habits/${date}/${input.habitType}`, "PATCH", {
           value: input.value,
         });
@@ -883,7 +910,7 @@ async function executeTool(
       case "log_entry": {
         result = await callApi(apiUrl, authHeader, "/logs", "POST", {
           logType: input.logType,
-          date: (input.date as string) || today(),
+          date: (input.date as string) || today(timezoneOffsetMinutes),
           data: input.data,
         });
         break;
@@ -902,7 +929,7 @@ async function executeTool(
         break;
       }
       case "log_routine_step": {
-        const date = (input.date as string) || today();
+        const date = (input.date as string) || today(timezoneOffsetMinutes);
         result = await callApi(
           apiUrl,
           authHeader,
@@ -913,7 +940,7 @@ async function executeTool(
         break;
       }
       case "log_medication": {
-        const date = (input.date as string) || today();
+        const date = (input.date as string) || today(timezoneOffsetMinutes);
         result = await callApi(apiUrl, authHeader, `/medication-logs/${date}/${input.medicationId}`, "PATCH", {
           status: input.status,
         });
@@ -930,7 +957,7 @@ async function executeTool(
         break;
       }
       case "get_schedule": {
-        const date = (input.date as string) || today();
+        const date = (input.date as string) || today(timezoneOffsetMinutes);
         result = await callApi(apiUrl, authHeader, `/schedule/${date}`, "GET");
         break;
       }
@@ -944,7 +971,7 @@ async function executeTool(
       }
       case "log_journal_entry": {
         result = await callApi(apiUrl, authHeader, "/journal", "POST", {
-          date: (input.date as string) || today(),
+          date: (input.date as string) || today(timezoneOffsetMinutes),
           text: input.text,
         });
         break;
@@ -1099,7 +1126,7 @@ async function executeTool(
           category: input.category,
           amount: input.amount,
           note: input.note,
-          date: (input.date as string) || today(),
+          date: (input.date as string) || today(timezoneOffsetMinutes),
         });
         break;
       }
@@ -1152,7 +1179,7 @@ async function executeTool(
         return { content: JSON.stringify(summary), isError: false };
       }
       case "get_daily_checkin_status": {
-        const status = await computeDailyCheckinStatus(apiUrl, authHeader);
+        const status = await computeDailyCheckinStatus(apiUrl, authHeader, timezoneOffsetMinutes);
         return { content: JSON.stringify(status), isError: false };
       }
       case "remember_fact": {
@@ -1285,6 +1312,7 @@ function buildSystemPrompt(
   preferredName: string | undefined,
   assistantTone: AssistantTone | undefined,
   location: string | undefined,
+  timezoneOffsetMinutes: number | undefined,
 ): string {
   const base =
     "You are the LifeOs assistant — a supportive, conversational personal life-management " +
@@ -1298,7 +1326,8 @@ function buildSystemPrompt(
       "(season, climate, regional food, local context) without being asked, but call get_weather " +
       "rather than guessing if actual current/forecast conditions matter to what's being discussed. " : "") +
     `${TONE_INSTRUCTIONS[assistantTone ?? "warm"]} ` +
-    `Today's date is ${today()}. When the user reports something that maps to a tool (a habit ` +
+    `Today's date is ${today(timezoneOffsetMinutes)}, and the current local time is ` +
+    `${currentLocalTime(timezoneOffsetMinutes)}. When the user reports something that maps to a tool (a habit ` +
     "amount, a food/sleep/mood/etc. entry, a task, a routine or medication tick, an expense, a " +
     "new or edited routine/medication/expense/budget/meal-plan-default/wish/goal/profile " +
     "detail), call the matching tool rather than just acknowledging it in text — logging, " +
@@ -1442,7 +1471,7 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
           ExpressionAttributeValues: { ":userId": userId },
         }),
       ),
-      fetchGoalsContext(API_URL, authHeader as string),
+      fetchGoalsContext(API_URL, authHeader as string, timezoneOffsetMinutes),
       callApi(API_URL, authHeader as string, "/profile", "GET"),
     ]);
     const historyItems = ((historyResult.Items ?? []) as AssistantConversationTurn[]).slice(-HISTORY_TURN_LIMIT);
@@ -1487,6 +1516,7 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
       profile?.preferredName,
       profile?.assistantTone,
       profile?.location,
+      timezoneOffsetMinutes,
     );
     let finalText = "";
 
