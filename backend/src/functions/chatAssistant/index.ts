@@ -481,7 +481,7 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "set_meal_plan",
     description:
-      "Set or change one planned meal slot. Use this when the user agrees to a specific change during a conversation about their meal plan (e.g. 'swap Wednesday dinner for something lighter' after you've suggested one).",
+      "Set or change ONE planned meal slot. Use this only for a single conversational tweak (e.g. 'swap Wednesday dinner for something lighter'). If the user is giving you several days/meals at once — a weekly plan, a batch of swaps — use set_meal_plan_batch instead; calling this one slot at a time for a whole week will run out of room before finishing.",
     input_schema: {
       type: "object",
       properties: {
@@ -493,6 +493,30 @@ const TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "set_meal_plan_batch",
+    description:
+      "Set or change several planned meal slots in ONE call — use this whenever the user gives you more than one or two meals at once (a full week, several days, a bulk swap), instead of calling set_meal_plan repeatedly. One call here can set an entire week's worth of meals.",
+    input_schema: {
+      type: "object",
+      properties: {
+        slots: {
+          type: "array",
+          description: "One entry per meal slot being set.",
+          items: {
+            type: "object",
+            properties: {
+              date: { type: "string", description: "YYYY-MM-DD" },
+              mealType: { type: "string", enum: ["breakfast", "lunch", "dinner", "snack"] },
+              text: { type: "string", description: "The planned meal, e.g. 'Grilled salmon with steamed broccoli'." },
+            },
+            required: ["date", "mealType", "text"],
+          },
+        },
+      },
+      required: ["slots"],
+    },
+  },
+  {
     name: "get_meal_plan_template",
     description:
       "Get the user's weekly default meals (e.g. 'what do I usually have on Mondays') — these are the recurring defaults that fill a day unless a specific date was overridden.",
@@ -501,7 +525,7 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "set_meal_plan_template",
     description:
-      "Set a recurring weekly default meal for a day of the week (e.g. 'I usually have oatmeal on weekday mornings' — call once per weekday). This does not touch any specific date's plan, only the default that future dates fall back to.",
+      "Set ONE recurring weekly default meal for a single day of the week (e.g. 'I usually have oatmeal on weekday mornings' called once per weekday). This does not touch any specific date's plan, only the default that future dates fall back to. If the user is giving you a full weekly rotation or several days/meals at once, use set_meal_plan_template_batch instead — calling this one slot at a time for a whole week will run out of room before finishing.",
     input_schema: {
       type: "object",
       properties: {
@@ -510,6 +534,30 @@ const TOOLS: Anthropic.Tool[] = [
         text: { type: "string" },
       },
       required: ["dayOfWeek", "mealType", "text"],
+    },
+  },
+  {
+    name: "set_meal_plan_template_batch",
+    description:
+      "Set several recurring weekly default meals in ONE call — use this for a full weekly rotation or any time the user describes more than one or two days/meals at once, instead of calling set_meal_plan_template repeatedly. One call here can set an entire week's worth of recurring defaults (up to 28 slots: 7 days × 4 meal types).",
+    input_schema: {
+      type: "object",
+      properties: {
+        slots: {
+          type: "array",
+          description: "One entry per recurring day-of-week/meal-type slot being set.",
+          items: {
+            type: "object",
+            properties: {
+              dayOfWeek: { type: "integer", minimum: 0, maximum: 6, description: "0=Sunday..6=Saturday." },
+              mealType: { type: "string", enum: ["breakfast", "lunch", "dinner", "snack"] },
+              text: { type: "string" },
+            },
+            required: ["dayOfWeek", "mealType", "text"],
+          },
+        },
+      },
+      required: ["slots"],
     },
   },
   {
@@ -908,6 +956,25 @@ async function executeTool(
         );
         break;
       }
+      case "set_meal_plan_batch": {
+        const slots = (input.slots as { date: string; mealType: string; text: string }[] | undefined) ?? [];
+        const outcomes = await Promise.all(
+          slots.map(async (slot) => {
+            const res = await callApi(apiUrl, authHeader, `/meal-plan/${slot.date}/${slot.mealType}`, "PATCH", {
+              text: slot.text,
+            });
+            return { ...slot, ok: res.status < 400 };
+          }),
+        );
+        const failed = outcomes.filter((o) => !o.ok);
+        return {
+          content: JSON.stringify({
+            set: outcomes.filter((o) => o.ok).length,
+            failed: failed.length > 0 ? failed : undefined,
+          }),
+          isError: false,
+        };
+      }
       case "get_meal_plan_template": {
         result = await callApi(apiUrl, authHeader, "/meal-plan-templates", "GET");
         break;
@@ -921,6 +988,30 @@ async function executeTool(
           { text: input.text },
         );
         break;
+      }
+      case "set_meal_plan_template_batch": {
+        const slots =
+          (input.slots as { dayOfWeek: number; mealType: string; text: string }[] | undefined) ?? [];
+        const outcomes = await Promise.all(
+          slots.map(async (slot) => {
+            const res = await callApi(
+              apiUrl,
+              authHeader,
+              `/meal-plan-templates/${slot.dayOfWeek}/${slot.mealType}`,
+              "PATCH",
+              { text: slot.text },
+            );
+            return { ...slot, ok: res.status < 400 };
+          }),
+        );
+        const failed = outcomes.filter((o) => !o.ok);
+        return {
+          content: JSON.stringify({
+            set: outcomes.filter((o) => o.ok).length,
+            failed: failed.length > 0 ? failed : undefined,
+          }),
+          isError: false,
+        };
       }
       case "get_routines": {
         result = await callApi(apiUrl, authHeader, "/routines", "GET");
@@ -1390,9 +1481,15 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
     let finalText = "";
 
     for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
+      // Confirmed live (not a guess): a bulk request (a full week's meal plan) hit
+      // stop_reason "max_tokens" with content [thinking, tool_use] — the model's own extended
+      // thinking block alone was consuming the whole 1024-token budget before the tool call
+      // could even complete, so nothing ever actually ran. Raising this costs nothing when
+      // unused (billing is by tokens actually generated, not the cap) but removes a ceiling
+      // that was silently truncating legitimate multi-tool-call turns before they could finish.
       const stream = client.messages.stream({
         model: assistantModel,
-        max_tokens: 1024,
+        max_tokens: 8192,
         system: systemPrompt,
         tools: TOOLS,
         messages,
