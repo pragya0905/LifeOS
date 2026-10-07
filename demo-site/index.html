@@ -123,29 +123,38 @@
   .demo-dots { display: flex; gap: 0.4rem; margin-bottom: 1.1rem; }
   .demo-dots span { width: 9px; height: 9px; border-radius: 50%; background: rgba(255,255,255,0.15); }
   .demo-label { color: rgba(255,255,255,0.4); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.7rem; }
-  .demo-text {
-    color: var(--code-ink); min-height: 4.2em; line-height: 1.55;
+  .chat-row-user {
+    color: var(--code-ink); line-height: 1.55; min-height: 2.8em; max-width: 100%;
     border-right: 2px solid var(--code-accent);
-    white-space: pre-wrap; overflow: hidden;
-    width: 0ch; animation: type 3.2s steps(78, end) 0.4s forwards;
+    white-space: pre-wrap; overflow: hidden; overflow-wrap: anywhere;
+    width: 0ch; animation: typeUser 2.3s steps(61, end) 0.4s forwards;
   }
-  @keyframes type { to { width: 78ch; } }
-  @media (prefers-reduced-motion: reduce) {
-    .demo-text { width: 78ch; animation: none; border-right: none; }
-  }
-  .demo-arrow {
-    text-align: center; color: rgba(255,255,255,0.3); font-size: 1.1rem; margin: 0.9rem 0;
-    opacity: 0; animation: fadeIn 0.5s ease 3.6s forwards;
-  }
-  .demo-fields { display: flex; flex-wrap: wrap; gap: 0.5rem; opacity: 0; animation: fadeIn 0.6s ease 3.8s forwards; }
+  @keyframes typeUser { to { width: min(61ch, 100%); } }
+  @keyframes riseIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes fadeIn { to { opacity: 1; } }
-  .field-chip {
-    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,138,122,0.35); border-radius: 8px;
-    padding: 0.4rem 0.65rem; font-size: 0.78rem; color: var(--code-ink);
+  .tool-calls { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1rem; }
+  .tool-calls .tool-call-row {
+    display: flex; align-items: center; gap: 0.5rem;
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,138,122,0.3); border-radius: 8px;
+    padding: 0.5rem 0.7rem; font-size: 0.78rem; color: var(--code-ink);
+    opacity: 0; animation: riseIn 0.4s ease forwards;
   }
-  .field-chip b { color: var(--code-accent); font-weight: 600; }
+  .tool-calls .tool-call-row .fn { color: var(--code-accent); font-weight: 600; }
+  .tool-calls .tool-call-row:nth-child(1) { animation-delay: 2.9s; }
+  .tool-calls .tool-call-row:nth-child(2) { animation-delay: 3.3s; }
+  .tool-calls .tool-call-row:nth-child(3) { animation-delay: 3.7s; }
+  .chat-row-assistant {
+    margin-top: 1.1rem; padding-top: 0.9rem; border-top: 1px solid rgba(255,255,255,0.1);
+    color: var(--code-ink); font-size: 0.86rem; line-height: 1.5;
+    opacity: 0; animation: fadeIn 0.6s ease 4.2s forwards;
+  }
+  .chat-row-assistant .who {
+    display: block; color: rgba(255,255,255,0.4); font-size: 0.72rem;
+    text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.35rem;
+  }
   @media (prefers-reduced-motion: reduce) {
-    .demo-arrow, .demo-fields { opacity: 1; animation: none; }
+    .chat-row-user { width: min(61ch, 100%); animation: none; border-right: none; }
+    .tool-calls .tool-call-row, .chat-row-assistant { opacity: 1; animation: none; }
   }
 
   /* ---------------- SCREENSHOT SHOWCASE ---------------- */
@@ -253,14 +262,16 @@
 
     <div class="demo-card">
       <div class="demo-dots"><span></span><span></span><span></span></div>
-      <div class="demo-label">Journal entry</div>
-      <div class="demo-text">walked 10km today, drank a bottle of water, did 45 minutes of yoga, slept 11pm–7am</div>
-      <div class="demo-arrow">↓ extracted automatically ↓</div>
-      <div class="demo-fields">
-        <span class="field-chip">steps <b>13,387</b> <i>(from distance × height)</i></span>
-        <span class="field-chip">water <b>500ml</b></span>
-        <span class="field-chip">exercise <b>45min</b></span>
-        <span class="field-chip">sleep <b>11pm–7am</b></span>
+      <div class="demo-label">Assistant chat</div>
+      <div class="chat-row-user">walked 10km, had eggs for breakfast, spent 400 on groceries</div>
+      <div class="tool-calls">
+        <div class="tool-call-row"><span class="fn">log_habit</span>(steps, <b>13,387</b>)</div>
+        <div class="tool-call-row"><span class="fn">create_log_entry</span>(food, "eggs")</div>
+        <div class="tool-call-row"><span class="fn">create_expense</span>(groceries, ₹400)</div>
+      </div>
+      <div class="chat-row-assistant">
+        <span class="who">Assistant</span>
+        Logged all three — nice walk today 🚶
       </div>
     </div>
   </div>
