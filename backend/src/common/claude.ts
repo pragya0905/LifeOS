@@ -286,6 +286,7 @@ const MEAL_PLAN_SYSTEM_PROMPT =
 export async function suggestMealPlan(
   emptySlots: { date: string; mealType: string }[],
   existingSlots: { date: string; mealType: string; text: string }[],
+  location?: string,
 ): Promise<MealPlanSuggestion> {
   const client = await getClient();
   const lines = [
@@ -294,6 +295,9 @@ export async function suggestMealPlan(
       ? `Already-planned meals this week (for variety, don't repeat these): ${JSON.stringify(existingSlots)}`
       : "No meals planned yet this week.",
   ];
+  if (location) {
+    lines.push(`User's location: ${location}. Lean toward dishes that fit this region's home cooking.`);
+  }
 
   const response = await client.messages.parse({
     model: "claude-haiku-4-5",

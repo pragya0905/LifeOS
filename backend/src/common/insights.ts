@@ -1,4 +1,4 @@
-import { QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { QueryCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb } from "./dynamo";
 import { generateInsights, type Insights } from "./claude";
 import type {
@@ -10,6 +10,7 @@ import type {
   RoutineStepLog,
   RoutineTemplate,
   Task,
+  UserProfile,
 } from "./types";
 
 export function dateRangeForPeriod(period: "day" | "week"): { from: string; to: string } {
@@ -57,7 +58,7 @@ export async function generateInsightsForUser(
 ): Promise<Insights> {
   const { from, to } = dateRangeForPeriod(period);
 
-  const [habits, medicationLogs, routineLogs, logEntries, expenses, medications, routines, tasks] =
+  const [habits, medicationLogs, routineLogs, logEntries, expenses, medications, routines, tasks, profileResult] =
     await Promise.all([
       queryByDateRange<HabitLog>(process.env.HABITS_TABLE_NAME as string, userId, from, to),
       queryByDateRange<MedicationLog>(
@@ -77,12 +78,15 @@ export async function generateInsightsForUser(
       queryAll<Medication>(process.env.MEDICATIONS_TABLE_NAME as string, userId),
       queryAll<RoutineTemplate>(process.env.ROUTINE_TEMPLATES_TABLE_NAME as string, userId),
       queryAll<Task>(process.env.TASKS_TABLE_NAME as string, userId),
+      ddb.send(new GetCommand({ TableName: process.env.USER_PROFILE_TABLE_NAME, Key: { userId } })),
     ]);
+  const location = (profileResult.Item as UserProfile | undefined)?.location;
 
   const medicationNames = new Map(medications.map((m) => [m.medicationId, m.name]));
   const routinesById = new Map(routines.map((r) => [r.routineId, r]));
 
   const lines: string[] = [`Period: ${period} covering ${from} to ${to}.`];
+  if (location) lines.push(`User's location: ${location}.`);
 
   if (habits.length > 0) {
     lines.push("Habit logs:");

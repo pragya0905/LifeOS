@@ -1240,10 +1240,13 @@ Resources:
       Environment:
         Variables:
           MEAL_PLAN_TABLE_NAME: !Ref MealPlanTable
+          USER_PROFILE_TABLE_NAME: !Ref UserProfileTable
           ANTHROPIC_API_KEY_PARAM: !Sub "/lifeos/${Environment}/anthropic-api-key"
       Policies:
         - DynamoDBReadPolicy:
             TableName: !Ref MealPlanTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref UserProfileTable
         - SSMParameterReadPolicy:
             ParameterName: !Sub "lifeos/${Environment}/anthropic-api-key"
       Events:
@@ -1855,6 +1858,7 @@ Resources:
           ROUTINE_TEMPLATES_TABLE_NAME: !Ref RoutineTemplatesTable
           TASKS_TABLE_NAME: !Ref TasksTable
           EXPENSES_TABLE_NAME: !Ref ExpensesTable
+          USER_PROFILE_TABLE_NAME: !Ref UserProfileTable
           ANTHROPIC_API_KEY_PARAM: !Sub "/lifeos/${Environment}/anthropic-api-key"
       Policies:
         - DynamoDBReadPolicy:
@@ -1873,6 +1877,8 @@ Resources:
             TableName: !Ref TasksTable
         - DynamoDBReadPolicy:
             TableName: !Ref ExpensesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref UserProfileTable
         - SSMParameterReadPolicy:
             ParameterName: !Sub "lifeos/${Environment}/anthropic-api-key"
       Events:

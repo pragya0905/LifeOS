@@ -9,6 +9,7 @@ import { verifyIdToken } from "../../common/jwtVerify";
 import { EXPENSE_CATEGORIES } from "../../common/expenseCategories";
 import { computeProgressSummary, progressFractionForWish, type WishWithProgress } from "../../common/progressSummary";
 import { computeEndDate } from "../../common/medications";
+import { geocodeLocation, fetchWeather } from "../../common/weather";
 import type {
   AssistantConversationTurn,
   AssistantTone,
@@ -788,6 +789,12 @@ const TOOLS: Anthropic.Tool[] = [
       required: ["memoryId"],
     },
   },
+  {
+    name: "get_weather",
+    description:
+      "Get current conditions and a 3-day forecast for the user's location (set in their profile). Call this when actual weather matters to what's being discussed — planning outdoor activity/exercise, whether to reschedule something, trip-relevant chat — never guess conditions yourself. If the user has no location set, this tells you so; ask them to add one in Settings rather than guessing their location.",
+    input_schema: { type: "object", properties: {} },
+  },
 ];
 
 async function executeTool(
@@ -1093,6 +1100,22 @@ async function executeTool(
         }
         return { content: "Forgotten.", isError: false };
       }
+      case "get_weather": {
+        const profileRes = await callApi(apiUrl, authHeader, "/profile", "GET");
+        const location = (profileRes.data as { location?: string } | undefined)?.location;
+        if (!location) {
+          return {
+            content: "No location set on this user's profile. Ask them to add one in Settings before checking weather.",
+            isError: false,
+          };
+        }
+        const geo = await geocodeLocation(location);
+        if (!geo) {
+          return { content: `Could not resolve "${location}" to a real place.`, isError: true };
+        }
+        const weather = await fetchWeather(geo);
+        return { content: JSON.stringify(weather), isError: false };
+      }
       default:
         return { content: `Unknown tool: ${name}`, isError: true };
     }
@@ -1151,6 +1174,7 @@ function buildSystemPrompt(
   isOnboarding: boolean,
   preferredName: string | undefined,
   assistantTone: AssistantTone | undefined,
+  location: string | undefined,
 ): string {
   const base =
     "You are the LifeOs assistant — a supportive, conversational personal life-management " +
@@ -1160,6 +1184,9 @@ function buildSystemPrompt(
     "(both a specific date and recurring weekly defaults), wishes, goals, profile details, and " +
     "journal via the tools available to you. " +
     (preferredName ? `Call the user "${preferredName}" rather than anything generic. ` : "") +
+    (location ? `The user is located in ${location} — use this for anything location-relevant ` +
+      "(season, climate, regional food, local context) without being asked, but call get_weather " +
+      "rather than guessing if actual current/forecast conditions matter to what's being discussed. " : "") +
     `${TONE_INSTRUCTIONS[assistantTone ?? "warm"]} ` +
     `Today's date is ${today()}. When the user reports something that maps to a tool (a habit ` +
     "amount, a food/sleep/mood/etc. entry, a task, a routine or medication tick, an expense, a " +
@@ -1349,6 +1376,7 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
       isOnboarding,
       profile?.preferredName,
       profile?.assistantTone,
+      profile?.location,
     );
     let finalText = "";
 

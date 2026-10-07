@@ -34,6 +34,7 @@ export interface UserProfile {
   assistantModel?: AssistantModel;
   preferredName?: string;
   assistantTone?: AssistantTone;
+  location?: string;
   lastWeeklyDigestSentAt?: string;
   onboardingCompletedAt?: string;
   updatedAt: string;

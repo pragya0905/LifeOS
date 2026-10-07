@@ -260,6 +260,7 @@ export interface UserProfile {
   assistantModel?: AssistantModel;
   preferredName?: string;
   assistantTone?: AssistantTone;
+  location?: string;
   onboardingCompletedAt?: string;
   updatedAt?: string;
 }

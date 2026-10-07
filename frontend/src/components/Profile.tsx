@@ -34,14 +34,17 @@ export default function Profile() {
   const [sex, setSex] = useState<UserSex | null>(null);
   const [preferredNameDraft, setPreferredNameDraft] = useState("");
   const [tone, setTone] = useState<AssistantTone>("warm");
+  const [locationDraft, setLocationDraft] = useState("");
   const [savingHeight, setSavingHeight] = useState(false);
   const [savingWeightTarget, setSavingWeightTarget] = useState(false);
   const [savingSex, setSavingSex] = useState(false);
   const [savingPreferredName, setSavingPreferredName] = useState(false);
   const [savingTone, setSavingTone] = useState(false);
+  const [savingLocation, setSavingLocation] = useState(false);
   const [savedHeight, setSavedHeight] = useState(false);
   const [savedWeightTarget, setSavedWeightTarget] = useState(false);
   const [savedPreferredName, setSavedPreferredName] = useState(false);
+  const [savedLocation, setSavedLocation] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -58,6 +61,7 @@ export default function Profile() {
         if (profile.sex) setSex(profile.sex);
         if (profile.preferredName) setPreferredNameDraft(profile.preferredName);
         if (profile.assistantTone) setTone(profile.assistantTone);
+        if (profile.location) setLocationDraft(profile.location);
         const weightGoal = goalsData.goals.find((g) => g.metric === "weight");
         if (weightGoal) setWeightTargetDraft(String(weightGoal.targetValue));
       } catch (err) {
@@ -119,6 +123,25 @@ export default function Profile() {
       setError(err instanceof Error ? err.message : "Failed to save tone");
     } finally {
       setSavingTone(false);
+    }
+  }
+
+  async function handleSaveLocation() {
+    const location = locationDraft.trim();
+    if (!location) {
+      setError("Enter a location");
+      return;
+    }
+    setSavingLocation(true);
+    setError(null);
+    try {
+      await request("/profile", { method: "PATCH", body: JSON.stringify({ location }) });
+      setSavedLocation(true);
+      setTimeout(() => setSavedLocation(false), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save location");
+    } finally {
+      setSavingLocation(false);
     }
   }
 
@@ -209,6 +232,32 @@ export default function Profile() {
                 </button>
               ))}
             </div>
+          </div>
+
+          <div>
+            <label className={label}>Location</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                maxLength={100}
+                value={locationDraft}
+                onChange={(e) => setLocationDraft(e.target.value)}
+                placeholder="e.g. Bengaluru, India"
+                className={`w-48 ${input}`}
+              />
+              <button
+                type="button"
+                onClick={handleSaveLocation}
+                disabled={savingLocation}
+                className={`${primaryButton} px-3 py-1.5 text-xs`}
+              >
+                {savingLocation ? "Saving..." : "Save"}
+              </button>
+              {savedLocation && <span className="text-sm text-bloom">Saved ✓</span>}
+            </div>
+            <p className={`mt-1 ${mutedText}`}>
+              Used to make Insights, Meal Plan suggestions, and the Assistant's weather tool location-aware.
+            </p>
           </div>
 
           <div>
