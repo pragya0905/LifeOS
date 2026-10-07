@@ -53,7 +53,10 @@ function writeEvent(stream: NodeJS.WritableStream, event: Record<string, unknown
   stream.write(`${JSON.stringify(event)}\n`);
 }
 
-const MAX_TOOL_ITERATIONS = 5;
+// Each iteration is one round trip to the model, but a single response can batch several tool
+// calls at once — Claude often does this well, so 8 round trips usually covers even a compound
+// "create several things, then read them back and analyze" request without needing to be huge.
+const MAX_TOOL_ITERATIONS = 8;
 const HISTORY_TURN_LIMIT = 40; // ~20 exchanges of conversational context
 
 const s3 = new S3Client({});
@@ -1421,8 +1424,18 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
       messages.push({ role: "user", content: toolResults });
     }
 
+    // Can happen if the model spends its whole tool-iteration budget calling tools without
+    // ever narrating in text (a long compound request needing many sequential, non-batched
+    // tool calls is the realistic trigger). The old fallback string was only ever written to
+    // the persisted conversation record — never streamed live — so the chat UI just silently
+    // ended with nothing visible, indistinguishable from the page being broken. Now it's
+    // actually sent as a real "text" event too, and it's honest about what happened instead
+    // of implying the user's phrasing was the problem.
     if (!finalText) {
-      finalText = "Sorry, I got a bit stuck on that one — could you try rephrasing?";
+      finalText =
+        "I made some progress on that but ran out of room to finish — could be a lot to do in one go. " +
+        "Mind checking what's already been saved and asking me to continue with what's left?";
+      writeEvent(responseStream, { type: "text", delta: finalText });
     }
 
     const now = Date.now();

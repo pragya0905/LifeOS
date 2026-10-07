@@ -23,6 +23,7 @@ const CONVERSATION_ID_KEY = "lifeos_assistant_conversation_id";
 const MUTED_KEY = "lifeos_assistant_muted";
 const ALLOWED_ATTACHMENT_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"];
 const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
+const MAX_TEXTAREA_HEIGHT = 160; // ~6-7 lines at text-sm before the composer scrolls internally
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -130,6 +131,7 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
   // conversationId happens to be in localStorage from a prior session.
   const conversationIdRef = useRef<string | undefined>(onboarding ? undefined : loadConversationId());
   const listEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const {
     supported: voiceSupported,
@@ -148,6 +150,16 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
   useEffect(() => {
     listEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, sending]);
+
+  // Auto-grows the composer up to MAX_TEXTAREA_HEIGHT as multi-line content is typed or
+  // pasted in, then scrolls internally past that — a plain <input> can't hold newlines at
+  // all, which was silently flattening any pasted multi-line text into one line.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, MAX_TEXTAREA_HEIGHT)}px`;
+  }, [text]);
 
   function toggleMuted() {
     setMuted((prev) => {
@@ -302,12 +314,16 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
     }
   }
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
+  async function triggerSend() {
     const trimmed = text.trim();
     if ((!trimmed && !pendingAttachment) || sending) return;
     setText("");
     await sendMessage(trimmed);
+  }
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    triggerSend();
   }
 
   function handleToggleVoice() {
@@ -457,7 +473,7 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="flex items-center gap-2">
+      <form onSubmit={handleSubmit} className="flex items-end gap-2">
         <input
           ref={fileInputRef}
           type="file"
@@ -476,12 +492,19 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
         >
           {attaching ? "…" : "📎"}
         </label>
-        <input
-          type="text"
+        <textarea
+          ref={textareaRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Type or use the mic..."
-          className={`flex-1 ${input}`}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              triggerSend();
+            }
+          }}
+          placeholder="Type or use the mic... (Shift+Enter for a new line)"
+          rows={1}
+          className={`flex-1 resize-none overflow-y-auto ${input}`}
         />
         {voiceSupported && (
           <button
