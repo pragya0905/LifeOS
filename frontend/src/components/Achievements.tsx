@@ -4,6 +4,16 @@ import type { Badge } from "../types";
 import { Skeleton } from "./Skeleton";
 import { card, mutedText, sectionLabel } from "./ui";
 
+const EXPANDED_KEY = "lifeos_achievements_expanded";
+
+function loadExpanded(): boolean {
+  try {
+    return localStorage.getItem(EXPANDED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 function formatEarnedDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
@@ -12,6 +22,22 @@ export default function Achievements() {
   const { request } = useApi();
   const [badges, setBadges] = useState<Badge[] | null>(null);
   const [celebrating, setCelebrating] = useState<Badge[]>([]);
+  // Collapsed by default — the full 14-badge grid otherwise dominates the top of the
+  // Dashboard above anything actually actionable (today's habits, routines, meds).
+  // Persisted so expanding it once doesn't reset on every visit.
+  const [expanded, setExpanded] = useState(loadExpanded);
+
+  function toggleExpanded() {
+    setExpanded((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(EXPANDED_KEY, next ? "1" : "0");
+      } catch {
+        // Best-effort — collapse state just won't persist (e.g. private browsing).
+      }
+      return next;
+    });
+  }
 
   useEffect(() => {
     let ignore = false;
@@ -38,14 +64,30 @@ export default function Achievements() {
 
   return (
     <div className={`mb-6 ${card}`}>
-      <div className="mb-3 flex items-center justify-between">
+      <button
+        type="button"
+        onClick={toggleExpanded}
+        aria-expanded={expanded}
+        className="mb-3 flex w-full items-center justify-between text-left"
+      >
         <h2 className={sectionLabel}>🏆 Achievements</h2>
-        {badges && (
-          <span className={mutedText}>
-            {unlockedCount} / {badges.length}
-          </span>
-        )}
-      </div>
+        <span className="flex items-center gap-1.5">
+          {badges && (
+            <span className={mutedText}>
+              {unlockedCount} / {badges.length}
+            </span>
+          )}
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            className={`text-ink-muted transition-transform dark:text-mist-muted ${expanded ? "rotate-180" : ""}`}
+          >
+            <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
+      </button>
 
       {celebrating.length > 0 && (
         <div className="mb-3 flex flex-col gap-1.5 rounded-xl bg-bloom-soft px-3 py-2.5 dark:bg-bloom-soft-dark">
@@ -57,7 +99,7 @@ export default function Achievements() {
         </div>
       )}
 
-      {!badges ? (
+      {expanded && (!badges ? (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           <Skeleton className="h-16 w-full" />
           <Skeleton className="h-16 w-full" />
@@ -89,7 +131,7 @@ export default function Achievements() {
             </div>
           ))}
         </div>
-      )}
+      ))}
     </div>
   );
 }
