@@ -244,6 +244,7 @@ function TaskCard({
   onToggleEdit,
   onUpdate,
   onDuplicate,
+  onDelete,
   editDescription,
   setEditDescription,
   editDueDate,
@@ -263,6 +264,7 @@ function TaskCard({
   onToggleEdit: () => void;
   onUpdate: (patch: Record<string, unknown>) => Promise<boolean>;
   onDuplicate: () => void;
+  onDelete: () => void;
   editDescription: string;
   setEditDescription: (v: string) => void;
   editDueDate: string;
@@ -400,6 +402,13 @@ function TaskCard({
               className={`${secondaryButton} px-2 py-1 text-xs`}
             >
               Duplicate
+            </button>
+            <button
+              type="button"
+              onClick={onDelete}
+              className={`${secondaryButton} px-2 py-1 text-xs`}
+            >
+              Delete
             </button>
           </div>
         </div>
@@ -651,6 +660,16 @@ export default function Tasks() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update task");
       return false;
+    }
+  }
+
+  async function deleteTask(taskId: string) {
+    setError(null);
+    try {
+      await request(`/tasks/${taskId}`, { method: "DELETE" });
+      setTasks((prev) => prev.filter((t) => t.taskId !== taskId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete task");
     }
   }
 
@@ -925,6 +944,7 @@ export default function Tasks() {
                     }
                     onUpdate={(patch) => updateTask(task.taskId, patch)}
                     onDuplicate={() => duplicateTask(task)}
+                    onDelete={() => deleteTask(task.taskId)}
                     editDescription={editDescription}
                     setEditDescription={setEditDescription}
                     editDueDate={editDueDate}

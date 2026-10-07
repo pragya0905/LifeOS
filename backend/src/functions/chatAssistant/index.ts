@@ -462,8 +462,18 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: "get_tasks",
-    description: "Get all of the user's tasks (any status, any due date).",
+    description: "Get all of the user's tasks (any status, any due date) — call this to find a taskId before delete_task, if you don't already have it.",
     input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "delete_task",
+    description:
+      "Permanently remove a task. taskId must be an exact value already known from conversation context or a prior tool result — never guess it; call get_tasks first if you don't have it.",
+    input_schema: {
+      type: "object",
+      properties: { taskId: { type: "string" } },
+      required: ["taskId"],
+    },
   },
   {
     name: "search_journal",
@@ -963,6 +973,10 @@ async function executeTool(
       }
       case "get_tasks": {
         result = await callApi(apiUrl, authHeader, "/tasks", "GET");
+        break;
+      }
+      case "delete_task": {
+        result = await callApi(apiUrl, authHeader, `/tasks/${input.taskId}`, "DELETE");
         break;
       }
       case "search_journal": {

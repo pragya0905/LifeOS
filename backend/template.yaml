@@ -768,6 +768,35 @@ Resources:
             Auth:
               Authorizer: CognitoAuthorizer
 
+  DeleteTaskFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node22"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-delete-task-${Environment}"
+      CodeUri: src/functions/deleteTask/
+      Handler: index.handler
+      Environment:
+        Variables:
+          TASKS_TABLE_NAME: !Ref TasksTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TasksTable
+      Events:
+        DeleteTask:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /tasks/{id}
+            Method: DELETE
+            Auth:
+              Authorizer: CognitoAuthorizer
+
   ########################
   # Lambda — Journal CRUD
   ########################
