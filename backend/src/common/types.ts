@@ -267,7 +267,7 @@ export interface Goal {
   updatedAt: string;
 }
 
-export type MemoryCategory = "health" | "financial" | "emotional" | "consistency" | "general";
+export type MemoryCategory = "health" | "financial" | "emotional" | "consistency" | "general" | "style";
 
 export interface UserMemory {
   userId: string;

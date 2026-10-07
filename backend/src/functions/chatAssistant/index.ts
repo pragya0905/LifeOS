@@ -136,12 +136,13 @@ async function callApi(
 // on every single message.
 async function fetchGoalsContext(apiUrl: string, authHeader: string): Promise<string> {
   try {
-    const [wishesRes, goalsRes, todayHabitsRes, achievementsRes, moodRes] = await Promise.all([
+    const [wishesRes, goalsRes, todayHabitsRes, achievementsRes, moodRes, journalRes] = await Promise.all([
       callApi(apiUrl, authHeader, "/wishes", "GET"),
       callApi(apiUrl, authHeader, "/goals", "GET"),
       callApi(apiUrl, authHeader, `/habits/${today()}`, "GET"),
       callApi(apiUrl, authHeader, "/achievements", "GET"),
       callApi(apiUrl, authHeader, `/logs?logType=mood&from=${daysAgo(6)}&to=${today()}`, "GET"),
+      callApi(apiUrl, authHeader, "/journal", "GET"),
     ]);
 
     const wishes = (
@@ -186,6 +187,21 @@ async function fetchGoalsContext(apiUrl: string, authHeader: string): Promise<st
       (moodRes.data as { entries: { date: string; data: Record<string, unknown> }[] } | undefined)?.entries ?? [],
     );
     if (moodDip) lines.push(moodDip);
+
+    // Journal entries come back newest-first — the most recent one is the best candidate for
+    // an unprompted callback, the same way a friend might ask "so how did that go?" without
+    // being asked to. Only the single latest entry, not the whole history — this is a nudge
+    // toward one relevant thing, not a context dump.
+    const journalEntries = (journalRes.data as { entries: { date: string; text: string }[] } | undefined)?.entries ?? [];
+    if (journalEntries.length > 0) {
+      const latest = journalEntries[0];
+      const snippet = latest.text.length > 140 ? `${latest.text.slice(0, 140)}…` : latest.text;
+      lines.push(
+        `Most recent journal entry (${latest.date}): "${snippet}" — if something in it is genuinely ` +
+          "relevant to what's being discussed, a natural candidate to ask how it turned out, without " +
+          "waiting to be asked. Not every reply needs this — only when it fits.",
+      );
+    }
 
     return lines.join("\n");
   } catch (err) {
@@ -289,7 +305,7 @@ async function computeDailyCheckinStatus(apiUrl: string, authHeader: string): Pr
   return { date: todayStr, habits, sleep, mood, food, medications: medicationsStatus, routines: routinesStatus };
 }
 
-const MEMORY_CATEGORIES: MemoryCategory[] = ["health", "financial", "emotional", "consistency", "general"];
+const MEMORY_CATEGORIES: MemoryCategory[] = ["health", "financial", "emotional", "consistency", "general", "style"];
 
 const TOOLS: Anthropic.Tool[] = [
   {
@@ -731,7 +747,7 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "remember_fact",
     description:
-      "Save a short, durable fact about the user for future conversations — something worth remembering long-term, not a one-off detail. Call this when the user shares something like a goal, a preference, a recurring struggle, or context that would help you understand them better later (e.g. 'saving for a trip to Japan', 'gets anxious before big presentations', 'prefers strength training over cardio'). Don't call this for routine logging (that's what the other tools are for) or trivial small talk.",
+      "Save a short, durable fact about the user for future conversations — something worth remembering long-term, not a one-off detail. Call this when the user shares something like a goal, a preference, a recurring struggle, or context that would help you understand them better later (e.g. 'saving for a trip to Japan', 'gets anxious before big presentations', 'prefers strength training over cardio'). Also call this with category 'style' when you notice a recurring theme, running joke, or turn of phrase emerge ACROSS multiple conversations — not from a single message — e.g. the user has joked about the same thing twice, or keeps circling back to the same topic unprompted (e.g. 'Jokingly calls late-night snacking \"midnight mischief\"', 'Keeps bringing up wanting to switch careers, unprompted, across several chats'). Don't call this for routine logging (that's what the other tools are for) or trivial small talk, and don't invent a recurring pattern from a single occurrence.",
     input_schema: {
       type: "object",
       properties: {
@@ -739,7 +755,8 @@ const TOOLS: Anthropic.Tool[] = [
         category: {
           type: "string",
           enum: MEMORY_CATEGORIES,
-          description: "Which area of the user's life this fact relates to.",
+          description:
+            "Which area of the user's life this fact relates to. 'style' is specifically for a recurring theme, running joke, or way the user likes being talked to that's emerged over multiple conversations — not a one-off fact.",
         },
       },
       required: ["text", "category"],
@@ -1108,7 +1125,10 @@ async function getClient(): Promise<Anthropic> {
 const ONBOARDING_SYSTEM_PROMPT_ADDITION =
   "\n\nThis is a first conversation, right after the user finished a quick setup form (height, " +
   "sex, daily targets — already saved, don't ask for those again). Welcome them briefly, then " +
-  "ask a handful of short, open, one-at-a-time questions to learn more — routines they follow, " +
+  "ask what they'd like to be called and whether they want you more warm (gentle default), " +
+  "direct (brief, no cushioning), or playful (lighter, more humor) in general — call " +
+  "update_profile with preferredName/assistantTone the moment they answer, before moving on. " +
+  "Then ask a handful of short, open, one-at-a-time questions to learn more — routines they follow, " +
   "medications they take, a monthly budget or spending categories they'd like tracked, goals or " +
   "wishes they have in mind, anything that'd help you help them later. This is a first " +
   "conversation, not an interrogation — a few exchanges, not a long form. The actual point: " +
@@ -1181,12 +1201,18 @@ function buildSystemPrompt(
     "missing item has an answer, close with a short, genuinely warm one- or two-line wrap-up — " +
     "not a dry recap list.\n\n" +
     "Being a friend, not a form: a real friend doesn't only recall things when asked — they " +
-    "bring them up. If something in what you already know about the user (listed below) or in " +
-    "their goals/wishes context is genuinely relevant to what's being discussed, weave it in " +
-    "yourself rather than waiting to be asked ('how's the Japan savings coming along?', 'last " +
-    "time we talked you mentioned your knee was bothering you on runs — how's that doing?'). Do " +
-    "this occasionally and naturally, not in every message — forcing a callback into an " +
-    "unrelated reply feels worse than not doing it at all.\n\n" +
+    "bring them up. If something in what you already know about the user (listed below), their " +
+    "goals/wishes context, or their most recent journal entry (also listed below) is genuinely " +
+    "relevant to what's being discussed, weave it in yourself rather than waiting to be asked " +
+    "('how's the Japan savings coming along?', 'last time we talked you mentioned your knee was " +
+    "bothering you on runs — how's that doing?', 'how did that thing you journaled about go?'). " +
+    "Do this occasionally and naturally, not in every message — forcing a callback into an " +
+    "unrelated reply feels worse than not doing it at all. A real friend also remembers HOW " +
+    "someone talks, not just facts about them — if you notice a joke, phrase, or topic recur " +
+    "across multiple separate conversations (never from a single message), save it with " +
+    "remember_fact under category 'style', and once you have one, feel free to call back to it " +
+    "lightly later ('there's your \"midnight mischief\" again') the same way you would any other " +
+    "memory — it's what makes you feel familiar rather than freshly met every time.\n\n" +
     "Coaching style — honest accountability, not pure cheerleading: when discussing the " +
     "user's wishes, habits, or budget, call get_progress_summary first and ground everything " +
     "in its numbers. If it shows a wish falling behind schedule, a broken habit streak, or " +
@@ -1201,9 +1227,15 @@ function buildSystemPrompt(
 
 function memoryText(memories: UserMemory[]): string {
   const memoryLines = memories.map((m) => `- [${m.memoryId}] (${m.category}) ${m.text}`).join("\n");
+  // memoryId is "{epochMs}-{uuid}" and the query returns ascending order, so the last item is
+  // chronologically the most recently learned fact — the best candidate for an unprompted
+  // callback, since it's the thing least likely to have already been followed up on.
+  const mostRecent = memories[memories.length - 1];
   return (
     "What you already know about this user, from past conversations (the bracketed id is " +
-    `its memoryId — use it verbatim with update_memory/forget_fact):\n${memoryLines}`
+    `its memoryId — use it verbatim with update_memory/forget_fact):\n${memoryLines}\n\n` +
+    `The most recently learned one is "${mostRecent.text}" — if it's naturally relevant right now, a ` +
+    "good candidate to proactively ask about or follow up on yourself, without waiting to be asked."
   );
 }
 
