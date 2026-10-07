@@ -68,10 +68,17 @@ export default function TodayMedications() {
     }
   }
 
+  // Medications with no reminder time sort to the end, after every timed one in ascending
+  // order — "HH:MM" strings already sort correctly lexicographically, no parsing needed.
   const activeMedications =
-    medications?.filter(
-      (m) => today() >= m.startDate && today() <= m.endDate && appliesOnDate(m.daysOfWeek, new Date()),
-    ) ?? null;
+    medications
+      ?.filter((m) => today() >= m.startDate && today() <= m.endDate && appliesOnDate(m.daysOfWeek, new Date()))
+      .sort((a, b) => {
+        if (!a.timeOfDay && !b.timeOfDay) return 0;
+        if (!a.timeOfDay) return 1;
+        if (!b.timeOfDay) return -1;
+        return a.timeOfDay.localeCompare(b.timeOfDay);
+      }) ?? null;
 
   return (
     <div className={card}>
@@ -108,6 +115,11 @@ export default function TodayMedications() {
                   {medication.name}
                   {medication.dosage && <span className={`ml-1.5 ${mutedText}`}>{medication.dosage}</span>}
                   {medication.timeOfDay && <span className={`ml-1.5 ${mutedText}`}>🔔 {medication.timeOfDay}</span>}
+                  {medication.notes && (
+                    <span className="block text-xs italic text-ink-muted dark:text-mist-muted">
+                      {medication.notes}
+                    </span>
+                  )}
                 </span>
                 <div className="flex gap-1.5">
                   <button

@@ -200,9 +200,16 @@ export default function Medications() {
     }
   }
 
-  const activeMedications = medications.filter(
-    (m) => today() >= m.startDate && today() <= m.endDate && appliesOnDate(m.daysOfWeek, new Date()),
-  );
+  // Medications with no reminder time sort to the end, after every timed one in ascending
+  // order — "HH:MM" strings already sort correctly lexicographically, no parsing needed.
+  const activeMedications = medications
+    .filter((m) => today() >= m.startDate && today() <= m.endDate && appliesOnDate(m.daysOfWeek, new Date()))
+    .sort((a, b) => {
+      if (!a.timeOfDay && !b.timeOfDay) return 0;
+      if (!a.timeOfDay) return 1;
+      if (!b.timeOfDay) return -1;
+      return a.timeOfDay.localeCompare(b.timeOfDay);
+    });
 
   return (
     <div className={page}>
@@ -325,6 +332,11 @@ export default function Medications() {
                       )}
                       {medication.timeOfDay && (
                         <span className={`ml-1.5 font-normal ${mutedText}`}>🔔 {medication.timeOfDay}</span>
+                      )}
+                      {medication.notes && (
+                        <span className="block text-xs font-normal italic text-ink-muted dark:text-mist-muted">
+                          {medication.notes}
+                        </span>
                       )}
                     </span>
                     <div className="flex gap-1.5">
