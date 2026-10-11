@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../api/useApi";
-import { todayLocal } from "../lib/date";
+import { appliesOnDate } from "../lib/weekdays";
 import type { RoutineStepLog, RoutineTemplate } from "../types";
 import { EmptyState } from "./EmptyState";
 import { Skeleton } from "./Skeleton";
@@ -28,15 +28,7 @@ function categoryLabel(category: string): string {
   return CATEGORY_LABEL[category] ?? category;
 }
 
-function today(): string {
-  return todayLocal();
-}
-
-function appliesToday(routine: RoutineTemplate): boolean {
-  return !routine.daysOfWeek || routine.daysOfWeek.length === 0 || routine.daysOfWeek.includes(new Date().getDay());
-}
-
-export default function TodayRoutines() {
+export default function TodayRoutines({ date }: { date: string }) {
   const { request } = useApi();
   const [routines, setRoutines] = useState<RoutineTemplate[] | null>(null);
   const [stepStatuses, setStepStatuses] = useState<Record<string, RoutineStepLog["status"]>>({});
@@ -49,7 +41,7 @@ export default function TodayRoutines() {
       try {
         const [routinesData, logsData] = await Promise.all([
           request<{ routines: RoutineTemplate[] }>("/routines"),
-          request<{ logs: RoutineStepLog[] }>(`/routine-logs/${today()}`),
+          request<{ logs: RoutineStepLog[] }>(`/routine-logs/${date}`),
         ]);
         if (ignore) return;
         setRoutines(routinesData.routines);
@@ -65,7 +57,7 @@ export default function TodayRoutines() {
       ignore = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [date]);
 
   async function setStepStatus(routineId: string, stepIndex: number, status: RoutineStepLog["status"]) {
     const key = `${routineId}#${stepIndex}`;
@@ -73,7 +65,7 @@ export default function TodayRoutines() {
     setError(null);
     try {
       const updated = await request<RoutineStepLog>(
-        `/routine-logs/${today()}/${routineId}/${stepIndex}`,
+        `/routine-logs/${date}/${routineId}/${stepIndex}`,
         { method: "PATCH", body: JSON.stringify({ status }) },
       );
       setStepStatuses((prev) => ({ ...prev, [key]: updated.status }));
@@ -84,7 +76,8 @@ export default function TodayRoutines() {
     }
   }
 
-  const todaysRoutines = routines?.filter(appliesToday) ?? null;
+  const todaysRoutines =
+    routines?.filter((r) => appliesOnDate(r.daysOfWeek, new Date(`${date}T00:00:00`))) ?? null;
 
   return (
     <div className={card}>

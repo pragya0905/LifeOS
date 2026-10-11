@@ -12,11 +12,8 @@ const PRIORITY_BADGE: Record<TaskPriority, string> = {
   High: "bg-alert-soft text-alert dark:bg-alert-soft-dark dark:text-alert-light",
 };
 
-function today(): string {
-  return todayLocal();
-}
-
-export default function TodaySchedule() {
+export default function TodaySchedule({ date }: { date: string }) {
+  const isToday = date === todayLocal();
   const { request } = useApi();
   const [schedule, setSchedule] = useState<Schedule | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +26,7 @@ export default function TodaySchedule() {
       setLoading(true);
       setError(null);
       try {
-        const data = await request<Schedule>(`/schedule/${today()}`);
+        const data = await request<Schedule>(`/schedule/${date}`);
         if (ignore) return;
         setSchedule(data);
       } catch (err) {
@@ -45,12 +42,12 @@ export default function TodaySchedule() {
       ignore = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [date]);
 
   return (
     <div className={card}>
       <div className="mb-3 flex items-center justify-between">
-        <h2 className={sectionLabel}>Today's schedule ({today()})</h2>
+        <h2 className={sectionLabel}>{isToday ? "Today's schedule" : "Schedule"} ({date})</h2>
         <Link to="/tasks" className="text-xs text-bloom hover:underline">
           Manage tasks
         </Link>
@@ -63,7 +60,7 @@ export default function TodaySchedule() {
           <Skeleton className="h-5 w-2/3" />
         </div>
       ) : !schedule || schedule.tasks.length === 0 ? (
-        <p className={mutedText}>Nothing due today.</p>
+        <p className={mutedText}>{isToday ? "Nothing due today." : `Nothing due on ${date}.`}</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {schedule.tasks.map((task) => (

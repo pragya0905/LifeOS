@@ -8,19 +8,16 @@ import { EmptyState } from "./EmptyState";
 import { Skeleton } from "./Skeleton";
 import { card, mutedText, sectionLabel } from "./ui";
 
-function today(): string {
-  return todayLocal();
-}
-
-export default function TodayExpenses() {
+export default function TodayExpenses({ date }: { date: string }) {
+  const isToday = date === todayLocal();
   const { request } = useApi();
   const [expenses, setExpenses] = useState<Expense[] | null>(null);
 
   useEffect(() => {
     let ignore = false;
+    setExpenses(null); // avoid showing the previous day's expenses while the new day loads
     async function load() {
       try {
-        const date = today();
         const data = await request<{ expenses: Expense[] }>(`/expenses?from=${date}&to=${date}`);
         if (!ignore) setExpenses(data.expenses);
       } catch {
@@ -32,7 +29,7 @@ export default function TodayExpenses() {
       ignore = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [date]);
 
   const total = expenses?.reduce((sum, e) => sum + e.amount, 0) ?? 0;
 
@@ -51,7 +48,11 @@ export default function TodayExpenses() {
         </div>
       )}
       {expenses && expenses.length === 0 && (
-        <EmptyState icon="💸" title="Nothing spent today" hint="Log an expense on the Budget page." />
+        <EmptyState
+          icon="💸"
+          title={isToday ? "Nothing spent today" : `Nothing spent on ${date}`}
+          hint="Log an expense on the Budget page."
+        />
       )}
       {expenses && expenses.length > 0 && (
         <>
@@ -67,7 +68,8 @@ export default function TodayExpenses() {
             ))}
           </ul>
           <p className={`text-xs ${mutedText}`}>
-            <span className="font-medium text-ink dark:text-paper">{formatINR(total)}</span> spent today
+            <span className="font-medium text-ink dark:text-paper">{formatINR(total)}</span>{" "}
+            {isToday ? "spent today" : `spent on ${date}`}
           </p>
         </>
       )}

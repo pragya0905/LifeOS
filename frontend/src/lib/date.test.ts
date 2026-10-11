@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { toLocalDateStr, todayLocal } from "./date";
+import { addDays, toLocalDateStr, todayLocal } from "./date";
 
 describe("toLocalDateStr", () => {
   it("formats the local calendar date with zero-padding", () => {
@@ -20,5 +20,20 @@ describe("todayLocal", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 9, 7, 1, 0, 0));
     expect(todayLocal()).toBe("2026-10-07");
+  });
+});
+
+describe("addDays", () => {
+  it("steps forward and backward within a month", () => {
+    expect(addDays("2026-10-07", 1)).toBe("2026-10-08");
+    expect(addDays("2026-10-07", -1)).toBe("2026-10-06");
+  });
+
+  it("crosses a month boundary", () => {
+    expect(addDays("2026-10-31", 1)).toBe("2026-11-01");
+  });
+
+  it("a delta of 0 returns the same date", () => {
+    expect(addDays("2026-10-07", 0)).toBe("2026-10-07");
   });
 });

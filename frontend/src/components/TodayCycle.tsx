@@ -7,11 +7,8 @@ import type { LogEntry, UserProfile } from "../types";
 import { Skeleton } from "./Skeleton";
 import { card, errorText, input, mutedText, pillButton, pillButtonDone, pillButtonInactive, sectionLabel } from "./ui";
 
-function today(): string {
-  return todayLocal();
-}
-
-export default function TodayCycle() {
+export default function TodayCycle({ date }: { date: string }) {
+  const isToday = date === todayLocal();
   const { request } = useApi();
   const [entries, setEntries] = useState<LogEntry[] | null>(null);
   const [hide, setHide] = useState(false);
@@ -47,7 +44,7 @@ export default function TodayCycle() {
     try {
       const entry = await request<LogEntry>("/logs", {
         method: "POST",
-        body: JSON.stringify({ logType: "cycle", date: today(), data: { event: eventType, note: note || undefined } }),
+        body: JSON.stringify({ logType: "cycle", date, data: { event: eventType, note: note || undefined } }),
       });
       setEntries((prev) => [...(prev ?? []), entry]);
       if (eventType === "symptom") setSymptomNote("");
@@ -63,16 +60,16 @@ export default function TodayCycle() {
   if (!entries) {
     return (
       <div className={card}>
-        <h2 className={`mb-2 ${sectionLabel}`}>🌸 Today's cycle</h2>
+        <h2 className={`mb-2 ${sectionLabel}`}>{isToday ? "🌸 Today's cycle" : `🌸 Cycle (${date})`}</h2>
         <Skeleton className="h-4 w-2/3" />
       </div>
     );
   }
 
-  const loggedToday = {
-    period_start: entries.some((e) => e.date === today() && e.data.event === "period_start"),
-    period_end: entries.some((e) => e.date === today() && e.data.event === "period_end"),
-    symptom: entries.some((e) => e.date === today() && e.data.event === "symptom"),
+  const loggedOnDate = {
+    period_start: entries.some((e) => e.date === date && e.data.event === "period_start"),
+    period_end: entries.some((e) => e.date === date && e.data.event === "period_end"),
+    symptom: entries.some((e) => e.date === date && e.data.event === "symptom"),
   };
 
   const { avgCycleDays, nextPredicted } = predictNextCycle(entries);
@@ -85,14 +82,14 @@ export default function TodayCycle() {
   const hasPhaseEstimate = avgCycleDays !== null && Boolean(lastPeriodStart);
   const avgPeriodDays = computeAvgPeriodDays(entries) ?? 5;
   const estimate = hasPhaseEstimate
-    ? estimatePhase(today(), lastPeriodStart as string, avgCycleDays as number, avgPeriodDays)
+    ? estimatePhase(date, lastPeriodStart as string, avgCycleDays as number, avgPeriodDays)
     : null;
   const info = estimate ? PHASE_INFO[estimate.phase] : null;
 
   return (
     <div className={card}>
       <div className="mb-3 flex items-center justify-between">
-        <h2 className={sectionLabel}>🌸 Today's cycle</h2>
+        <h2 className={sectionLabel}>{isToday ? "🌸 Today's cycle" : `🌸 Cycle (${date})`}</h2>
         <Link to="/cycle" className="text-xs text-bloom hover:underline">
           Manage →
         </Link>
@@ -122,19 +119,19 @@ export default function TodayCycle() {
       <div className="flex flex-wrap gap-1.5">
         <button
           type="button"
-          disabled={saving !== null || loggedToday.period_start}
+          disabled={saving !== null || loggedOnDate.period_start}
           onClick={() => logEvent("period_start")}
-          className={`${pillButton} px-2.5 py-1 ${loggedToday.period_start ? pillButtonDone : pillButtonInactive}`}
+          className={`${pillButton} px-2.5 py-1 ${loggedOnDate.period_start ? pillButtonDone : pillButtonInactive}`}
         >
-          {loggedToday.period_start ? "✓ Period started" : "🩸 Period started today"}
+          {loggedOnDate.period_start ? "✓ Period started" : isToday ? "🩸 Period started today" : `🩸 Period started on ${date}`}
         </button>
         <button
           type="button"
-          disabled={saving !== null || loggedToday.period_end}
+          disabled={saving !== null || loggedOnDate.period_end}
           onClick={() => logEvent("period_end")}
-          className={`${pillButton} px-2.5 py-1 ${loggedToday.period_end ? pillButtonDone : pillButtonInactive}`}
+          className={`${pillButton} px-2.5 py-1 ${loggedOnDate.period_end ? pillButtonDone : pillButtonInactive}`}
         >
-          {loggedToday.period_end ? "✓ Period ended" : "◻️ Period ended today"}
+          {loggedOnDate.period_end ? "✓ Period ended" : isToday ? "◻️ Period ended today" : `◻️ Period ended on ${date}`}
         </button>
       </div>
 
@@ -155,7 +152,11 @@ export default function TodayCycle() {
           🌡️ Log
         </button>
       </div>
-      {loggedToday.symptom && <p className={`mt-1 text-xs ${mutedText}`}>A symptom is already logged today.</p>}
+      {loggedOnDate.symptom && (
+        <p className={`mt-1 text-xs ${mutedText}`}>
+          {isToday ? "A symptom is already logged today." : `A symptom is already logged on ${date}.`}
+        </p>
+      )}
     </div>
   );
 }

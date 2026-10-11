@@ -13,3 +13,11 @@ export function toLocalDateStr(date: Date): string {
 export function todayLocal(): string {
   return toLocalDateStr(new Date());
 }
+
+// Local-time parse (no "Z" suffix) so this shifts calendar days consistently with the
+// toLocalDateStr/todayLocal pair above, rather than drifting by the viewer's UTC offset.
+export function addDays(dateStr: string, delta: number): string {
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setDate(d.getDate() + delta);
+  return toLocalDateStr(d);
+}

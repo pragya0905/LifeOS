@@ -15,19 +15,16 @@ const MEAL_TYPE_LABEL: Record<MealType, string> = {
   snack: "Snack",
 };
 
-function today(): string {
-  return todayLocal();
-}
-
-export default function TodayMeals() {
+export default function TodayMeals({ date }: { date: string }) {
+  const isToday = date === todayLocal();
   const { request } = useApi();
   const [meals, setMeals] = useState<Partial<Record<MealType, string>> | null>(null);
 
   useEffect(() => {
     let ignore = false;
+    setMeals(null); // avoid showing the previous day's meals while the new day loads
     async function load() {
       try {
-        const date = today();
         const dayOfWeek = new Date(`${date}T00:00:00`).getDay();
         const [slotsData, templatesData] = await Promise.all([
           request<{ slots: MealPlanSlot[] }>(`/meal-plan?from=${date}&to=${date}`),
@@ -49,7 +46,7 @@ export default function TodayMeals() {
       ignore = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [date]);
 
   const plannedTypes = meals ? MEAL_TYPES.filter((mt) => meals[mt]) : [];
 
@@ -70,7 +67,7 @@ export default function TodayMeals() {
       {meals && plannedTypes.length === 0 && (
         <EmptyState
           icon="🍽️"
-          title="Nothing planned for today"
+          title={isToday ? "Nothing planned for today" : `Nothing planned for ${date}`}
           hint="Plan a meal or set a weekly default on the Meal Plan page."
         />
       )}

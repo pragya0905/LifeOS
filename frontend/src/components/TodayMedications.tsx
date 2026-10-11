@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../api/useApi";
-import { todayLocal } from "../lib/date";
 import { appliesOnDate } from "../lib/weekdays";
 import type { Medication, MedicationLog, MedicationLogStatus } from "../types";
 import { EmptyState } from "./EmptyState";
@@ -17,11 +16,7 @@ import {
   sectionLabel,
 } from "./ui";
 
-function today(): string {
-  return todayLocal();
-}
-
-export default function TodayMedications() {
+export default function TodayMedications({ date }: { date: string }) {
   const { request } = useApi();
   const [medications, setMedications] = useState<Medication[] | null>(null);
   const [logStatuses, setLogStatuses] = useState<Partial<Record<string, MedicationLogStatus>>>({});
@@ -34,7 +29,7 @@ export default function TodayMedications() {
       try {
         const [medsData, logsData] = await Promise.all([
           request<{ medications: Medication[] }>("/medications"),
-          request<{ logs: MedicationLog[] }>(`/medication-logs/${today()}`),
+          request<{ logs: MedicationLog[] }>(`/medication-logs/${date}`),
         ]);
         if (ignore) return;
         setMedications(medsData.medications);
@@ -50,13 +45,13 @@ export default function TodayMedications() {
       ignore = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [date]);
 
   async function setStatus(medicationId: string, status: MedicationLogStatus) {
     setPending(medicationId);
     setError(null);
     try {
-      const updated = await request<MedicationLog>(`/medication-logs/${today()}/${medicationId}`, {
+      const updated = await request<MedicationLog>(`/medication-logs/${date}/${medicationId}`, {
         method: "PATCH",
         body: JSON.stringify({ status }),
       });
@@ -72,7 +67,7 @@ export default function TodayMedications() {
   // order — "HH:MM" strings already sort correctly lexicographically, no parsing needed.
   const activeMedications =
     medications
-      ?.filter((m) => today() >= m.startDate && today() <= m.endDate && appliesOnDate(m.daysOfWeek, new Date()))
+      ?.filter((m) => date >= m.startDate && date <= m.endDate && appliesOnDate(m.daysOfWeek, new Date(`${date}T00:00:00`)))
       .sort((a, b) => {
         if (!a.timeOfDay && !b.timeOfDay) return 0;
         if (!a.timeOfDay) return 1;

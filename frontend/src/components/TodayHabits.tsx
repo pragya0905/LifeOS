@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../api/useApi";
-import { toLocalDateStr, todayLocal } from "../lib/date";
+import { todayLocal } from "../lib/date";
 import type { Goal, GoalMetric, HabitLog, JournalEntry, LogEntry } from "../types";
 import { Skeleton } from "./Skeleton";
 import {
@@ -13,20 +13,11 @@ import {
   pillButton,
   pillButtonInactive,
   primaryButton,
-  secondaryButton,
   sectionLabel,
 } from "./ui";
 
-const OLDEST_DAYS_AGO = 7; // "past 8 days" = today + 7 prior days = 8 selectable days total
-
 function today(): string {
   return todayLocal();
-}
-
-function addDays(dateStr: string, delta: number): string {
-  const d = new Date(`${dateStr}T00:00:00`);
-  d.setDate(d.getDate() + delta);
-  return toLocalDateStr(d);
 }
 
 // Returns the parsed number if valid, null if the draft is blank (field not being
@@ -107,10 +98,8 @@ function GoalTarget({
   );
 }
 
-export default function TodayHabits() {
+export default function TodayHabits({ date: selectedDate }: { date: string }) {
   const { request } = useApi();
-  const [selectedDate, setSelectedDate] = useState(today());
-  const oldestAllowed = addDays(today(), -OLDEST_DAYS_AGO);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -441,25 +430,9 @@ export default function TodayHabits() {
   return (
     <div className={card}>
       <div className="mb-3 flex items-center justify-between gap-3">
-        <button
-          type="button"
-          onClick={() => setSelectedDate((d) => addDays(d, -1))}
-          disabled={selectedDate <= oldestAllowed}
-          className={`${secondaryButton} px-2 py-1 text-xs`}
-        >
-          ← Prev day
-        </button>
         <h2 className={sectionLabel}>
           {isToday ? "Today's habits" : "Habits"} ({selectedDate})
         </h2>
-        <button
-          type="button"
-          onClick={() => setSelectedDate((d) => addDays(d, 1))}
-          disabled={isToday}
-          className={`${secondaryButton} px-2 py-1 text-xs`}
-        >
-          Next day →
-        </button>
       </div>
       {error && <p className={`mb-2 ${errorText}`}>{error}</p>}
       {loading ? (

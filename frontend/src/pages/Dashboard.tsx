@@ -13,7 +13,7 @@ import TodayRoutines from "../components/TodayRoutines";
 import TodaySchedule from "../components/TodaySchedule";
 import WelcomeCard from "../components/WelcomeCard";
 import { Skeleton } from "../components/Skeleton";
-import { todayLocal } from "../lib/date";
+import { addDays, todayLocal } from "../lib/date";
 import type { Task } from "../types";
 import {
   card,
@@ -22,6 +22,7 @@ import {
   page,
   pageTitle,
   priorityBadgeClass,
+  secondaryButton,
   sectionLabel,
 } from "../components/ui";
 
@@ -47,6 +48,18 @@ function formattedDate(): string {
   });
 }
 
+// Local-time parse (no "Z" suffix), consistent with addDays/toLocalDateStr — formatting a
+// plain YYYY-MM-DD string through `new Date(dateStr)` reads it as UTC midnight, which rolls
+// back a day for any viewer east of UTC.
+function formatSelectedDate(dateStr: string): string {
+  return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 // Tasks with a due date/time come first (soonest first); undated tasks sort last.
 function byUrgency(a: Task, b: Task): number {
   const aKey = a.dueDate ? `${a.dueDate}T${a.dueTime ?? "23:59"}` : null;
@@ -61,6 +74,11 @@ export default function Dashboard() {
   const { request } = useApi();
   const [tasks, setTasks] = useState<Task[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Drives every "Today's X" card at once — Schedule, Habits, Routines, Meals, Medications,
+  // Expenses, Cycle — so stepping to a different day shows that day everywhere consistently,
+  // rather than each card independently defaulting back to the real today.
+  const [selectedDate, setSelectedDate] = useState(today());
+  const isSelectedToday = selectedDate === today();
 
   useEffect(() => {
     let ignore = false;
@@ -92,32 +110,61 @@ export default function Dashboard() {
 
       <Achievements />
 
-      <div className="mb-6">
-        <TodaySchedule />
+      <div className={`mb-6 flex items-center justify-between gap-3 ${card}`}>
+        <button
+          type="button"
+          onClick={() => setSelectedDate((d) => addDays(d, -1))}
+          className={`${secondaryButton} px-2 py-1 text-xs`}
+        >
+          ← Prev day
+        </button>
+        <div className="text-center">
+          <p className="text-sm font-medium text-ink dark:text-paper">{formatSelectedDate(selectedDate)}</p>
+          {!isSelectedToday && (
+            <button
+              type="button"
+              onClick={() => setSelectedDate(today())}
+              className="text-xs text-bloom hover:underline"
+            >
+              Back to today
+            </button>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => setSelectedDate((d) => addDays(d, 1))}
+          className={`${secondaryButton} px-2 py-1 text-xs`}
+        >
+          Next day →
+        </button>
       </div>
 
       <div className="mb-6">
-        <TodayHabits />
+        <TodaySchedule date={selectedDate} />
       </div>
 
       <div className="mb-6">
-        <TodayRoutines />
+        <TodayHabits date={selectedDate} />
       </div>
 
       <div className="mb-6">
-        <TodayMeals />
+        <TodayRoutines date={selectedDate} />
       </div>
 
       <div className="mb-6">
-        <TodayMedications />
+        <TodayMeals date={selectedDate} />
       </div>
 
       <div className="mb-6">
-        <TodayExpenses />
+        <TodayMedications date={selectedDate} />
       </div>
 
       <div className="mb-6">
-        <TodayCycle />
+        <TodayExpenses date={selectedDate} />
+      </div>
+
+      <div className="mb-6">
+        <TodayCycle date={selectedDate} />
       </div>
 
       <div className="mb-6">
