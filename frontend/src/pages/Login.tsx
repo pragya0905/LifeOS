@@ -8,6 +8,7 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const justConfirmed = (location.state as { confirmed?: boolean } | null)?.confirmed;
+  const justReset = (location.state as { passwordReset?: boolean } | null)?.passwordReset;
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -36,6 +37,9 @@ export default function Login() {
       {justConfirmed && (
         <p className="mb-4 text-sm text-bloom">Email verified — you can log in now.</p>
       )}
+      {justReset && (
+        <p className="mb-4 text-sm text-bloom">Password reset — you can log in with your new password now.</p>
+      )}
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div>
           <label className={label}>Email</label>
@@ -56,6 +60,9 @@ export default function Login() {
             onChange={(e) => setPassword(e.target.value)}
             className={`w-full ${input}`}
           />
+          <Link to="/forgot-password" className="mt-1 inline-block text-sm text-bloom hover:underline">
+            Forgot password?
+          </Link>
         </div>
         {error && <p className={errorText}>{error}</p>}
         <button type="submit" disabled={submitting} className={`w-full ${primaryButton}`}>

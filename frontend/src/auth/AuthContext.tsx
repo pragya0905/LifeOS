@@ -11,6 +11,8 @@ import {
   resendSignUpCode as amplifyResendSignUpCode,
   signIn as amplifySignIn,
   signOut as amplifySignOut,
+  resetPassword as amplifyResetPassword,
+  confirmResetPassword as amplifyConfirmResetPassword,
   getCurrentUser,
   fetchAuthSession,
 } from "aws-amplify/auth";
@@ -29,6 +31,8 @@ interface AuthContextValue {
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   getIdToken: () => Promise<string | undefined>;
+  resetPassword: (email: string) => Promise<void>;
+  confirmResetPassword: (email: string, code: string, newPassword: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -82,6 +86,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async getIdToken() {
       const session = await fetchAuthSession();
       return session.tokens?.idToken?.toString();
+    },
+    async resetPassword(email) {
+      await amplifyResetPassword({ username: email });
+    },
+    async confirmResetPassword(email, code, newPassword) {
+      await amplifyConfirmResetPassword({ username: email, confirmationCode: code, newPassword });
     },
   };
 

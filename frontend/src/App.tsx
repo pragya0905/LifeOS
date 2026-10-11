@@ -7,6 +7,7 @@ import OnboardingGate from "./components/OnboardingGate";
 import SignUp from "./pages/SignUp";
 import ConfirmSignUp from "./pages/ConfirmSignUp";
 import Login from "./pages/Login";
+import ForgotPassword from "./pages/ForgotPassword";
 import { mutedText } from "./components/ui";
 
 const Onboarding = lazy(() => import("./pages/Onboarding"));
@@ -41,6 +42,7 @@ export default function App() {
             <Route path="/signup" element={<SignUp />} />
             <Route path="/confirm" element={<ConfirmSignUp />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route
               path="/onboarding"
               element={
