@@ -46,26 +46,45 @@ function categoryLabel(category: string): string {
   return isPresetCategory(category) ? CATEGORY_LABEL[category] : category;
 }
 
-const ROUTINE_TEMPLATES: { label: string; category: RoutineCategory; name: string; steps: string[] }[] = [
+const ROUTINE_TEMPLATES: {
+  label: string;
+  category: RoutineCategory;
+  name: string;
+  steps: string[];
+  timeOfDay?: string;
+}[] = [
   {
     label: "AM skincare",
     category: "skinCare",
     name: "Morning skin care",
     steps: ["Cleanser", "Toner", "Moisturizer", "Sunscreen"],
+    timeOfDay: "08:00",
   },
   {
     label: "PM skincare",
     category: "skinCare",
     name: "Evening skin care",
     steps: ["Cleanser", "Treatment", "Moisturizer"],
+    timeOfDay: "21:00",
   },
   {
     label: "30-30-30",
     category: "dailyRoutine",
     name: "30-30-30 morning",
     steps: ["30g protein within 30 minutes of waking", "30 minutes of low-intensity exercise"],
+    timeOfDay: "07:00",
   },
 ];
+
+// Routines with no time set sort to the end, after every timed one in ascending order —
+// "HH:MM" strings already sort correctly lexicographically, no parsing needed. Same pattern
+// as Medications' time sort.
+function byTimeOfDay(a: RoutineTemplate, b: RoutineTemplate): number {
+  if (!a.timeOfDay && !b.timeOfDay) return 0;
+  if (!a.timeOfDay) return 1;
+  if (!b.timeOfDay) return -1;
+  return a.timeOfDay.localeCompare(b.timeOfDay);
+}
 
 const STREAK_WINDOW_DAYS = 30;
 
@@ -121,7 +140,7 @@ function RoutineCard({
   onDelete: (routineId: string) => void;
   onSave: (
     routineId: string,
-    patch: { name: string; category: string; steps: string[]; daysOfWeek: number[] },
+    patch: { name: string; category: string; steps: string[]; daysOfWeek: number[]; timeOfDay?: string },
   ) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
@@ -136,6 +155,7 @@ function RoutineCard({
   const [daysDraft, setDaysDraft] = useState<number[]>(
     routine.daysOfWeek && routine.daysOfWeek.length > 0 ? routine.daysOfWeek : ALL_DAYS,
   );
+  const [timeOfDayDraft, setTimeOfDayDraft] = useState(routine.timeOfDay ?? "");
   const [savingEdit, setSavingEdit] = useState(false);
 
   const doneCount = routine.steps.filter(
@@ -161,6 +181,7 @@ function RoutineCard({
         category: categoryDraft,
         steps,
         daysOfWeek: daysDraft.length === 7 ? [] : daysDraft,
+        timeOfDay: timeOfDayDraft || undefined,
       });
       setEditing(false);
     } finally {
@@ -218,6 +239,13 @@ function RoutineCard({
         <div className="mb-2">
           <DayOfWeekPicker selected={daysDraft} onToggle={toggleDraftDay} />
         </div>
+        <label className={label}>Time of day (optional — sorts the checklist morning to evening)</label>
+        <input
+          type="time"
+          value={timeOfDayDraft}
+          onChange={(e) => setTimeOfDayDraft(e.target.value)}
+          className={`mb-2 w-32 ${input}`}
+        />
         <div className="flex gap-2">
           <button
             type="button"
@@ -253,6 +281,7 @@ function RoutineCard({
             {doneCount}/{routine.steps.length} done
           </span>{" "}
           <span className={badge}>{formatSchedule(routine.daysOfWeek)}</span>
+          {routine.timeOfDay && <span className={badge}>🕐 {routine.timeOfDay}</span>}
           {streak > 0 && (
             <span className="ml-1.5 rounded-full bg-amber-soft px-2 py-0.5 text-xs font-medium text-amber-ink dark:bg-amber-soft-dark dark:text-amber-ink-dark">
               🔥 {streak} day{streak === 1 ? "" : "s"}
@@ -327,6 +356,7 @@ export default function Routines() {
   const [name, setName] = useState("");
   const [stepsText, setStepsText] = useState("");
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>(ALL_DAYS);
+  const [timeOfDay, setTimeOfDay] = useState("");
   const [saving, setSaving] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
@@ -370,6 +400,7 @@ export default function Routines() {
     setCustomCategoryDraft("");
     setName(template.name);
     setStepsText(template.steps.join("\n"));
+    setTimeOfDay(template.timeOfDay ?? "");
   }
 
   function toggleDay(day: number) {
@@ -394,12 +425,14 @@ export default function Routines() {
           name: name.trim(),
           steps,
           daysOfWeek: daysOfWeek.length === 7 ? [] : daysOfWeek,
+          timeOfDay: timeOfDay || undefined,
         }),
       });
       setRoutines((prev) => [routine, ...prev]);
       setName("");
       setStepsText("");
       setDaysOfWeek(ALL_DAYS);
+      setTimeOfDay("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add routine");
     } finally {
@@ -425,7 +458,7 @@ export default function Routines() {
 
   async function handleSaveEdit(
     routineId: string,
-    patch: { name: string; category: string; steps: string[]; daysOfWeek: number[] },
+    patch: { name: string; category: string; steps: string[]; daysOfWeek: number[]; timeOfDay?: string },
   ) {
     setError(null);
     try {
@@ -537,6 +570,15 @@ export default function Routines() {
           <label className={label}>Days</label>
           <DayOfWeekPicker selected={daysOfWeek} onToggle={toggleDay} />
         </div>
+        <div>
+          <label className={label}>Time of day (optional — sorts the checklist morning to evening)</label>
+          <input
+            type="time"
+            value={timeOfDay}
+            onChange={(e) => setTimeOfDay(e.target.value)}
+            className={`w-32 ${input}`}
+          />
+        </div>
         <button
           type="submit"
           disabled={
@@ -566,7 +608,7 @@ export default function Routines() {
             </div>
           ) : (
             <ul className="mb-6 flex flex-col gap-3">
-              {routines.map((routine) => (
+              {[...routines].sort(byTimeOfDay).map((routine) => (
                 <RoutineCard
                   key={routine.routineId}
                   routine={routine}

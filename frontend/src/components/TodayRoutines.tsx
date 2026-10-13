@@ -9,6 +9,7 @@ import {
   badge,
   card,
   errorText,
+  mutedText,
   pillButton,
   pillButtonDone,
   pillButtonInactive,
@@ -76,8 +77,18 @@ export default function TodayRoutines({ date }: { date: string }) {
     }
   }
 
+  // Routines with no time set sort to the end, after every timed one in ascending order —
+  // "HH:MM" strings already sort correctly lexicographically, no parsing needed. Same pattern
+  // as TodayMedications' time sort.
   const todaysRoutines =
-    routines?.filter((r) => appliesOnDate(r.daysOfWeek, new Date(`${date}T00:00:00`))) ?? null;
+    routines
+      ?.filter((r) => appliesOnDate(r.daysOfWeek, new Date(`${date}T00:00:00`)))
+      .sort((a, b) => {
+        if (!a.timeOfDay && !b.timeOfDay) return 0;
+        if (!a.timeOfDay) return 1;
+        if (!b.timeOfDay) return -1;
+        return a.timeOfDay.localeCompare(b.timeOfDay);
+      }) ?? null;
 
   return (
     <div className={card}>
@@ -117,6 +128,7 @@ export default function TodayRoutines({ date }: { date: string }) {
             return (
               <li key={routine.routineId}>
                 <p className="mb-1.5 text-sm font-medium text-ink dark:text-paper">
+                  {routine.timeOfDay && <span className={`mr-1 ${mutedText}`}>🕐 {routine.timeOfDay}</span>}
                   {routine.name}{" "}
                   <span className="font-normal text-ink-muted dark:text-mist-muted">
                     ({categoryLabel(routine.category)})

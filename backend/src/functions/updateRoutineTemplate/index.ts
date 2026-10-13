@@ -5,7 +5,8 @@ import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
 
 const MAX_CATEGORY_LENGTH = 40;
-const UPDATABLE_FIELDS = ["name", "category", "steps", "daysOfWeek"] as const;
+const TIME_RE = /^\d{2}:\d{2}$/;
+const UPDATABLE_FIELDS = ["name", "category", "steps", "daysOfWeek", "timeOfDay"] as const;
 
 export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) => {
   const userId = getUserId(event);
@@ -43,6 +44,10 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
       Array.isArray(body.daysOfWeek) &&
       body.daysOfWeek.every((d) => Number.isInteger(d) && d >= 0 && d <= 6);
     if (!valid) return errorResponse(400, "daysOfWeek must be an array of integers 0-6 (0=Sun..6=Sat)");
+  }
+
+  if (body.timeOfDay !== undefined && (typeof body.timeOfDay !== "string" || !TIME_RE.test(body.timeOfDay))) {
+    return errorResponse(400, "timeOfDay must be in HH:MM format");
   }
 
   const updates = UPDATABLE_FIELDS.filter((field) => body[field] !== undefined);

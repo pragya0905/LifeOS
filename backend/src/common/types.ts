@@ -217,6 +217,9 @@ export interface RoutineTemplate {
   // Days this routine runs on: 0=Sun..6=Sat (JS Date#getDay() convention). Absent or empty
   // means every day — the only state every pre-existing routine can be in.
   daysOfWeek?: number[];
+  // "HH:MM", purely a display/sort hint (morning-to-evening ordering) — unlike
+  // Medication.timeOfDay this has no reminder/notification behind it.
+  timeOfDay?: string;
   createdAt: string;
 }
 

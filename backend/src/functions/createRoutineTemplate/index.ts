@@ -7,6 +7,7 @@ import { jsonResponse, errorResponse } from "../../common/http";
 import type { RoutineTemplate } from "../../common/types";
 
 const MAX_CATEGORY_LENGTH = 40;
+const TIME_RE = /^\d{2}:\d{2}$/;
 
 export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) => {
   const userId = getUserId(event);
@@ -41,6 +42,10 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     if ((rawDays as number[]).length > 0) daysOfWeek = rawDays as number[];
   }
 
+  if (body.timeOfDay !== undefined && (typeof body.timeOfDay !== "string" || !TIME_RE.test(body.timeOfDay))) {
+    return errorResponse(400, "timeOfDay must be in HH:MM format");
+  }
+
   const routine: RoutineTemplate = {
     userId,
     routineId: randomUUID(),
@@ -48,6 +53,7 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     name,
     steps,
     ...(daysOfWeek ? { daysOfWeek } : {}),
+    ...(typeof body.timeOfDay === "string" ? { timeOfDay: body.timeOfDay } : {}),
     createdAt: new Date().toISOString(),
   };
 
