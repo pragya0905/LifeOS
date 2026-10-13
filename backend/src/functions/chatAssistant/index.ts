@@ -490,7 +490,7 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "log_journal_entry",
     description:
-      "Write a journal entry for a date, separate from this chat's own conversation history. Only call this when the user explicitly asks to log something in their journal.",
+      "Write a journal entry for a date, separate from this chat's own conversation history. Only call this when the user explicitly asks to log, write, or summarize something in their journal — never unprompted. For a day-summary request ('write today in my journal', 'journal what we talked about'), call get_daily_checkin_status (or get_logs for a past date) first and weave its real numbers together with what was actually discussed into one short, warm, first-person paragraph — not a bulleted recap of tool output. If an entry already exists for that date, your text is appended to it rather than overwriting what's there, so there's no need to check first or ask permission to add to it.",
     input_schema: {
       type: "object",
       properties: {
@@ -984,10 +984,14 @@ async function executeTool(
         break;
       }
       case "log_journal_entry": {
-        result = await callApi(apiUrl, authHeader, "/journal", "POST", {
-          date: (input.date as string) || today(timezoneOffsetMinutes),
-          text: input.text,
-        });
+        const date = (input.date as string) || today(timezoneOffsetMinutes);
+        const existing = await callApi(apiUrl, authHeader, `/journal?from=${date}&to=${date}`, "GET");
+        const existingEntry = (existing.data as { entries?: { text: string }[] } | undefined)?.entries?.[0];
+        result = existingEntry
+          ? await callApi(apiUrl, authHeader, `/journal/${date}`, "PATCH", {
+              text: `${existingEntry.text}\n\n— Added via Assistant —\n${input.text as string}`,
+            })
+          : await callApi(apiUrl, authHeader, "/journal", "POST", { date, text: input.text });
         break;
       }
       case "get_meal_plan": {
@@ -1380,6 +1384,12 @@ function buildSystemPrompt(
     "If everything is already logged, say so warmly instead of asking anything. Once every " +
     "missing item has an answer, close with a short, genuinely warm one- or two-line wrap-up — " +
     "not a dry recap list.\n\n" +
+    "Writing a journal entry for the user: when they ask you to write, log, or summarize a day " +
+    "in their journal — not just one data point — call get_daily_checkin_status (or get_logs " +
+    "for a past date) first, then write one short, warm paragraph in the user's own voice that " +
+    "blends what was actually discussed in this conversation with what's really logged for " +
+    "that day, before calling log_journal_entry. Never fabricate a detail neither source " +
+    "supports.\n\n" +
     "Being a friend, not a form: a real friend doesn't only recall things when asked — they " +
     "bring them up. If something in what you already know about the user (listed below), their " +
     "goals/wishes context, or their most recent journal entry (also listed below) is genuinely " +
