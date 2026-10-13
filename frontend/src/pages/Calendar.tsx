@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../api/useApi";
 import { Skeleton } from "../components/Skeleton";
+import { getMoonEventsInRange, MOON_EVENT_LABEL } from "../lib/moonPhase";
 import type { Task } from "../types";
 import {
   card,
@@ -107,11 +108,18 @@ export default function Calendar() {
   }
 
   const days = monthGrid(monthStart);
+  const moonEvents = useMemo(
+    () => getMoonEventsInRange(days[0], new Date(days[days.length - 1].getTime() + 24 * 60 * 60 * 1000)),
+    // days is a fresh array each render; monthStart is the real identity to key off.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [monthStart],
+  );
   const todayKey = toDateKey(new Date());
   const currentYear = new Date().getFullYear();
   const yearOptions = Array.from({ length: 6 }, (_, i) => currentYear - 1 + i);
   const selectedDayTasks = selectedDay ? (tasksByDate.get(selectedDay) ?? []) : [];
   const selectedDayHoliday = selectedDay ? HOLIDAYS_2026[selectedDay] : undefined;
+  const selectedDayMoonEvent = selectedDay ? moonEvents.get(selectedDay) : undefined;
   const selectClass =
     "rounded-xl border border-stone bg-paper-card px-2 py-1 text-xs text-ink focus:border-bloom focus:outline-none dark:border-stone-dark dark:bg-ink-bg-card dark:text-paper";
 
@@ -196,12 +204,13 @@ export default function Calendar() {
                 const dayTasks = tasksByDate.get(key) ?? [];
                 const isWeekend = day.getDay() === 0 || day.getDay() === 6;
                 const holiday = HOLIDAYS_2026[key];
+                const moonEvent = moonEvents.get(key);
                 return (
                   <button
                     type="button"
                     key={key}
                     onClick={() => setSelectedDay(key)}
-                    aria-label={`View ${key}${holiday ? `, ${holiday}` : ""}${dayTasks.length ? `, ${dayTasks.length} task${dayTasks.length === 1 ? "" : "s"}` : ""}`}
+                    aria-label={`View ${key}${holiday ? `, ${holiday}` : ""}${moonEvent ? `, ${MOON_EVENT_LABEL[moonEvent]}` : ""}${dayTasks.length ? `, ${dayTasks.length} task${dayTasks.length === 1 ? "" : "s"}` : ""}`}
                     className={`min-h-[86px] p-1.5 text-left transition-colors hover:brightness-95 dark:hover:brightness-125 ${
                       isWeekend ? "bg-bloom-soft/40 dark:bg-bloom-soft-dark/30" : "bg-paper-card dark:bg-ink-bg-card"
                     } ${inMonth ? "" : "opacity-40"} ${key === todayKey ? "ring-1 ring-inset ring-bloom" : ""}`}
@@ -219,6 +228,11 @@ export default function Calendar() {
                         className="mb-1 truncate rounded bg-amber-soft px-1 py-0.5 text-[10px] font-medium text-amber-ink dark:bg-amber-soft-dark dark:text-amber-ink-dark"
                       >
                         🎉 {holiday}
+                      </p>
+                    )}
+                    {moonEvent && (
+                      <p className="mb-1 truncate rounded bg-indigo-100 px-1 py-0.5 text-[10px] font-medium text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                        {MOON_EVENT_LABEL[moonEvent]}
                       </p>
                     )}
                     <div className="flex flex-col gap-0.5">
@@ -253,12 +267,13 @@ export default function Calendar() {
                 const dayTasks = tasksByDate.get(key) ?? [];
                 const isWeekend = day.getDay() === 0 || day.getDay() === 6;
                 const holiday = HOLIDAYS_2026[key];
+                const moonEvent = moonEvents.get(key);
                 return (
                   <button
                     type="button"
                     key={key}
                     onClick={() => setSelectedDay(key)}
-                    aria-label={`View ${key}${holiday ? `, ${holiday}` : ""}${dayTasks.length ? `, ${dayTasks.length} task${dayTasks.length === 1 ? "" : "s"}` : ""}`}
+                    aria-label={`View ${key}${holiday ? `, ${holiday}` : ""}${moonEvent ? `, ${MOON_EVENT_LABEL[moonEvent]}` : ""}${dayTasks.length ? `, ${dayTasks.length} task${dayTasks.length === 1 ? "" : "s"}` : ""}`}
                     className={`flex items-center gap-3 px-3 py-2.5 text-left transition-colors hover:brightness-95 dark:hover:brightness-125 ${
                       key === todayKey ? "bg-bloom-soft/40 dark:bg-bloom-soft-dark/30" : ""
                     }`}
@@ -275,6 +290,11 @@ export default function Calendar() {
                           🎉 {holiday}
                         </span>
                       )}
+                      {moonEvent && (
+                        <span className="truncate text-xs font-medium text-indigo-700 dark:text-indigo-300">
+                          {MOON_EVENT_LABEL[moonEvent]}
+                        </span>
+                      )}
                       {dayTasks.slice(0, 3).map((task) => (
                         <span key={task.taskId} className="truncate text-xs text-ink-muted dark:text-mist-muted">
                           {task.title}
@@ -285,7 +305,7 @@ export default function Calendar() {
                           +{dayTasks.length - 3} more
                         </span>
                       )}
-                      {!holiday && dayTasks.length === 0 && (
+                      {!holiday && !moonEvent && dayTasks.length === 0 && (
                         <span className={mutedText}>—</span>
                       )}
                     </div>
@@ -319,11 +339,18 @@ export default function Calendar() {
                     year: "numeric",
                   })}
                 </p>
-                {selectedDayHoliday && (
-                  <p className="mt-1 inline-block rounded-full bg-amber-soft px-2 py-0.5 text-xs font-medium text-amber-ink dark:bg-amber-soft-dark dark:text-amber-ink-dark">
-                    🎉 {selectedDayHoliday}
-                  </p>
-                )}
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {selectedDayHoliday && (
+                    <p className="inline-block rounded-full bg-amber-soft px-2 py-0.5 text-xs font-medium text-amber-ink dark:bg-amber-soft-dark dark:text-amber-ink-dark">
+                      🎉 {selectedDayHoliday}
+                    </p>
+                  )}
+                  {selectedDayMoonEvent && (
+                    <p className="inline-block rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                      {MOON_EVENT_LABEL[selectedDayMoonEvent]}
+                    </p>
+                  )}
+                </div>
               </div>
               <button
                 type="button"
