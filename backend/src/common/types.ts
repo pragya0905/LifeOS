@@ -111,12 +111,22 @@ export interface JournalEntryExtraction {
   expenses: { category: string; amount: number | null; note: string | null }[];
 }
 
+export interface DayReview {
+  productivityScore: number; // 1-10
+  // Only set when the journal text itself explicitly describes time lost to distraction/
+  // procrastination — never inferred from silence or from the score alone.
+  timeWastedMinutes: number | null;
+  wins: string[];
+  suggestions: string[];
+}
+
 export interface JournalEntry {
   userId: string;
   date: string;
   text: string;
   voiceInput: boolean;
   aiExtracted?: JournalEntryExtraction;
+  dayReview?: DayReview;
   // Bedrock Titan embedding of `text`, written best-effort/async after save — never sent to
   // the frontend (stripped in listJournalEntries) or returned in create/update responses.
   embedding?: number[];

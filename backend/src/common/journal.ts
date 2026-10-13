@@ -1,12 +1,13 @@
 import { DeleteCommand, GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { randomUUID } from "node:crypto";
 import { ddb } from "./dynamo";
-import { extractJournalInfo } from "./claude";
+import { extractJournalInfo, generateDayReview } from "./claude";
 import { embedText } from "./bedrock";
 import { isMedicationActiveOnDate } from "./medications";
 import { LOG_ENTRY_SCHEMAS, SINGULAR_LOG_TYPES } from "./logEntrySchemas";
 import type {
   Expense,
+  HabitLog,
   HabitType,
   HabitUnit,
   JournalEntry,
@@ -14,6 +15,7 @@ import type {
   LogType,
   Medication,
   RoutineTemplate,
+  Task,
 } from "./types";
 
 const HABIT_UNIT: Record<HabitType, HabitUnit> = {
@@ -361,6 +363,109 @@ export async function embedJournalEntry(userId: string, date: string, text: stri
     );
   } catch (err) {
     console.error("Journal embedding failed (non-blocking):", err);
+  }
+}
+
+// Routines have no startDate/durationDays range (unlike Medication) — just an optional
+// daysOfWeek, so this is the whole check. Mirrors isMedicationActiveOnDate's day-of-week logic.
+function routineAppliesOnDate(daysOfWeek: number[] | undefined, dateStr: string): boolean {
+  if (!daysOfWeek || daysOfWeek.length === 0) return true;
+  const dayOfWeek = new Date(`${dateStr}T00:00:00Z`).getUTCDay();
+  return daysOfWeek.includes(dayOfWeek);
+}
+
+// Grounds the day-review score/suggestions in what actually happened that day, not just the
+// journal text's tone — same ingredients get_progress_summary/get_daily_checkin_status use
+// elsewhere, fetched directly here the same way fetchActiveMedications/fetchRoutineTemplates
+// above already do. Returns one compact plain-English line rather than raw JSON, since that's
+// what actually goes into the Claude prompt.
+async function fetchDayStats(userId: string, date: string): Promise<string> {
+  const [tasksResult, habitsResult, medications, routines, routineLogsResult, medicationLogsResult] =
+    await Promise.all([
+      ddb.send(
+        new QueryCommand({
+          TableName: process.env.TASKS_TABLE_NAME,
+          KeyConditionExpression: "userId = :userId",
+          FilterExpression: "dueDate = :date",
+          ExpressionAttributeValues: { ":userId": userId, ":date": date },
+        }),
+      ),
+      ddb.send(
+        new QueryCommand({
+          TableName: process.env.HABITS_TABLE_NAME,
+          KeyConditionExpression: "userId = :userId AND begins_with(dateHabitType, :prefix)",
+          ExpressionAttributeValues: { ":userId": userId, ":prefix": `${date}#` },
+        }),
+      ),
+      ddb.send(
+        new QueryCommand({
+          TableName: process.env.MEDICATIONS_TABLE_NAME,
+          KeyConditionExpression: "userId = :userId",
+          ExpressionAttributeValues: { ":userId": userId },
+        }),
+      ).then((r) => (r.Items ?? []) as Medication[]),
+      fetchRoutineTemplates(userId),
+      ddb.send(
+        new QueryCommand({
+          TableName: process.env.ROUTINE_LOGS_TABLE_NAME,
+          KeyConditionExpression: "userId = :userId AND begins_with(dateRoutineStep, :prefix)",
+          ExpressionAttributeValues: { ":userId": userId, ":prefix": `${date}#` },
+        }),
+      ),
+      ddb.send(
+        new QueryCommand({
+          TableName: process.env.MEDICATION_LOGS_TABLE_NAME,
+          KeyConditionExpression: "userId = :userId AND begins_with(dateMedicationId, :prefix)",
+          ExpressionAttributeValues: { ":userId": userId, ":prefix": `${date}#` },
+        }),
+      ),
+    ]);
+
+  const tasks = (tasksResult.Items ?? []) as Task[];
+  const tasksDone = tasks.filter((t) => t.status === "done").length;
+
+  const habits = (habitsResult.Items ?? []) as HabitLog[];
+  const habitLine = (["water", "exercise", "steps"] as const)
+    .map((type) => `${type} ${habits.find((h) => h.habitType === type)?.status === "done" ? "done" : "missed"}`)
+    .join(", ");
+
+  const activeMedications = medications.filter((m) => isMedicationActiveOnDate(m, date));
+  const medicationsTaken = medicationLogsResult.Items?.length ?? 0;
+
+  const activeRoutines = routines.filter((r) => routineAppliesOnDate(r.daysOfWeek, date));
+  const totalRoutineSteps = activeRoutines.reduce((sum, r) => sum + r.steps.length, 0);
+  const routineStepsDone = routineLogsResult.Items?.filter((l) => l.status === "done").length ?? 0;
+
+  return (
+    `Tasks due: ${tasks.length}, completed: ${tasksDone}. Habits: ${habitLine}. ` +
+    `Routine steps: ${routineStepsDone}/${totalRoutineSteps} done. ` +
+    `Medications: ${medicationsTaken}/${activeMedications.length} taken.`
+  );
+}
+
+// Best-effort, same reasoning as applyJournalExtraction below — a failure here must never
+// block the journal entry itself from saving. Runs after applyJournalExtraction (not in
+// parallel) so the stats it reads reflect this entry's own just-written AI logs.
+export async function computeDayReview(
+  userId: string,
+  date: string,
+  text: string,
+): Promise<JournalEntry["dayReview"] | undefined> {
+  try {
+    const stats = await fetchDayStats(userId, date);
+    const dayReview = await generateDayReview(text, stats);
+    await ddb.send(
+      new UpdateCommand({
+        TableName: process.env.JOURNAL_TABLE_NAME,
+        Key: { userId, date },
+        UpdateExpression: "SET dayReview = :dayReview",
+        ExpressionAttributeValues: { ":dayReview": dayReview },
+      }),
+    );
+    return dayReview;
+  } catch (err) {
+    console.error("Journal day-review failed (non-blocking):", err);
+    return undefined;
   }
 }
 

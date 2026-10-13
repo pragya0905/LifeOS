@@ -411,6 +411,36 @@ export default function Journal() {
                 {formatDetection(entry.aiExtracted) && (
                   <p className="mt-1 text-xs text-bloom">{formatDetection(entry.aiExtracted)}</p>
                 )}
+                {entry.dayReview && (
+                  <div className="mt-2 border-t border-stone pt-2 dark:border-stone-dark">
+                    <p className="text-xs font-medium text-ink dark:text-paper">
+                      ⚡ Productivity {entry.dayReview.productivityScore}/10
+                      {entry.dayReview.timeWastedMinutes !== null && (
+                        <span className={`ml-1.5 font-normal ${mutedText}`}>
+                          · ~{entry.dayReview.timeWastedMinutes} min felt wasted today
+                        </span>
+                      )}
+                    </p>
+                    {entry.dayReview.wins.length > 0 && (
+                      <ul className="mt-1 flex flex-col gap-0.5">
+                        {entry.dayReview.wins.map((w, i) => (
+                          <li key={i} className="text-xs text-ink dark:text-paper">
+                            • {w}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {entry.dayReview.suggestions.length > 0 && (
+                      <ul className="mt-1 flex flex-col gap-0.5">
+                        {entry.dayReview.suggestions.map((s, i) => (
+                          <li key={i} className="text-xs text-bloom">
+                            • {s}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
               </li>
             );
           })}

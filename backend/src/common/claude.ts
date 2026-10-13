@@ -104,6 +104,47 @@ function buildJournalSystemPrompt(
   return lines.join("\n");
 }
 
+const DayReviewSchema = z.object({
+  productivityScore: z.number().int().min(1).max(10),
+  timeWastedMinutes: z.number().nullable(),
+  wins: z.array(z.string()),
+  suggestions: z.array(z.string()),
+});
+
+export type DayReview = z.infer<typeof DayReviewSchema>;
+
+const DAY_REVIEW_SYSTEM_PROMPT =
+  "You are a kind, non-judgmental coach reviewing someone's day from their journal entry " +
+  "plus a factual summary of what they actually completed that day (tasks, habits, routine " +
+  "steps, medications). Return: productivityScore, an integer 1-10 weighing the completion " +
+  "stats together with what the entry itself describes (don't weigh the stats alone — a day " +
+  "with few scheduled tasks but a genuinely full, well-used day described in the text can " +
+  "still score well); timeWastedMinutes, ONLY a number if the entry text itself explicitly " +
+  "names time lost to distraction, procrastination, scrolling, or similar (e.g. 'wasted an " +
+  "hour on my phone') — otherwise null, never estimate or infer this from the score, from a " +
+  "busy/idle-sounding day, or from anything not actually stated; wins, 2-3 short concrete " +
+  "things that went well that day; suggestions, 1-3 short, specific, kind, actionable ideas " +
+  "for tomorrow. Be encouraging, never preachy or judgmental, and never invent a detail " +
+  "neither the stats nor the text actually support.";
+
+export async function generateDayReview(text: string, statsContext: string): Promise<DayReview> {
+  const client = await getClient();
+  const response = await client.messages.parse({
+    model: "claude-haiku-4-5",
+    max_tokens: 512,
+    system: DAY_REVIEW_SYSTEM_PROMPT,
+    messages: [
+      { role: "user", content: `Today's completion stats: ${statsContext}\n\nJournal entry:\n${text}` },
+    ],
+    output_config: { format: zodOutputFormat(DayReviewSchema) },
+  });
+
+  if (!response.parsed_output) {
+    throw new Error("Claude did not return parsed structured output");
+  }
+  return response.parsed_output;
+}
+
 const InsightsSchema = z.object({
   summary: z.string(),
   highlights: z.array(z.string()),

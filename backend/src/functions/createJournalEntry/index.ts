@@ -3,7 +3,7 @@ import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb } from "../../common/dynamo";
 import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
-import { applyJournalExtraction, embedJournalEntry } from "../../common/journal";
+import { applyJournalExtraction, computeDayReview, embedJournalEntry } from "../../common/journal";
 import type { JournalEntry } from "../../common/types";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -65,6 +65,12 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     embedJournalEntry(userId, date, text),
   ]);
   if (extraction) entry.aiExtracted = extraction;
+
+  // Runs after extraction (not in Promise.all above) so its day-stats read reflects this
+  // entry's own just-written AI logs (e.g. a medication mentioned in this entry already
+  // counts as taken before the score is computed).
+  const dayReview = await computeDayReview(userId, date, text);
+  if (dayReview) entry.dayReview = dayReview;
 
   return jsonResponse(201, entry);
 };

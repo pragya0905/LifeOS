@@ -825,6 +825,7 @@ Resources:
           LOG_ENTRIES_TABLE_NAME: !Ref LogEntriesTable
           EXPENSES_TABLE_NAME: !Ref ExpensesTable
           USER_PROFILE_TABLE_NAME: !Ref UserProfileTable
+          TASKS_TABLE_NAME: !Ref TasksTable
           ANTHROPIC_API_KEY_PARAM: !Sub "/lifeos/${Environment}/anthropic-api-key"
       Policies:
         - DynamoDBCrudPolicy:
@@ -841,6 +842,8 @@ Resources:
             TableName: !Ref RoutineLogsTable
         - DynamoDBCrudPolicy:
             TableName: !Ref LogEntriesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref TasksTable
         - DynamoDBCrudPolicy:
             TableName: !Ref ExpensesTable
         - DynamoDBReadPolicy:
@@ -915,6 +918,7 @@ Resources:
           LOG_ENTRIES_TABLE_NAME: !Ref LogEntriesTable
           EXPENSES_TABLE_NAME: !Ref ExpensesTable
           USER_PROFILE_TABLE_NAME: !Ref UserProfileTable
+          TASKS_TABLE_NAME: !Ref TasksTable
           ANTHROPIC_API_KEY_PARAM: !Sub "/lifeos/${Environment}/anthropic-api-key"
       Policies:
         - DynamoDBCrudPolicy:
@@ -935,6 +939,8 @@ Resources:
             TableName: !Ref ExpensesTable
         - DynamoDBReadPolicy:
             TableName: !Ref UserProfileTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref TasksTable
         - SSMParameterReadPolicy:
             ParameterName: !Sub "lifeos/${Environment}/anthropic-api-key"
         - Statement:
