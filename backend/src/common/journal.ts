@@ -306,6 +306,24 @@ async function clearPreviousAiExpenses(userId: string, date: string): Promise<vo
   );
 }
 
+// Guards against the journal mentioning an expense the user already logged by hand that same
+// day (e.g. added it via the Budget page, then journaled about the purchase later) — without
+// this, clearPreviousAiExpenses only prevents AI-vs-AI duplicates across re-extractions, not
+// an AI write duplicating an existing manual one, since amount+category+date is the closest
+// thing a free-text expense has to a stable natural key.
+async function fetchManualExpensesForDate(userId: string, date: string): Promise<Expense[]> {
+  const result = await ddb.send(
+    new QueryCommand({
+      TableName: process.env.EXPENSES_TABLE_NAME,
+      KeyConditionExpression: "userId = :userId",
+      FilterExpression: "#date = :date AND #source = :source",
+      ExpressionAttributeNames: { "#date": "date", "#source": "source" },
+      ExpressionAttributeValues: { ":userId": userId, ":date": date, ":source": "manual" },
+    }),
+  );
+  return (result.Items ?? []) as Expense[];
+}
+
 async function fetchActiveMedications(userId: string): Promise<Medication[]> {
   const result = await ddb.send(
     new QueryCommand({
@@ -511,7 +529,11 @@ export async function applyJournalExtraction(
       }),
     );
 
-    await Promise.all([clearPreviousAiJournalEntries(userId, date), clearPreviousAiExpenses(userId, date)]);
+    const [, , manualExpensesForDate] = await Promise.all([
+      clearPreviousAiJournalEntries(userId, date),
+      clearPreviousAiExpenses(userId, date),
+      fetchManualExpensesForDate(userId, date),
+    ]);
 
     const writes: Promise<void>[] = [];
 
@@ -559,6 +581,12 @@ export async function applyJournalExtraction(
       );
     }
     for (const expense of extraction.expenses) {
+      // Match on amount alone, not category — the model can file the same purchase under a
+      // different category than the user did manually (e.g. shampoo as "shopping" vs the
+      // user's own "groceries"), which would otherwise defeat this check entirely.
+      const alreadyLoggedManually =
+        expense.amount !== null && manualExpensesForDate.some((m) => m.amount === expense.amount);
+      if (alreadyLoggedManually) continue;
       writes.push(
         writeAiExpense(userId, date, {
           category: expense.category as Expense["category"],
