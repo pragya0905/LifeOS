@@ -17,6 +17,7 @@ import {
   pillButton,
   pillButtonDone,
   pillButtonInactive,
+  pillButtonNotApplicable,
   pillButtonSkipped,
   primaryButton,
   secondaryButton,
@@ -98,16 +99,19 @@ function daysAgo(n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-// A day "counts" toward the streak only if every step of the routine was logged done that
-// day — a single skipped or missing step breaks it, same rigor as Medications' adherence.
+// A day "counts" toward the streak only if every step of the routine was logged done OR
+// not_applicable that day — a single skipped or missing step breaks it, same rigor as
+// Medications' adherence. not_applicable is exempted rather than counted as a miss, since it
+// means the step genuinely didn't apply that day, not that it was neglected.
 // Today never breaks the streak just because it isn't finished yet (the day isn't over).
 function computeStreak(routine: RoutineTemplate, logsByDateStep: Map<string, RoutineStepLog["status"]>): number {
   let streak = 0;
   for (let i = 0; i < STREAK_WINDOW_DAYS; i++) {
     const dateStr = daysAgo(i);
-    const complete = routine.steps.every(
-      (_, index) => logsByDateStep.get(`${dateStr}#${routine.routineId}#${index}`) === "done",
-    );
+    const complete = routine.steps.every((_, index) => {
+      const status = logsByDateStep.get(`${dateStr}#${routine.routineId}#${index}`);
+      return status === "done" || status === "not_applicable";
+    });
     if (complete) {
       streak++;
     } else if (i === 0) {
@@ -123,7 +127,7 @@ function computeStreak(routine: RoutineTemplate, logsByDateStep: Map<string, Rou
 // re-renders — same reasoning as WishCard in Wishes.tsx.
 function RoutineCard({
   routine,
-  stepStatuses,
+  stepLogs,
   streak,
   pending,
   removing,
@@ -132,11 +136,11 @@ function RoutineCard({
   onSave,
 }: {
   routine: RoutineTemplate;
-  stepStatuses: Record<string, RoutineStepLog["status"]>;
+  stepLogs: Record<string, { status: RoutineStepLog["status"]; note?: string }>;
   streak: number;
   pending: string | null;
   removing: boolean;
-  onSetStepStatus: (routineId: string, stepIndex: number, status: RoutineStepLog["status"]) => void;
+  onSetStepStatus: (routineId: string, stepIndex: number, status: RoutineStepLog["status"], note?: string) => void;
   onDelete: (routineId: string) => void;
   onSave: (
     routineId: string,
@@ -159,7 +163,7 @@ function RoutineCard({
   const [savingEdit, setSavingEdit] = useState(false);
 
   const doneCount = routine.steps.filter(
-    (_, index) => stepStatuses[`${routine.routineId}#${index}`] === "done",
+    (_, index) => stepLogs[`${routine.routineId}#${index}`]?.status === "done",
   ).length;
 
   function toggleDraftDay(day: number) {
@@ -309,32 +313,61 @@ function RoutineCard({
       <ul className="flex flex-col gap-1.5">
         {routine.steps.map((step, index) => {
           const key = `${routine.routineId}#${index}`;
-          const status = stepStatuses[key];
+          const log = stepLogs[key];
+          const status = log?.status;
           return (
-            <li key={key} className="flex flex-wrap items-center justify-between gap-3">
-              <span className="text-sm text-ink-muted dark:text-mist-muted">{step}</span>
-              <div className="flex gap-1.5">
-                <button
-                  type="button"
-                  disabled={pending === key}
-                  onClick={() => onSetStepStatus(routine.routineId, index, "done")}
-                  className={`${pillButton} px-2.5 py-0.5 ${
-                    status === "done" ? pillButtonDone : pillButtonInactive
-                  }`}
-                >
-                  Done
-                </button>
-                <button
-                  type="button"
-                  disabled={pending === key}
-                  onClick={() => onSetStepStatus(routine.routineId, index, "skipped")}
-                  className={`${pillButton} px-2.5 py-0.5 ${
-                    status === "skipped" ? pillButtonSkipped : pillButtonInactive
-                  }`}
-                >
-                  Skipped
-                </button>
+            <li key={key} className="flex flex-col gap-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span className="text-sm text-ink-muted dark:text-mist-muted">{step}</span>
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    disabled={pending === key}
+                    onClick={() => onSetStepStatus(routine.routineId, index, "done")}
+                    className={`${pillButton} px-2.5 py-0.5 ${
+                      status === "done" ? pillButtonDone : pillButtonInactive
+                    }`}
+                  >
+                    Done
+                  </button>
+                  <button
+                    type="button"
+                    disabled={pending === key}
+                    onClick={() => onSetStepStatus(routine.routineId, index, "skipped")}
+                    className={`${pillButton} px-2.5 py-0.5 ${
+                      status === "skipped" ? pillButtonSkipped : pillButtonInactive
+                    }`}
+                  >
+                    Skipped
+                  </button>
+                  <button
+                    type="button"
+                    disabled={pending === key}
+                    onClick={() => onSetStepStatus(routine.routineId, index, "not_applicable")}
+                    title="Doesn't apply today — won't break the streak"
+                    className={`${pillButton} px-2.5 py-0.5 ${
+                      status === "not_applicable" ? pillButtonNotApplicable : pillButtonInactive
+                    }`}
+                  >
+                    N/A
+                  </button>
+                </div>
               </div>
+              {status === "not_applicable" && (
+                <input
+                  type="text"
+                  defaultValue={log?.note ?? ""}
+                  onBlur={(e) => {
+                    const trimmed = e.target.value.trim();
+                    if (trimmed !== (log?.note ?? "")) {
+                      onSetStepStatus(routine.routineId, index, "not_applicable", trimmed);
+                    }
+                  }}
+                  placeholder="Why not applicable? (optional)"
+                  maxLength={200}
+                  className={`py-1 text-xs ${input}`}
+                />
+              )}
             </li>
           );
         })}
@@ -346,7 +379,7 @@ function RoutineCard({
 export default function Routines() {
   const { request } = useApi();
   const [routines, setRoutines] = useState<RoutineTemplate[]>([]);
-  const [stepStatuses, setStepStatuses] = useState<Record<string, RoutineStepLog["status"]>>({});
+  const [stepLogs, setStepLogs] = useState<Record<string, { status: RoutineStepLog["status"]; note?: string }>>({});
   const [rangeLogs, setRangeLogs] = useState<RoutineStepLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -376,9 +409,9 @@ export default function Routines() {
         ]);
         if (ignore) return;
         setRoutines(routinesData.routines);
-        const next: Record<string, RoutineStepLog["status"]> = {};
-        for (const log of logsData.logs) next[`${log.routineId}#${log.stepIndex}`] = log.status;
-        setStepStatuses(next);
+        const next: Record<string, { status: RoutineStepLog["status"]; note?: string }> = {};
+        for (const log of logsData.logs) next[`${log.routineId}#${log.stepIndex}`] = { status: log.status, note: log.note };
+        setStepLogs(next);
         setRangeLogs(rangeLogsData.logs);
       } catch (err) {
         if (ignore) return;
@@ -473,16 +506,21 @@ export default function Routines() {
     }
   }
 
-  async function setStepStatus(routineId: string, stepIndex: number, status: RoutineStepLog["status"]) {
+  async function setStepStatus(
+    routineId: string,
+    stepIndex: number,
+    status: RoutineStepLog["status"],
+    note?: string,
+  ) {
     const key = `${routineId}#${stepIndex}`;
     setPending(key);
     setError(null);
     try {
       const updated = await request<RoutineStepLog>(
         `/routine-logs/${today()}/${routineId}/${stepIndex}`,
-        { method: "PATCH", body: JSON.stringify({ status }) },
+        { method: "PATCH", body: JSON.stringify({ status, ...(note !== undefined ? { note } : {}) }) },
       );
-      setStepStatuses((prev) => ({ ...prev, [key]: updated.status }));
+      setStepLogs((prev) => ({ ...prev, [key]: { status: updated.status, note: updated.note } }));
       setRangeLogs((prev) => [
         ...prev.filter((l) => l.dateRoutineStep !== updated.dateRoutineStep),
         updated,
@@ -612,7 +650,7 @@ export default function Routines() {
                 <RoutineCard
                   key={routine.routineId}
                   routine={routine}
-                  stepStatuses={stepStatuses}
+                  stepLogs={stepLogs}
                   streak={computeStreak(routine, logsByDateStep)}
                   pending={pending}
                   removing={removingId === routine.routineId}

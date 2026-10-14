@@ -410,14 +410,15 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "log_routine_step",
     description:
-      "Mark a routine checklist step done or skipped for a date. routineId and stepIndex must be exact values already known from conversation context or a prior tool result — never guess them; call get_routines first if you don't have them.",
+      "Mark a routine checklist step done, skipped, or not_applicable for a date. Use not_applicable — never skipped — when the user explains the step genuinely didn't apply today rather than them failing to do it (e.g. 'no sunscreen, I was indoors all day', 'skip the conditioner, didn't wash my hair today') — unlike skipped, not_applicable doesn't break the routine's streak. Capture their reason in note when they give one. routineId and stepIndex must be exact values already known from conversation context or a prior tool result — never guess them; call get_routines first if you don't have them.",
     input_schema: {
       type: "object",
       properties: {
         date: { type: "string", description: "YYYY-MM-DD. Defaults to today if omitted." },
         routineId: { type: "string" },
         stepIndex: { type: "integer", minimum: 0 },
-        status: { type: "string", enum: ["done", "skipped"] },
+        status: { type: "string", enum: ["done", "skipped", "not_applicable"] },
+        note: { type: "string", description: "Short reason, mainly for not_applicable (e.g. 'indoor today')." },
       },
       required: ["routineId", "stepIndex", "status"],
     },
@@ -945,7 +946,7 @@ async function executeTool(
           authHeader,
           `/routine-logs/${date}/${input.routineId}/${input.stepIndex}`,
           "PATCH",
-          { status: input.status },
+          { status: input.status, note: input.note },
         );
         break;
       }

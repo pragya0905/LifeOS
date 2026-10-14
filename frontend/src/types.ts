@@ -147,7 +147,9 @@ export interface RoutineTemplate {
   createdAt: string;
 }
 
-export type RoutineStepStatus = "done" | "skipped";
+// "not_applicable" is for a step that genuinely doesn't apply today (e.g. sunscreen on an
+// indoor day) — unlike "skipped", it does not break a routine's streak.
+export type RoutineStepStatus = "done" | "skipped" | "not_applicable";
 
 export interface RoutineStepLog {
   userId: string;
@@ -156,6 +158,8 @@ export interface RoutineStepLog {
   routineId: string;
   stepIndex: number;
   status: RoutineStepStatus;
+  // Optional reason, mainly meant for "not_applicable" (e.g. "indoor today").
+  note?: string;
   source: "manual" | "ai-journal";
   createdAt: string;
   updatedAt: string;

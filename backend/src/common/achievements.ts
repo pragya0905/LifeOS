@@ -72,8 +72,9 @@ function bestStreak(sortedDates: string[]): number {
 }
 
 // A day counts toward the routine streak if ANY of the user's routines had every one of its
-// (current) steps logged done that day — same all-or-nothing rule Routines.tsx's own streak
-// display uses, just rolled up across every routine instead of per-routine.
+// (current) steps logged done OR not_applicable that day — same all-or-nothing rule
+// Routines.tsx's own streak display uses, just rolled up across every routine instead of per-
+// routine. not_applicable is exempted rather than counted as a miss, same as "done".
 function computeRoutineBestStreak(routineLogs: RoutineStepLog[], routines: RoutineTemplate[]): number {
   const routineById = new Map(routines.map((r) => [r.routineId, r]));
   const logsByDateRoutine = new Map<string, RoutineStepLog[]>();
@@ -89,7 +90,9 @@ function computeRoutineBestStreak(routineLogs: RoutineStepLog[], routines: Routi
     const [date, routineId] = key.split("#");
     const routine = routineById.get(routineId);
     if (!routine || routine.steps.length === 0) continue;
-    const allDone = routine.steps.every((_, index) => logs.some((l) => l.stepIndex === index && l.status === "done"));
+    const allDone = routine.steps.every((_, index) =>
+      logs.some((l) => l.stepIndex === index && (l.status === "done" || l.status === "not_applicable")),
+    );
     if (allDone) fullyCompletedDays.add(date);
   }
 

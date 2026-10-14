@@ -9,10 +9,12 @@ import {
   badge,
   card,
   errorText,
+  input,
   mutedText,
   pillButton,
   pillButtonDone,
   pillButtonInactive,
+  pillButtonNotApplicable,
   pillButtonSkipped,
   sectionLabel,
 } from "./ui";
@@ -32,7 +34,7 @@ function categoryLabel(category: string): string {
 export default function TodayRoutines({ date }: { date: string }) {
   const { request } = useApi();
   const [routines, setRoutines] = useState<RoutineTemplate[] | null>(null);
-  const [stepStatuses, setStepStatuses] = useState<Record<string, RoutineStepLog["status"]>>({});
+  const [stepLogs, setStepLogs] = useState<Record<string, { status: RoutineStepLog["status"]; note?: string }>>({});
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
 
@@ -46,9 +48,9 @@ export default function TodayRoutines({ date }: { date: string }) {
         ]);
         if (ignore) return;
         setRoutines(routinesData.routines);
-        const next: Record<string, RoutineStepLog["status"]> = {};
-        for (const log of logsData.logs) next[`${log.routineId}#${log.stepIndex}`] = log.status;
-        setStepStatuses(next);
+        const next: Record<string, { status: RoutineStepLog["status"]; note?: string }> = {};
+        for (const log of logsData.logs) next[`${log.routineId}#${log.stepIndex}`] = { status: log.status, note: log.note };
+        setStepLogs(next);
       } catch (err) {
         if (!ignore) setError(err instanceof Error ? err.message : "Failed to load routines");
       }
@@ -60,16 +62,21 @@ export default function TodayRoutines({ date }: { date: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date]);
 
-  async function setStepStatus(routineId: string, stepIndex: number, status: RoutineStepLog["status"]) {
+  async function setStepStatus(
+    routineId: string,
+    stepIndex: number,
+    status: RoutineStepLog["status"],
+    note?: string,
+  ) {
     const key = `${routineId}#${stepIndex}`;
     setPending(key);
     setError(null);
     try {
       const updated = await request<RoutineStepLog>(
         `/routine-logs/${date}/${routineId}/${stepIndex}`,
-        { method: "PATCH", body: JSON.stringify({ status }) },
+        { method: "PATCH", body: JSON.stringify({ status, ...(note !== undefined ? { note } : {}) }) },
       );
-      setStepStatuses((prev) => ({ ...prev, [key]: updated.status }));
+      setStepLogs((prev) => ({ ...prev, [key]: { status: updated.status, note: updated.note } }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update step");
     } finally {
@@ -123,7 +130,7 @@ export default function TodayRoutines({ date }: { date: string }) {
         <ul className="flex flex-col gap-4">
           {todaysRoutines.map((routine) => {
             const doneCount = routine.steps.filter(
-              (_, index) => stepStatuses[`${routine.routineId}#${index}`] === "done",
+              (_, index) => stepLogs[`${routine.routineId}#${index}`]?.status === "done",
             ).length;
             return (
               <li key={routine.routineId}>
@@ -140,32 +147,61 @@ export default function TodayRoutines({ date }: { date: string }) {
                 <ul className="flex flex-col gap-1.5">
                   {routine.steps.map((step, index) => {
                     const key = `${routine.routineId}#${index}`;
-                    const status = stepStatuses[key];
+                    const log = stepLogs[key];
+                    const status = log?.status;
                     return (
-                      <li key={key} className="flex flex-wrap items-center justify-between gap-3">
-                        <span className="text-sm text-ink-muted dark:text-mist-muted">{step}</span>
-                        <div className="flex gap-1.5">
-                          <button
-                            type="button"
-                            disabled={pending === key}
-                            onClick={() => setStepStatus(routine.routineId, index, "done")}
-                            className={`${pillButton} px-2.5 py-0.5 ${
-                              status === "done" ? pillButtonDone : pillButtonInactive
-                            }`}
-                          >
-                            Done
-                          </button>
-                          <button
-                            type="button"
-                            disabled={pending === key}
-                            onClick={() => setStepStatus(routine.routineId, index, "skipped")}
-                            className={`${pillButton} px-2.5 py-0.5 ${
-                              status === "skipped" ? pillButtonSkipped : pillButtonInactive
-                            }`}
-                          >
-                            Skipped
-                          </button>
+                      <li key={key} className="flex flex-col gap-1.5">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <span className="text-sm text-ink-muted dark:text-mist-muted">{step}</span>
+                          <div className="flex gap-1.5">
+                            <button
+                              type="button"
+                              disabled={pending === key}
+                              onClick={() => setStepStatus(routine.routineId, index, "done")}
+                              className={`${pillButton} px-2.5 py-0.5 ${
+                                status === "done" ? pillButtonDone : pillButtonInactive
+                              }`}
+                            >
+                              Done
+                            </button>
+                            <button
+                              type="button"
+                              disabled={pending === key}
+                              onClick={() => setStepStatus(routine.routineId, index, "skipped")}
+                              className={`${pillButton} px-2.5 py-0.5 ${
+                                status === "skipped" ? pillButtonSkipped : pillButtonInactive
+                              }`}
+                            >
+                              Skipped
+                            </button>
+                            <button
+                              type="button"
+                              disabled={pending === key}
+                              onClick={() => setStepStatus(routine.routineId, index, "not_applicable")}
+                              title="Doesn't apply today — won't break the streak"
+                              className={`${pillButton} px-2.5 py-0.5 ${
+                                status === "not_applicable" ? pillButtonNotApplicable : pillButtonInactive
+                              }`}
+                            >
+                              N/A
+                            </button>
+                          </div>
                         </div>
+                        {status === "not_applicable" && (
+                          <input
+                            type="text"
+                            defaultValue={log?.note ?? ""}
+                            onBlur={(e) => {
+                              const trimmed = e.target.value.trim();
+                              if (trimmed !== (log?.note ?? "")) {
+                                setStepStatus(routine.routineId, index, "not_applicable", trimmed);
+                              }
+                            }}
+                            placeholder="Why not applicable? (optional)"
+                            maxLength={200}
+                            className={`py-1 text-xs ${input}`}
+                          />
+                        )}
                       </li>
                     );
                   })}

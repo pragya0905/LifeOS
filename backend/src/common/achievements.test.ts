@@ -35,7 +35,12 @@ function routine(routineId: string, steps: string[]): RoutineTemplate {
   return { userId: "u1", routineId, category: "custom", name: "Test routine", steps, createdAt: "2026-01-01" };
 }
 
-function routineLog(date: string, routineId: string, stepIndex: number, status: "done" | "skipped" = "done"): RoutineStepLog {
+function routineLog(
+  date: string,
+  routineId: string,
+  stepIndex: number,
+  status: "done" | "skipped" | "not_applicable" = "done",
+): RoutineStepLog {
   return {
     userId: "u1",
     dateRoutineStep: `${date}#${routineId}#${stepIndex}`,
@@ -176,6 +181,17 @@ describe("computeEligibleBadgeKeys — routine streaks", () => {
     }
     const result = computeEligibleBadgeKeys({ ...BASE_INPUTS, routines: [r], routineLogs: logs });
     expect(result.has("routine-consistent")).toBe(false);
+  });
+
+  it("not_applicable steps count toward a fully-completed day, unlike skipped", () => {
+    const r = routine("r1", ["Step A", "Step B"]);
+    const logs: RoutineStepLog[] = [];
+    for (let i = 1; i <= 7; i++) {
+      const d = `2026-10-0${i}`;
+      logs.push(routineLog(d, "r1", 0, "done"), routineLog(d, "r1", 1, "not_applicable"));
+    }
+    const result = computeEligibleBadgeKeys({ ...BASE_INPUTS, routines: [r], routineLogs: logs });
+    expect(result.has("routine-consistent")).toBe(true);
   });
 
   it("routine-starter earns on a single done step, regardless of streak", () => {
