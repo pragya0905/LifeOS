@@ -93,3 +93,19 @@ body {
   background-color: var(--color-ink-bg);
   color: var(--color-mist);
 }
+
+/* The design system leans on text-xs/text-sm everywhere (labels, buttons, inputs, card
+   text) — compact on a laptop, genuinely hard to read held in a hand. This block is
+   intentionally outside any @layer, so per CSS cascade-layers rules it outranks Tailwind's
+   own layered utilities below 480px without needing !important, and leaves every other
+   viewport (including tablets) untouched. */
+@media (max-width: 480px) {
+  .text-xs {
+    font-size: 0.8125rem; /* 13px, was 12px */
+    line-height: 1.125rem; /* 18px, was 16px */
+  }
+  .text-sm {
+    font-size: 0.9375rem; /* 15px, was 14px */
+    line-height: 1.375rem; /* 22px, was 20px */
+  }
+}

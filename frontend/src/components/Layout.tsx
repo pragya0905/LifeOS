@@ -173,7 +173,7 @@ export default function Layout() {
               key={to}
               to={to}
               className={({ isActive }) =>
-                `flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[10.5px] font-medium transition-colors ${
+                `flex flex-1 flex-col items-center gap-0.5 py-2.5 text-xs font-medium transition-colors ${
                   isActive
                     ? "text-bloom"
                     : "text-ink-muted dark:text-mist-muted"
@@ -191,7 +191,7 @@ export default function Layout() {
           <button
             type="button"
             onClick={() => setMoreOpen(true)}
-            className={`flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[10.5px] font-medium transition-colors ${
+            className={`flex flex-1 flex-col items-center gap-0.5 py-2.5 text-xs font-medium transition-colors ${
               moreActive || moreOpen ? "text-bloom" : "text-ink-muted dark:text-mist-muted"
             }`}
             aria-haspopup="dialog"
