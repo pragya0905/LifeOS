@@ -3,6 +3,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { SSMClient, GetParameterCommand } from "@aws-sdk/client-ssm";
 import { z } from "zod";
 import { EXPENSE_CATEGORIES } from "./expenseCategories";
+import { hoursUntilDue as tasksHoursUntilDue, isSlackExhausted } from "./tasks";
 
 const JournalExtractionSchema = z.object({
   waterMl: z.number().nullable(),
@@ -250,26 +251,13 @@ export async function suggestTaskPriority(
   dueAtUtc?: string,
   description?: string,
 ): Promise<"Low" | "Medium" | "High"> {
-  let hoursUntilDue: number | undefined;
-  // dueAtUtc is computed browser-side from dueDate+dueTime in the user's own local timezone —
-  // prefer it. Reconstructing a Date from the bare dueDate/dueTime strings server-side is
-  // ambiguous: Lambda runs in UTC, so e.g. "13:00" gets interpreted as 13:00 UTC rather than
-  // the user's actual local 13:00, skewing hoursUntilDue by the user's UTC offset.
-  if (dueAtUtc) {
-    hoursUntilDue = (new Date(dueAtUtc).getTime() - Date.now()) / (1000 * 60 * 60);
-  } else if (dueDate) {
-    const due = new Date(`${dueDate}T${dueTime ?? "23:59"}:00`);
-    hoursUntilDue = (due.getTime() - Date.now()) / (1000 * 60 * 60);
-  }
+  const now = new Date();
+  const hoursUntilDue = tasksHoursUntilDue({ dueDate, dueTime, dueAtUtc }, now);
 
   // Deterministic guardrail: an unstarted task literally cannot finish in time if the
   // hours remaining until its deadline are less than the estimated effort — no ambiguity,
   // no need to ask the model.
-  if (
-    estimatedHours !== undefined &&
-    hoursUntilDue !== undefined &&
-    hoursUntilDue <= estimatedHours
-  ) {
+  if (isSlackExhausted({ dueDate, dueTime, dueAtUtc, estimatedHours }, now)) {
     return "High";
   }
 

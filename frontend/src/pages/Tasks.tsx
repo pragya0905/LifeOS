@@ -3,9 +3,11 @@ import { useSearchParams } from "react-router-dom";
 import { useApi } from "../api/useApi";
 import { useSpeechToText } from "../hooks/useSpeechToText";
 import { todayLocal, toLocalDateStr } from "../lib/date";
+import { ALL_DAYS, formatSchedule } from "../lib/weekdays";
 import { Skeleton } from "../components/Skeleton";
 import { EmptyState } from "../components/EmptyState";
-import type { Task, TaskPriority, TaskStatus } from "../types";
+import DayOfWeekPicker from "../components/DayOfWeekPicker";
+import type { RecurrenceFrequency, Task, TaskPriority, TaskRecurrence, TaskStatus } from "../types";
 import {
   badge,
   card,
@@ -30,6 +32,34 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
   in_progress: "In progress",
   done: "Done",
 };
+
+const RECURRENCE_FREQUENCY_LABEL: Record<RecurrenceFrequency, string> = {
+  daily: "Daily",
+  weekly: "Weekly",
+  every_n_days: "Every N days",
+  monthly: "Monthly",
+};
+
+function formatRecurrence(recurrence: TaskRecurrence | undefined): string | null {
+  if (!recurrence) return null;
+  switch (recurrence.frequency) {
+    case "daily":
+      return "🔁 Daily";
+    case "weekly":
+      return `🔁 ${formatSchedule(recurrence.daysOfWeek)}`;
+    case "every_n_days":
+      return `🔁 Every ${recurrence.intervalDays} day${recurrence.intervalDays === 1 ? "" : "s"}`;
+    case "monthly":
+      return `🔁 Monthly (${recurrence.dayOfMonth}${ordinalSuffix(recurrence.dayOfMonth ?? 1)})`;
+  }
+}
+
+function ordinalSuffix(n: number): string {
+  if (n % 10 === 1 && n % 100 !== 11) return "st";
+  if (n % 10 === 2 && n % 100 !== 12) return "nd";
+  if (n % 10 === 3 && n % 100 !== 13) return "rd";
+  return "th";
+}
 
 function joinText(base: string, addition: string): string {
   if (!addition) return base;
@@ -115,7 +145,7 @@ function TaskTimeline({ task }: { task: Task }) {
       {staleForced && (
         <p className="mt-1 rounded-lg border border-stone bg-stone/30 px-2.5 py-1.5 text-xs text-ink-muted dark:border-stone-dark dark:bg-stone-dark/30 dark:text-mist-muted">
           {task.estimatedHours}h of work no longer fits before {dueLabel} — priority is still{" "}
-          {task.priority} since it hasn't been re-suggested since this deadline got close.
+          {task.priority}, but will escalate to High automatically within a few minutes.
         </p>
       )}
     </div>
@@ -236,6 +266,86 @@ function DeadlineRing({ task }: { task: Task }) {
 
 const SWIPE_THRESHOLD = 90;
 
+// Shared by the add-task form and TaskCard's inline edit form. Module-level so React keeps
+// element identity across re-renders, same reasoning as TaskCard itself below.
+function RecurrenceEditor({
+  value,
+  onChange,
+}: {
+  value: TaskRecurrence | undefined;
+  onChange: (v: TaskRecurrence | undefined) => void;
+}) {
+  const frequency = value?.frequency;
+  const daysOfWeek = value?.daysOfWeek && value.daysOfWeek.length > 0 ? value.daysOfWeek : ALL_DAYS;
+
+  return (
+    <div>
+      <label className={label}>Repeats (optional)</label>
+      <select
+        value={frequency ?? ""}
+        onChange={(e) => {
+          const next = e.target.value as RecurrenceFrequency | "";
+          if (!next) onChange(undefined);
+          else if (next === "weekly") onChange({ frequency: "weekly", daysOfWeek: value?.daysOfWeek ?? [] });
+          else if (next === "every_n_days") onChange({ frequency: "every_n_days", intervalDays: value?.intervalDays ?? 1 });
+          else if (next === "monthly") onChange({ frequency: "monthly", dayOfMonth: value?.dayOfMonth ?? 1 });
+          else onChange({ frequency: "daily" });
+        }}
+        className={input}
+      >
+        <option value="">Does not repeat</option>
+        {(Object.keys(RECURRENCE_FREQUENCY_LABEL) as RecurrenceFrequency[]).map((f) => (
+          <option key={f} value={f}>
+            {RECURRENCE_FREQUENCY_LABEL[f]}
+          </option>
+        ))}
+      </select>
+      {frequency === "weekly" && (
+        <div className="mt-1.5">
+          <DayOfWeekPicker
+            selected={daysOfWeek}
+            onToggle={(day) => {
+              const next = daysOfWeek.includes(day) ? daysOfWeek.filter((d) => d !== day) : [...daysOfWeek, day].sort();
+              onChange({ frequency: "weekly", daysOfWeek: next.length === 7 ? [] : next });
+            }}
+          />
+        </div>
+      )}
+      {frequency === "every_n_days" && (
+        <div className="mt-1.5 flex items-center gap-1.5">
+          <span className={mutedText}>Every</span>
+          <input
+            type="number"
+            min={1}
+            value={value?.intervalDays ?? 1}
+            onChange={(e) =>
+              onChange({ frequency: "every_n_days", intervalDays: Math.max(1, Number(e.target.value) || 1) })
+            }
+            className={`w-16 ${input}`}
+          />
+          <span className={mutedText}>days</span>
+        </div>
+      )}
+      {frequency === "monthly" && (
+        <div className="mt-1.5 flex items-center gap-1.5">
+          <span className={mutedText}>Day</span>
+          <input
+            type="number"
+            min={1}
+            max={31}
+            value={value?.dayOfMonth ?? 1}
+            onChange={(e) =>
+              onChange({ frequency: "monthly", dayOfMonth: Math.min(31, Math.max(1, Number(e.target.value) || 1)) })
+            }
+            className={`w-16 ${input}`}
+          />
+          <span className={mutedText}>of the month</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Module-level (not nested in Tasks) so React doesn't remount it — and lose local
 // swipe-gesture state — on every parent re-render, same fix applied to WishCard earlier.
 function TaskCard({
@@ -255,6 +365,8 @@ function TaskCard({
   setEditEstimatedHours,
   editSuggestPriority,
   setEditSuggestPriority,
+  editRecurrence,
+  setEditRecurrence,
   savingEdit,
   onSaveEdit,
   selectClass,
@@ -275,6 +387,8 @@ function TaskCard({
   setEditEstimatedHours: (v: string) => void;
   editSuggestPriority: boolean;
   setEditSuggestPriority: (v: boolean) => void;
+  editRecurrence: TaskRecurrence | undefined;
+  setEditRecurrence: (v: TaskRecurrence | undefined) => void;
   savingEdit: boolean;
   onSaveEdit: () => void;
   selectClass: string;
@@ -364,6 +478,7 @@ function TaskCard({
                 {task.dueTime ? ` ${task.dueTime}` : ""}
                 {task.estimatedHours !== undefined ? ` · ~${task.estimatedHours}h` : ""}
                 {task.scheduleTime ? ` · scheduled ${task.scheduleTime}` : ""}
+                {formatRecurrence(task.recurrence) ? ` · ${formatRecurrence(task.recurrence)}` : ""}
               </p>
             </div>
           </div>
@@ -376,6 +491,11 @@ function TaskCard({
               {task.priority}
             </span>
             {task.prioritySource === "ai" && <span className={badge}>AI</span>}
+            {task.prioritySource === "auto" && (
+              <span className={badge} title="Escalated automatically once remaining time no longer fit the estimate">
+                Auto
+              </span>
+            )}
             <select
               value={task.priority}
               onChange={(e) => onUpdate({ priority: e.target.value as TaskPriority })}
@@ -473,6 +593,7 @@ function TaskCard({
                 className={`w-20 ${input}`}
               />
             </div>
+            <RecurrenceEditor value={editRecurrence} onChange={setEditRecurrence} />
             <label className={`flex items-center gap-1.5 pb-2 ${label}`}>
               <input
                 type="checkbox"
@@ -526,6 +647,7 @@ export default function Tasks() {
   const [estimatedHours, setEstimatedHours] = useState("");
   const [priority, setPriority] = useState<TaskPriority>("Medium");
   const [scheduleTime, setScheduleTime] = useState("");
+  const [recurrence, setRecurrence] = useState<TaskRecurrence | undefined>(undefined);
   const [suggestPriority, setSuggestPriority] = useState(true);
   const [creating, setCreating] = useState(false);
   const [usedVoice, setUsedVoice] = useState(false);
@@ -537,6 +659,7 @@ export default function Tasks() {
   const [editDueTime, setEditDueTime] = useState("");
   const [editEstimatedHours, setEditEstimatedHours] = useState("");
   const [editSuggestPriority, setEditSuggestPriority] = useState(false);
+  const [editRecurrence, setEditRecurrence] = useState<TaskRecurrence | undefined>(undefined);
   const [savingEdit, setSavingEdit] = useState(false);
 
   const baseTitleRef = useRef("");
@@ -628,6 +751,7 @@ export default function Tasks() {
           voiceInput: usedVoice,
           priority,
           scheduleTime: scheduleTime || undefined,
+          recurrence,
           suggestPriority: suggestPriority || undefined,
         }),
       });
@@ -639,6 +763,7 @@ export default function Tasks() {
       setEstimatedHours("");
       setScheduleTime("");
       setPriority("Medium");
+      setRecurrence(undefined);
       setSuggestPriority(true);
       setUsedVoice(false);
     } catch (err) {
@@ -698,6 +823,7 @@ export default function Tasks() {
     setEditDueTime(task.dueTime ?? "");
     setEditEstimatedHours(task.estimatedHours !== undefined ? String(task.estimatedHours) : "");
     setEditSuggestPriority(false);
+    setEditRecurrence(task.recurrence);
   }
 
   async function saveEdit(taskId: string) {
@@ -708,6 +834,7 @@ export default function Tasks() {
       dueTime: editDueTime || undefined,
       dueAtUtc: computeDueAtUtc(editDueDate, editDueTime),
       estimatedHours: editEstimatedHours ? Number(editEstimatedHours) : undefined,
+      recurrence: editRecurrence,
       suggestPriority: editSuggestPriority || undefined,
     });
     setSavingEdit(false);
@@ -838,6 +965,7 @@ export default function Tasks() {
             className={`w-20 ${input}`}
           />
         </div>
+        <RecurrenceEditor value={recurrence} onChange={setRecurrence} />
         <div>
           <label className={label}>Priority</label>
           <select
@@ -955,6 +1083,8 @@ export default function Tasks() {
                     setEditEstimatedHours={setEditEstimatedHours}
                     editSuggestPriority={editSuggestPriority}
                     setEditSuggestPriority={setEditSuggestPriority}
+                    editRecurrence={editRecurrence}
+                    setEditRecurrence={setEditRecurrence}
                     savingEdit={savingEdit}
                     onSaveEdit={() => saveEdit(task.taskId)}
                     selectClass={selectClass}

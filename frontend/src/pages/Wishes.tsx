@@ -88,28 +88,42 @@ function WishCard({
   const [editing, setEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState(wish.title);
   const [typeDraft, setTypeDraft] = useState<WishType>(wish.type);
+  const [progressModeDraft, setProgressModeDraft] = useState<WishProgressMode>(wish.progressMode);
   const [targetDateDraft, setTargetDateDraft] = useState(wish.targetDate ?? "");
   const [quantityTargetDraft, setQuantityTargetDraft] = useState(String(wish.quantityTarget ?? ""));
   const [quantityUnitDraft, setQuantityUnitDraft] = useState(wish.quantityUnit ?? "");
+  const [linkedHabitTypeDraft, setLinkedHabitTypeDraft] = useState<WishHabitType>(
+    wish.linkedHabitType ?? "water",
+  );
   const [habitLinkTargetValueDraft, setHabitLinkTargetValueDraft] = useState(
     String(wish.habitLinkTargetValue ?? ""),
   );
 
   function handleSaveEdit() {
     if (!titleDraft.trim()) return;
-    if (wish.progressMode === "time_based" && !targetDateDraft) return;
-    if (wish.progressMode === "quantity" && !quantityTargetDraft) return;
-    if (wish.progressMode === "habit_linked" && !habitLinkTargetValueDraft) return;
+    if (progressModeDraft === "time_based" && !targetDateDraft) return;
+    if (progressModeDraft === "quantity" && !quantityTargetDraft) return;
+    if (progressModeDraft === "habit_linked" && !habitLinkTargetValueDraft) return;
     onUpdate({
       title: titleDraft.trim(),
       type: typeDraft,
+      progressMode: progressModeDraft,
       targetDate: targetDateDraft || undefined,
-      ...(wish.progressMode === "quantity"
-        ? { quantityTarget: Number(quantityTargetDraft), quantityUnit: quantityUnitDraft || undefined }
+      ...(progressModeDraft === "quantity"
+        ? {
+            quantityTarget: Number(quantityTargetDraft),
+            quantityUnit: quantityUnitDraft || undefined,
+            // Switching into quantity mode from something else needs a starting value —
+            // createWish itself always initializes this to 0, so a wish that was never in
+            // quantity mode before won't already have one.
+            ...(wish.progressMode !== "quantity" ? { quantityCurrent: wish.quantityCurrent ?? 0 } : {}),
+          }
         : {}),
-      ...(wish.progressMode === "habit_linked"
-        ? { habitLinkTargetValue: Number(habitLinkTargetValueDraft) }
+      ...(progressModeDraft === "habit_linked"
+        ? { linkedHabitType: linkedHabitTypeDraft, habitLinkTargetValue: Number(habitLinkTargetValueDraft) }
         : {}),
+      ...(progressModeDraft === "milestone" && !Array.isArray(wish.milestones) ? { milestones: [] } : {}),
+      ...(progressModeDraft === "percentage" && wish.percentage === undefined ? { percentage: 0 } : {}),
     });
     setEditing(false);
   }
@@ -155,21 +169,35 @@ function WishCard({
               ))}
             </select>
           </div>
+          <div>
+            <label className={label}>Track progress by</label>
+            <select
+              value={progressModeDraft}
+              onChange={(e) => setProgressModeDraft(e.target.value as WishProgressMode)}
+              className={input}
+            >
+              {PROGRESS_MODES.map((m) => (
+                <option key={m} value={m}>
+                  {PROGRESS_MODE_LABEL[m]}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
         <div className="mb-2 flex flex-wrap items-end gap-3">
           <div>
             <label className={label}>
-              Target date {wish.progressMode === "time_based" ? "" : "(optional)"}
+              Target date {progressModeDraft === "time_based" ? "" : "(optional)"}
             </label>
             <input
               type="date"
-              required={wish.progressMode === "time_based"}
+              required={progressModeDraft === "time_based"}
               value={targetDateDraft}
               onChange={(e) => setTargetDateDraft(e.target.value)}
               className={input}
             />
           </div>
-          {wish.progressMode === "quantity" && (
+          {progressModeDraft === "quantity" && (
             <>
               <div>
                 <label className={label}>Target amount</label>
@@ -193,17 +221,33 @@ function WishCard({
               </div>
             </>
           )}
-          {wish.progressMode === "habit_linked" && (
-            <div>
-              <label className={label}>Target total (since creation)</label>
-              <input
-                type="number"
-                min={1}
-                value={habitLinkTargetValueDraft}
-                onChange={(e) => setHabitLinkTargetValueDraft(e.target.value)}
-                className={`w-32 ${input}`}
-              />
-            </div>
+          {progressModeDraft === "habit_linked" && (
+            <>
+              <div>
+                <label className={label}>Habit</label>
+                <select
+                  value={linkedHabitTypeDraft}
+                  onChange={(e) => setLinkedHabitTypeDraft(e.target.value as WishHabitType)}
+                  className={input}
+                >
+                  {HABIT_TYPES.map((h) => (
+                    <option key={h} value={h}>
+                      {HABIT_TYPE_LABEL[h]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={label}>Target total (since creation)</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={habitLinkTargetValueDraft}
+                  onChange={(e) => setHabitLinkTargetValueDraft(e.target.value)}
+                  className={`w-32 ${input}`}
+                />
+              </div>
+            </>
           )}
         </div>
         <div className="flex gap-2">
@@ -211,9 +255,9 @@ function WishCard({
             type="button"
             disabled={
               !titleDraft.trim() ||
-              (wish.progressMode === "time_based" && !targetDateDraft) ||
-              (wish.progressMode === "quantity" && !quantityTargetDraft) ||
-              (wish.progressMode === "habit_linked" && !habitLinkTargetValueDraft)
+              (progressModeDraft === "time_based" && !targetDateDraft) ||
+              (progressModeDraft === "quantity" && !quantityTargetDraft) ||
+              (progressModeDraft === "habit_linked" && !habitLinkTargetValueDraft)
             }
             onClick={handleSaveEdit}
             className={`${secondaryButton} px-3 py-1 text-xs`}

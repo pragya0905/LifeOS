@@ -1,9 +1,10 @@
 import type { APIGatewayProxyHandlerV2WithJWTAuthorizer } from "aws-lambda";
-import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb } from "../../common/dynamo";
 import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
 import { suggestTaskPriority } from "../../common/claude";
+import { computeNextOccurrence, isValidRecurrence } from "../../common/taskRecurrence";
 import type { Task, TaskPriority, TaskStatus } from "../../common/types";
 
 const VALID_PRIORITIES: TaskPriority[] = ["Low", "Medium", "High"];
@@ -18,6 +19,7 @@ const UPDATABLE_FIELDS = [
   "priority",
   "status",
   "scheduleTime",
+  "recurrence",
 ] as const;
 
 export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) => {
@@ -38,9 +40,37 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
   if (body.status !== undefined && !VALID_STATUSES.includes(body.status as TaskStatus)) {
     return errorResponse(400, "Invalid status");
   }
+  if (body.recurrence !== undefined && !isValidRecurrence(body.recurrence)) {
+    return errorResponse(
+      400,
+      "recurrence must be { frequency: 'daily'|'weekly'|'every_n_days'|'monthly', ... } with the field that frequency requires",
+    );
+  }
+
+  // Completing a recurring task rolls it forward in place instead of actually finishing it —
+  // one ongoing task, not a growing pile of done copies. Needs the task's current state
+  // (recurrence, dueDate, dueTime) before building the update, since that's what the next
+  // occurrence is computed from.
+  let clearsDueAtUtc = false;
+  if (body.status === "done") {
+    const existing = await ddb.send(new GetCommand({ TableName: process.env.TASKS_TABLE_NAME, Key: { userId, taskId } }));
+    const existingTask = existing.Item as Task | undefined;
+    if (existingTask?.recurrence) {
+      const today = new Date().toISOString().slice(0, 10);
+      body.status = "todo";
+      body.dueDate = computeNextOccurrence(existingTask.recurrence, existingTask.dueDate, today);
+      // dueAtUtc is normally computed browser-side from the user's own local timezone — there's
+      // no request-time context here to reconstruct it accurately for a date nobody actually
+      // picked, so the stale one is removed rather than left pointing at the old occurrence or
+      // guessed at. The reminder scheduler already skips tasks with no dueAtUtc, so this just
+      // means no push reminder for this occurrence rather than a wrong-time one.
+      delete body.dueAtUtc;
+      clearsDueAtUtc = true;
+    }
+  }
 
   const updates = UPDATABLE_FIELDS.filter((field) => body[field] !== undefined);
-  if (updates.length === 0) return errorResponse(400, "No updatable fields provided");
+  if (updates.length === 0 && !clearsDueAtUtc) return errorResponse(400, "No updatable fields provided");
 
   const names: Record<string, string> = {};
   const values: Record<string, unknown> = { ":updatedAt": new Date().toISOString() };
@@ -63,9 +93,14 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
   // clear it so the scheduler can remind again for the new due time.
   const clearsReminder =
     updates.includes("dueAtUtc") || updates.includes("dueDate") || updates.includes("dueTime");
-  const updateExpression = clearsReminder
-    ? `SET ${setParts.join(", ")} REMOVE reminderSentAt`
-    : `SET ${setParts.join(", ")}`;
+  const removeParts = [
+    ...(clearsReminder ? ["reminderSentAt"] : []),
+    ...(clearsDueAtUtc ? ["dueAtUtc"] : []),
+  ];
+  const updateExpression =
+    removeParts.length > 0
+      ? `SET ${setParts.join(", ")} REMOVE ${removeParts.join(", ")}`
+      : `SET ${setParts.join(", ")}`;
 
   let task: Task;
   try {

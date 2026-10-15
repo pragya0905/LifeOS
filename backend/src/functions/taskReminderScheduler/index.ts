@@ -2,6 +2,7 @@ import type { ScheduledHandler } from "aws-lambda";
 import { QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb } from "../../common/dynamo";
 import { scanAllPushSubscriptions, sendPushNotification } from "../../common/pushNotifications";
+import { isSlackExhausted } from "../../common/tasks";
 import type { PushSubscription, Task } from "../../common/types";
 
 // Fires every 15 minutes (see the Schedule event in template.yaml). A task is reminded
@@ -35,6 +36,22 @@ export const handler: ScheduledHandler = async () => {
     const tasks = (tasksResult.Items ?? []) as Task[];
 
     for (const task of tasks) {
+      // Deterministic escalation: nothing else ever re-checks slack once a task is created
+      // (suggestTaskPriority only runs at create/update time), so this is the one place that
+      // catches a task sliding from "fits fine" to "no longer fits" purely because time
+      // passed, not because anything about the task itself changed.
+      if (task.status !== "done" && task.priority !== "High" && isSlackExhausted(task, now)) {
+        await ddb.send(
+          new UpdateCommand({
+            TableName: process.env.TASKS_TABLE_NAME,
+            Key: { userId, taskId: task.taskId },
+            UpdateExpression: "SET priority = :priority, prioritySource = :source, updatedAt = :now",
+            ExpressionAttributeValues: { ":priority": "High", ":source": "auto", ":now": now.toISOString() },
+          }),
+        );
+        task.priority = "High";
+      }
+
       if (task.status === "done" || task.reminderSentAt || !task.dueAtUtc) continue;
       const dueAt = new Date(task.dueAtUtc);
       if (dueAt < now || dueAt > windowEnd) continue;

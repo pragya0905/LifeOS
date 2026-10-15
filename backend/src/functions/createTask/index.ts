@@ -5,6 +5,7 @@ import { ddb } from "../../common/dynamo";
 import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
 import { suggestTaskPriority } from "../../common/claude";
+import { isValidRecurrence } from "../../common/taskRecurrence";
 import type { Task, TaskPriority, TaskStatus, PrioritySource } from "../../common/types";
 
 const VALID_PRIORITIES: TaskPriority[] = ["Low", "Medium", "High"];
@@ -41,6 +42,13 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     ? (body.status as TaskStatus)
     : "todo";
 
+  if (body.recurrence !== undefined && !isValidRecurrence(body.recurrence)) {
+    return errorResponse(
+      400,
+      "recurrence must be { frequency: 'daily'|'weekly'|'every_n_days'|'monthly', ... } with the field that frequency requires",
+    );
+  }
+
   let priority: TaskPriority = VALID_PRIORITIES.includes(body.priority as TaskPriority)
     ? (body.priority as TaskPriority)
     : "Medium";
@@ -72,6 +80,7 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     prioritySource,
     status,
     scheduleTime: typeof body.scheduleTime === "string" ? body.scheduleTime : undefined,
+    ...(isValidRecurrence(body.recurrence) ? { recurrence: body.recurrence } : {}),
     createdAt: now,
     updatedAt: now,
   };

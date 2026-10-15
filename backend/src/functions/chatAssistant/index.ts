@@ -439,7 +439,7 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: "create_task",
-    description: "Create a new to-do task, optionally with a due date/time.",
+    description: "Create a new to-do task, optionally with a due date/time and/or a repeat schedule.",
     input_schema: {
       type: "object",
       properties: {
@@ -447,6 +447,21 @@ const TOOLS: Anthropic.Tool[] = [
         description: { type: "string" },
         dueDate: { type: "string", description: "YYYY-MM-DD" },
         dueTime: { type: "string", description: "HH:MM 24-hour" },
+        recurrence: {
+          type: "object",
+          description: "Only set this if the user says the task repeats (e.g. 'every day', 'every Monday and Wednesday', 'every 3 days', 'monthly on the 1st'). Completing a recurring task rolls it forward to its next occurrence instead of finishing it for good.",
+          properties: {
+            frequency: { type: "string", enum: ["daily", "weekly", "every_n_days", "monthly"] },
+            daysOfWeek: {
+              type: "array",
+              items: { type: "integer", minimum: 0, maximum: 6 },
+              description: "frequency 'weekly' only: 0=Sunday..6=Saturday. Omit for every day.",
+            },
+            intervalDays: { type: "integer", minimum: 1, description: "frequency 'every_n_days' only, e.g. 3 for every 3 days." },
+            dayOfMonth: { type: "integer", minimum: 1, maximum: 31, description: "frequency 'monthly' only." },
+          },
+          required: ["frequency"],
+        },
       },
       required: ["title"],
     },
@@ -967,6 +982,7 @@ async function executeTool(
           description: input.description,
           dueDate: input.dueDate,
           dueTime: input.dueTime,
+          recurrence: input.recurrence,
           suggestPriority: true,
         });
         break;

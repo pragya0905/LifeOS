@@ -1,6 +1,21 @@
 export type TaskPriority = "Low" | "Medium" | "High";
 export type TaskStatus = "todo" | "in_progress" | "done";
-export type PrioritySource = "manual" | "ai";
+// "auto" is a deterministic server-side escalation to High when remaining slack runs out —
+// distinct from "ai" (a one-shot model suggestion) and "manual" (the user's own choice).
+export type PrioritySource = "manual" | "ai" | "auto";
+
+export type RecurrenceFrequency = "daily" | "weekly" | "every_n_days" | "monthly";
+
+export interface TaskRecurrence {
+  frequency: RecurrenceFrequency;
+  // "weekly" only; 0=Sun..6=Sat, same convention as RoutineTemplate/Medication.daysOfWeek.
+  // Absent or empty behaves like "daily".
+  daysOfWeek?: number[];
+  // "every_n_days" only, e.g. 3 = every 3 days.
+  intervalDays?: number;
+  // "monthly" only, 1-31, clamped to the actual length of whichever month it lands in.
+  dayOfMonth?: number;
+}
 
 export interface Task {
   userId: string;
@@ -17,6 +32,7 @@ export interface Task {
   status: TaskStatus;
   scheduleTime?: string;
   reminderSentAt?: string;
+  recurrence?: TaskRecurrence;
   createdAt: string;
   updatedAt: string;
 }
