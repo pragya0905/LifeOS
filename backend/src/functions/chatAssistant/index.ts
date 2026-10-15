@@ -614,6 +614,7 @@ const TOOLS: Anthropic.Tool[] = [
           items: { type: "integer", minimum: 0, maximum: 6 },
           description: "Days this routine runs on: 0=Sunday, 1=Monday, ..., 6=Saturday. Omit entirely if it runs every day.",
         },
+        estimatedMinutes: { type: "integer", minimum: 1, description: "How long the whole routine takes to complete, in minutes, if mentioned." },
       },
       required: ["category", "name", "steps"],
     },
@@ -642,6 +643,7 @@ const TOOLS: Anthropic.Tool[] = [
           items: { type: "integer", minimum: 0, maximum: 6 },
           description: "0=Sunday..6=Saturday. Pass every day (or omit this field) to make it run daily again.",
         },
+        estimatedMinutes: { type: "integer", minimum: 1, description: "How long the whole routine takes to complete, in minutes." },
       },
       required: ["routineId"],
     },
@@ -674,6 +676,7 @@ const TOOLS: Anthropic.Tool[] = [
           items: { type: "integer", minimum: 0, maximum: 6 },
           description: "Days this is taken: 0=Sunday, 1=Monday, ..., 6=Saturday. Omit entirely if it's taken every day.",
         },
+        estimatedMinutes: { type: "integer", minimum: 1, description: "How long it takes to actually take/administer this medication, in minutes, if mentioned (e.g. a liquid that takes a few minutes to drink) — not how long the course runs." },
       },
       required: ["name", "durationDays"],
     },
@@ -702,6 +705,7 @@ const TOOLS: Anthropic.Tool[] = [
           items: { type: "integer", minimum: 0, maximum: 6 },
           description: "0=Sunday..6=Saturday. Pass every day (or omit this field) to make it run daily again.",
         },
+        estimatedMinutes: { type: "integer", minimum: 1, description: "How long it takes to actually take/administer this medication, in minutes." },
       },
       required: ["medicationId"],
     },
@@ -1077,6 +1081,7 @@ async function executeTool(
           name: input.name,
           steps: input.steps,
           daysOfWeek: input.daysOfWeek,
+          estimatedMinutes: input.estimatedMinutes,
         });
         break;
       }
@@ -1086,6 +1091,7 @@ async function executeTool(
           category: input.category,
           steps: input.steps,
           daysOfWeek: input.daysOfWeek,
+          estimatedMinutes: input.estimatedMinutes,
         });
         break;
       }
@@ -1107,6 +1113,7 @@ async function executeTool(
           timeOfDay: input.timeOfDay,
           timezoneOffsetMinutes: input.timeOfDay ? timezoneOffsetMinutes : undefined,
           daysOfWeek: input.daysOfWeek,
+          estimatedMinutes: input.estimatedMinutes,
         });
         break;
       }
@@ -1120,6 +1127,7 @@ async function executeTool(
           timeOfDay: input.timeOfDay,
           daysOfWeek: input.daysOfWeek,
           timezoneOffsetMinutes: input.timeOfDay ? timezoneOffsetMinutes : undefined,
+          estimatedMinutes: input.estimatedMinutes,
         });
         break;
       }

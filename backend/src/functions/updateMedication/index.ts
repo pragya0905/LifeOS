@@ -17,6 +17,7 @@ const UPDATABLE_FIELDS = [
   "timeOfDay",
   "timezoneOffsetMinutes",
   "daysOfWeek",
+  "estimatedMinutes",
 ] as const;
 
 // Same UPDATABLE_FIELDS/UpdateCommand pattern as updateRoutineTemplate and updateExpense.
@@ -64,6 +65,12 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
       Array.isArray(body.daysOfWeek) &&
       body.daysOfWeek.every((d) => Number.isInteger(d) && d >= 0 && d <= 6);
     if (!valid) return errorResponse(400, "daysOfWeek must be an array of integers 0-6 (0=Sun..6=Sat)");
+  }
+  if (
+    body.estimatedMinutes !== undefined &&
+    (typeof body.estimatedMinutes !== "number" || !Number.isFinite(body.estimatedMinutes) || body.estimatedMinutes <= 0)
+  ) {
+    return errorResponse(400, "estimatedMinutes must be a positive number");
   }
 
   const updates = UPDATABLE_FIELDS.filter((field) => body[field] !== undefined);

@@ -144,7 +144,14 @@ function RoutineCard({
   onDelete: (routineId: string) => void;
   onSave: (
     routineId: string,
-    patch: { name: string; category: string; steps: string[]; daysOfWeek: number[]; timeOfDay?: string },
+    patch: {
+      name: string;
+      category: string;
+      steps: string[];
+      daysOfWeek: number[];
+      timeOfDay?: string;
+      estimatedMinutes?: number;
+    },
   ) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
@@ -160,6 +167,9 @@ function RoutineCard({
     routine.daysOfWeek && routine.daysOfWeek.length > 0 ? routine.daysOfWeek : ALL_DAYS,
   );
   const [timeOfDayDraft, setTimeOfDayDraft] = useState(routine.timeOfDay ?? "");
+  const [estimatedMinutesDraft, setEstimatedMinutesDraft] = useState(
+    routine.estimatedMinutes !== undefined ? String(routine.estimatedMinutes) : "",
+  );
   const [savingEdit, setSavingEdit] = useState(false);
 
   const doneCount = routine.steps.filter(
@@ -186,6 +196,7 @@ function RoutineCard({
         steps,
         daysOfWeek: daysDraft.length === 7 ? [] : daysDraft,
         timeOfDay: timeOfDayDraft || undefined,
+        estimatedMinutes: estimatedMinutesDraft ? Number(estimatedMinutesDraft) : undefined,
       });
       setEditing(false);
     } finally {
@@ -243,13 +254,28 @@ function RoutineCard({
         <div className="mb-2">
           <DayOfWeekPicker selected={daysDraft} onToggle={toggleDraftDay} />
         </div>
-        <label className={label}>Time of day (optional — sorts the checklist morning to evening)</label>
-        <input
-          type="time"
-          value={timeOfDayDraft}
-          onChange={(e) => setTimeOfDayDraft(e.target.value)}
-          className={`mb-2 w-32 ${input}`}
-        />
+        <div className="mb-2 flex flex-wrap gap-3">
+          <div>
+            <label className={label}>Time of day (optional — sorts the checklist morning to evening)</label>
+            <input
+              type="time"
+              value={timeOfDayDraft}
+              onChange={(e) => setTimeOfDayDraft(e.target.value)}
+              className={`w-32 ${input}`}
+            />
+          </div>
+          <div>
+            <label className={label}>Takes about (min, optional)</label>
+            <input
+              type="number"
+              min={1}
+              value={estimatedMinutesDraft}
+              onChange={(e) => setEstimatedMinutesDraft(e.target.value)}
+              placeholder="e.g. 8"
+              className={`w-24 ${input}`}
+            />
+          </div>
+        </div>
         <div className="flex gap-2">
           <button
             type="button"
@@ -286,6 +312,7 @@ function RoutineCard({
           </span>{" "}
           <span className={badge}>{formatSchedule(routine.daysOfWeek)}</span>
           {routine.timeOfDay && <span className={badge}>🕐 {routine.timeOfDay}</span>}
+          {routine.estimatedMinutes !== undefined && <span className={badge}>⏱ ~{routine.estimatedMinutes} min</span>}
           {streak > 0 && (
             <span className="ml-1.5 rounded-full bg-amber-soft px-2 py-0.5 text-xs font-medium text-amber-ink dark:bg-amber-soft-dark dark:text-amber-ink-dark">
               🔥 {streak} day{streak === 1 ? "" : "s"}
@@ -390,6 +417,7 @@ export default function Routines() {
   const [stepsText, setStepsText] = useState("");
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>(ALL_DAYS);
   const [timeOfDay, setTimeOfDay] = useState("");
+  const [estimatedMinutes, setEstimatedMinutes] = useState("");
   const [saving, setSaving] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
@@ -459,6 +487,7 @@ export default function Routines() {
           steps,
           daysOfWeek: daysOfWeek.length === 7 ? [] : daysOfWeek,
           timeOfDay: timeOfDay || undefined,
+          estimatedMinutes: estimatedMinutes ? Number(estimatedMinutes) : undefined,
         }),
       });
       setRoutines((prev) => [routine, ...prev]);
@@ -466,6 +495,7 @@ export default function Routines() {
       setStepsText("");
       setDaysOfWeek(ALL_DAYS);
       setTimeOfDay("");
+      setEstimatedMinutes("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add routine");
     } finally {
@@ -608,14 +638,27 @@ export default function Routines() {
           <label className={label}>Days</label>
           <DayOfWeekPicker selected={daysOfWeek} onToggle={toggleDay} />
         </div>
-        <div>
-          <label className={label}>Time of day (optional — sorts the checklist morning to evening)</label>
-          <input
-            type="time"
-            value={timeOfDay}
-            onChange={(e) => setTimeOfDay(e.target.value)}
-            className={`w-32 ${input}`}
-          />
+        <div className="flex flex-wrap gap-3">
+          <div>
+            <label className={label}>Time of day (optional — sorts the checklist morning to evening)</label>
+            <input
+              type="time"
+              value={timeOfDay}
+              onChange={(e) => setTimeOfDay(e.target.value)}
+              className={`w-32 ${input}`}
+            />
+          </div>
+          <div>
+            <label className={label}>Takes about (min, optional)</label>
+            <input
+              type="number"
+              min={1}
+              value={estimatedMinutes}
+              onChange={(e) => setEstimatedMinutes(e.target.value)}
+              placeholder="e.g. 8"
+              className={`w-24 ${input}`}
+            />
+          </div>
         </div>
         <button
           type="submit"

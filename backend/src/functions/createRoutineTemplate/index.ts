@@ -46,6 +46,13 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     return errorResponse(400, "timeOfDay must be in HH:MM format");
   }
 
+  if (
+    body.estimatedMinutes !== undefined &&
+    (typeof body.estimatedMinutes !== "number" || !Number.isFinite(body.estimatedMinutes) || body.estimatedMinutes <= 0)
+  ) {
+    return errorResponse(400, "estimatedMinutes must be a positive number");
+  }
+
   const routine: RoutineTemplate = {
     userId,
     routineId: randomUUID(),
@@ -54,6 +61,7 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     steps,
     ...(daysOfWeek ? { daysOfWeek } : {}),
     ...(typeof body.timeOfDay === "string" ? { timeOfDay: body.timeOfDay } : {}),
+    ...(typeof body.estimatedMinutes === "number" ? { estimatedMinutes: body.estimatedMinutes } : {}),
     createdAt: new Date().toISOString(),
   };
 

@@ -173,6 +173,9 @@ export interface Medication {
   // meaning as RoutineTemplate.daysOfWeek. Absent or empty means every day within the
   // startDate/durationDays range — the only state every pre-existing medication can be in.
   daysOfWeek?: number[];
+  // How long it takes to actually take/administer this medication (e.g. a liquid that takes
+  // ~10 min to drink), not how long the course runs — that's durationDays.
+  estimatedMinutes?: number;
   createdAt: string;
 }
 
@@ -230,6 +233,8 @@ export interface RoutineTemplate {
   // "HH:MM", purely a display/sort hint (morning-to-evening ordering) — unlike
   // Medication.timeOfDay this has no reminder/notification behind it.
   timeOfDay?: string;
+  // How long the whole routine takes to complete, in minutes.
+  estimatedMinutes?: number;
   createdAt: string;
 }
 

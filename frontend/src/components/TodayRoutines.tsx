@@ -142,7 +142,10 @@ export default function TodayRoutines({ date }: { date: string }) {
                   </span>{" "}
                   <span className={badge}>
                     {doneCount}/{routine.steps.length} done
-                  </span>
+                  </span>{" "}
+                  {routine.estimatedMinutes !== undefined && (
+                    <span className={badge}>⏱ ~{routine.estimatedMinutes} min</span>
+                  )}
                 </p>
                 <ul className="flex flex-col gap-1.5">
                   {routine.steps.map((step, index) => {

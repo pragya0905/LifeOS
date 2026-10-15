@@ -97,6 +97,7 @@ function MedicationCard({
       timeOfDay?: string;
       timezoneOffsetMinutes?: number;
       daysOfWeek: number[];
+      estimatedMinutes?: number;
     },
   ) => Promise<void>;
 }) {
@@ -105,6 +106,9 @@ function MedicationCard({
   const [dosageDraft, setDosageDraft] = useState(medication.dosage ?? "");
   const [notesDraft, setNotesDraft] = useState(medication.notes ?? "");
   const [timeOfDayDraft, setTimeOfDayDraft] = useState(medication.timeOfDay ?? "");
+  const [estimatedMinutesDraft, setEstimatedMinutesDraft] = useState(
+    medication.estimatedMinutes !== undefined ? String(medication.estimatedMinutes) : "",
+  );
   const [startDateDraft, setStartDateDraft] = useState(medication.startDate);
   const [durationDaysDraft, setDurationDaysDraft] = useState(medication.durationDays);
   const [daysOfWeekDraft, setDaysOfWeekDraft] = useState<number[]>(
@@ -129,6 +133,7 @@ function MedicationCard({
         timeOfDay: timeOfDayDraft || undefined,
         timezoneOffsetMinutes: timeOfDayDraft ? new Date().getTimezoneOffset() : undefined,
         daysOfWeek: daysOfWeekDraft.length === 7 ? [] : daysOfWeekDraft,
+        estimatedMinutes: estimatedMinutesDraft ? Number(estimatedMinutesDraft) : undefined,
       });
       setEditing(false);
     } finally {
@@ -166,6 +171,17 @@ function MedicationCard({
               value={timeOfDayDraft}
               onChange={(e) => setTimeOfDayDraft(e.target.value)}
               className={input}
+            />
+          </div>
+          <div>
+            <label className={label}>Takes about (min)</label>
+            <input
+              type="number"
+              min={1}
+              value={estimatedMinutesDraft}
+              onChange={(e) => setEstimatedMinutesDraft(e.target.value)}
+              placeholder="e.g. 10"
+              className={`w-24 ${input}`}
             />
           </div>
         </div>
@@ -235,6 +251,7 @@ function MedicationCard({
         <p className="text-xs text-ink-muted dark:text-mist-muted">
           {medication.startDate} → {medication.endDate} ({medication.durationDays} days)
           {medication.timeOfDay && ` · 🔔 ${medication.timeOfDay}`}
+          {medication.estimatedMinutes !== undefined && ` · ⏱ ~${medication.estimatedMinutes} min`}
           {medication.daysOfWeek && medication.daysOfWeek.length > 0 && medication.daysOfWeek.length < 7
             ? ` · ${formatSchedule(medication.daysOfWeek)}`
             : ""}
@@ -288,6 +305,7 @@ export default function Medications() {
   const [dosage, setDosage] = useState("");
   const [notes, setNotes] = useState("");
   const [timeOfDay, setTimeOfDay] = useState("");
+  const [estimatedMinutes, setEstimatedMinutes] = useState("");
   const [durationDays, setDurationDays] = useState(7);
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>(ALL_DAYS);
   const [saving, setSaving] = useState(false);
@@ -351,6 +369,7 @@ export default function Medications() {
           timeOfDay: timeOfDay || undefined,
           timezoneOffsetMinutes: timeOfDay ? new Date().getTimezoneOffset() : undefined,
           daysOfWeek: daysOfWeek.length === 7 ? [] : daysOfWeek,
+          estimatedMinutes: estimatedMinutes ? Number(estimatedMinutes) : undefined,
         }),
       });
       setMedications((prev) => [medication, ...prev]);
@@ -358,6 +377,7 @@ export default function Medications() {
       setDosage("");
       setNotes("");
       setTimeOfDay("");
+      setEstimatedMinutes("");
       setDurationDays(7);
       setDaysOfWeek(ALL_DAYS);
     } catch (err) {
@@ -477,6 +497,17 @@ export default function Medications() {
               className={input}
             />
           </div>
+          <div>
+            <label className={label}>Takes about (min, optional)</label>
+            <input
+              type="number"
+              min={1}
+              value={estimatedMinutes}
+              onChange={(e) => setEstimatedMinutes(e.target.value)}
+              placeholder="e.g. 10"
+              className={`w-24 ${input}`}
+            />
+          </div>
         </div>
         <div>
           <label className={label}>Notes (optional)</label>
@@ -562,6 +593,9 @@ export default function Medications() {
                       )}
                       {medication.timeOfDay && (
                         <span className={`ml-1.5 font-normal ${mutedText}`}>🔔 {medication.timeOfDay}</span>
+                      )}
+                      {medication.estimatedMinutes !== undefined && (
+                        <span className={`ml-1.5 font-normal ${mutedText}`}>⏱ ~{medication.estimatedMinutes} min</span>
                       )}
                       {medication.notes && (
                         <span className="block text-xs font-normal italic text-ink-muted dark:text-mist-muted">

@@ -110,6 +110,9 @@ export default function TodayMedications({ date }: { date: string }) {
                   {medication.name}
                   {medication.dosage && <span className={`ml-1.5 ${mutedText}`}>{medication.dosage}</span>}
                   {medication.timeOfDay && <span className={`ml-1.5 ${mutedText}`}>🔔 {medication.timeOfDay}</span>}
+                  {medication.estimatedMinutes !== undefined && (
+                    <span className={`ml-1.5 ${mutedText}`}>⏱ ~{medication.estimatedMinutes} min</span>
+                  )}
                   {medication.notes && (
                     <span className="block text-xs italic text-ink-muted dark:text-mist-muted">
                       {medication.notes}

@@ -53,6 +53,13 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     if ((rawDays as number[]).length > 0) daysOfWeek = rawDays as number[];
   }
 
+  if (
+    body.estimatedMinutes !== undefined &&
+    (typeof body.estimatedMinutes !== "number" || !Number.isFinite(body.estimatedMinutes) || body.estimatedMinutes <= 0)
+  ) {
+    return errorResponse(400, "estimatedMinutes must be a positive number");
+  }
+
   const medication: Medication = {
     userId,
     medicationId: randomUUID(),
@@ -65,6 +72,7 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     startDate,
     durationDays,
     ...(daysOfWeek ? { daysOfWeek } : {}),
+    ...(typeof body.estimatedMinutes === "number" ? { estimatedMinutes: body.estimatedMinutes } : {}),
     createdAt: new Date().toISOString(),
   };
 
