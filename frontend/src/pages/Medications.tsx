@@ -36,6 +36,16 @@ function daysAgo(n: number): string {
 const DURATION_PRESETS = [7, 30];
 const ADHERENCE_WINDOW_DAYS = 14;
 
+// Medications with no reminder time sort to the end, after every timed one in ascending
+// order — "HH:MM" strings already sort correctly lexicographically, no parsing needed. Same
+// pattern as Routines.tsx's byTimeOfDay.
+function byTimeOfDay(a: Medication, b: Medication): number {
+  if (!a.timeOfDay && !b.timeOfDay) return 0;
+  if (!a.timeOfDay) return 1;
+  if (!b.timeOfDay) return -1;
+  return a.timeOfDay.localeCompare(b.timeOfDay);
+}
+
 // % of scheduled days (within the last 14 days, clamped to the medication's own start/end
 // date range and its own daysOfWeek) logged as "taken". Days with no log at all count
 // against adherence, same as "missed" — but a day it isn't even scheduled for doesn't count.
@@ -450,16 +460,9 @@ export default function Medications() {
     }
   }
 
-  // Medications with no reminder time sort to the end, after every timed one in ascending
-  // order — "HH:MM" strings already sort correctly lexicographically, no parsing needed.
   const activeMedications = medications
     .filter((m) => today() >= m.startDate && today() <= m.endDate && appliesOnDate(m.daysOfWeek, new Date()))
-    .sort((a, b) => {
-      if (!a.timeOfDay && !b.timeOfDay) return 0;
-      if (!a.timeOfDay) return 1;
-      if (!b.timeOfDay) return -1;
-      return a.timeOfDay.localeCompare(b.timeOfDay);
-    });
+    .sort(byTimeOfDay);
 
   return (
     <div className={page}>
@@ -636,7 +639,7 @@ export default function Medications() {
             <EmptyState icon="💊" title="No medications added yet" hint="Add your first medication above." />
           ) : (
             <ul className="flex flex-col gap-2">
-              {medications.map((medication) => (
+              {[...medications].sort(byTimeOfDay).map((medication) => (
                 <MedicationCard
                   key={medication.medicationId}
                   medication={medication}
