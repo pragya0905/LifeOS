@@ -426,13 +426,14 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "log_medication",
     description:
-      "Mark a medication taken or missed for a date. medicationId must be an exact value already known from conversation context or a prior tool result — never guess it; call get_medications first if you don't have it.",
+      "Mark a medication taken, missed, or skipped for a date. Use skipped when the user gives a reason for intentionally not taking it (e.g. 'skip the antibiotic today, I ran out', 'skipping my vitamin, I'm travelling') — unlike missed, skipped doesn't count against their adherence percentage. Capture their reason in note when they give one. medicationId must be an exact value already known from conversation context or a prior tool result — never guess it; call get_medications first if you don't have it.",
     input_schema: {
       type: "object",
       properties: {
         date: { type: "string", description: "YYYY-MM-DD. Defaults to today if omitted." },
         medicationId: { type: "string" },
-        status: { type: "string", enum: ["taken", "missed"] },
+        status: { type: "string", enum: ["taken", "missed", "skipped"] },
+        note: { type: "string", description: "Short reason, mainly for skipped (e.g. 'ran out')." },
       },
       required: ["medicationId", "status"],
     },
@@ -973,6 +974,7 @@ async function executeTool(
         const date = (input.date as string) || today(timezoneOffsetMinutes);
         result = await callApi(apiUrl, authHeader, `/medication-logs/${date}/${input.medicationId}`, "PATCH", {
           status: input.status,
+          note: input.note,
         });
         break;
       }

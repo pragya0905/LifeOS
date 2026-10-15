@@ -64,7 +64,10 @@ export const handler: ScheduledHandler = async () => {
           Key: { userId, dateMedicationId: `${today}#${medication.medicationId}` },
         }),
       );
-      if ((existingLog.Item as MedicationLog | undefined)?.status === "taken") continue;
+      // "skipped" is a deliberate decision not to take it today (e.g. sick, travelling) —
+      // reminding anyway would just be noise, same as not reminding once it's taken.
+      const existingStatus = (existingLog.Item as MedicationLog | undefined)?.status;
+      if (existingStatus === "taken" || existingStatus === "skipped") continue;
 
       await Promise.all(
         userSubs.map((sub) =>

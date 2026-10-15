@@ -6,7 +6,8 @@ import { jsonResponse, errorResponse } from "../../common/http";
 import type { MedicationLogStatus } from "../../common/types";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const STATUSES: MedicationLogStatus[] = ["taken", "missed"];
+const STATUSES: MedicationLogStatus[] = ["taken", "missed", "skipped"];
+const MAX_NOTE_LENGTH = 200;
 
 export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) => {
   const userId = getUserId(event);
@@ -26,6 +27,10 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
   if (!STATUSES.includes(body.status as MedicationLogStatus)) {
     return errorResponse(400, `status must be one of ${STATUSES.join(", ")}`);
   }
+  if (body.note !== undefined && typeof body.note !== "string") {
+    return errorResponse(400, "note must be a string");
+  }
+  const note = typeof body.note === "string" ? body.note.trim().slice(0, MAX_NOTE_LENGTH) : undefined;
 
   // Guards against writing a log against a medicationId that doesn't actually exist — most
   // importantly a hallucinated one from the Assistant, which has no UI form to catch a typo'd
@@ -36,28 +41,44 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
   if (!medication.Item) return errorResponse(404, "Medication not found");
 
   const now = new Date().toISOString();
+
+  // A manual edit always reasserts human ownership of this field, even over an existing
+  // ai-journal-sourced entry. note is only touched when explicitly provided: omitted leaves
+  // any existing note alone, an empty string clears it — same convention as
+  // updateRoutineStepLog, so old clients that never send `note` keep working unchanged.
+  let updateExpression =
+    "SET #date = :date, #medicationId = :medicationId, #status = :status, " +
+    "#source = :source, updatedAt = :updatedAt, createdAt = if_not_exists(createdAt, :updatedAt)";
+  const names: Record<string, string> = {
+    "#date": "date",
+    "#medicationId": "medicationId",
+    "#status": "status",
+    "#source": "source",
+  };
+  const values: Record<string, unknown> = {
+    ":date": date,
+    ":medicationId": medicationId,
+    ":status": body.status,
+    ":source": "manual",
+    ":updatedAt": now,
+  };
+  if (note !== undefined) {
+    names["#note"] = "note";
+    if (note.length > 0) {
+      updateExpression += ", #note = :note";
+      values[":note"] = note;
+    } else {
+      updateExpression += " REMOVE #note";
+    }
+  }
+
   const result = await ddb.send(
     new UpdateCommand({
       TableName: process.env.MEDICATION_LOGS_TABLE_NAME,
       Key: { userId, dateMedicationId: `${date}#${medicationId}` },
-      // A manual edit always reasserts human ownership of this field, even over an
-      // existing ai-journal-sourced entry.
-      UpdateExpression:
-        "SET #date = :date, #medicationId = :medicationId, #status = :status, " +
-        "#source = :source, updatedAt = :updatedAt, createdAt = if_not_exists(createdAt, :updatedAt)",
-      ExpressionAttributeNames: {
-        "#date": "date",
-        "#medicationId": "medicationId",
-        "#status": "status",
-        "#source": "source",
-      },
-      ExpressionAttributeValues: {
-        ":date": date,
-        ":medicationId": medicationId,
-        ":status": body.status,
-        ":source": "manual",
-        ":updatedAt": now,
-      },
+      UpdateExpression: updateExpression,
+      ExpressionAttributeNames: names,
+      ExpressionAttributeValues: values,
       ReturnValues: "ALL_NEW",
     }),
   );
