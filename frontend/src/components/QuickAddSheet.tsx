@@ -18,6 +18,7 @@ import { useToast } from "./Toast";
 import { useSpeechToText } from "../hooks/useSpeechToText";
 import { computeDueAtUtc, todayLocal } from "../lib/date";
 import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_EMOJI, EXPENSE_CATEGORY_LABEL } from "../lib/expenseCategories";
+import { nextWishIncrementPatch, wishIsIncrementable, wishRevertPatch } from "../lib/wishProgress";
 import type {
   Expense,
   ExpenseCategory,
@@ -66,8 +67,6 @@ function loadLastCategory(): ExpenseCategory {
     return "food";
   }
 }
-
-const LAST_WISH_UNIT_STEP = 1;
 
 export function QuickAddSheet({
   open,
@@ -620,47 +619,15 @@ function WishQuickAdd() {
   }, [request]);
 
   async function increment(wish: Wish) {
+    const patch = nextWishIncrementPatch(wish);
+    if (!patch) return;
     setPending(wish.wishId);
     try {
-      let updated: Wish;
-      if (wish.progressMode === "quantity") {
-        const next = (wish.quantityCurrent ?? 0) + LAST_WISH_UNIT_STEP;
-        updated = await request<Wish>(`/wishes/${wish.wishId}`, {
-          method: "PATCH",
-          body: JSON.stringify({ quantityCurrent: next }),
-        });
-      } else if (wish.progressMode === "percentage") {
-        const next = Math.min((wish.percentage ?? 0) + 10, 100);
-        updated = await request<Wish>(`/wishes/${wish.wishId}`, {
-          method: "PATCH",
-          body: JSON.stringify({ percentage: next }),
-        });
-      } else if (wish.progressMode === "milestone") {
-        const nextMilestone = (wish.milestones ?? []).find((m) => !m.done);
-        if (!nextMilestone) return;
-        const nextMilestones = (wish.milestones ?? []).map((m) =>
-          m.id === nextMilestone.id ? { ...m, done: true } : m,
-        );
-        updated = await request<Wish>(`/wishes/${wish.wishId}`, {
-          method: "PATCH",
-          body: JSON.stringify({ milestones: nextMilestones }),
-        });
-      } else {
-        // habit_linked and time_based progress aren't a single steppable value — nothing
-        // to increment here, the wish still shows in the list for visibility/navigation.
-        return;
-      }
+      const updated = await request<Wish>(`/wishes/${wish.wishId}`, { method: "PATCH", body: JSON.stringify(patch) });
       setWishes((prev) => prev?.map((w) => (w.wishId === wish.wishId ? updated : w)) ?? prev);
       show(`"${wish.title}" progress updated`, {
         undo: () => {
-          request(`/wishes/${wish.wishId}`, {
-            method: "PATCH",
-            body: JSON.stringify({
-              quantityCurrent: wish.quantityCurrent,
-              percentage: wish.percentage,
-              milestones: wish.milestones,
-            }),
-          })
+          request(`/wishes/${wish.wishId}`, { method: "PATCH", body: JSON.stringify(wishRevertPatch(wish)) })
             .then((reverted) => setWishes((prev) => prev?.map((w) => (w.wishId === wish.wishId ? (reverted as Wish) : w)) ?? prev))
             .catch(() => {});
         },
@@ -676,7 +643,7 @@ function WishQuickAdd() {
   return (
     <ul className="flex flex-col gap-1">
       {wishes.map((w) => {
-        const incrementable = w.progressMode === "quantity" || w.progressMode === "percentage" || w.progressMode === "milestone";
+        const incrementable = wishIsIncrementable(w);
         return (
           <li key={w.wishId} className="flex min-h-11 items-center justify-between gap-3">
             <span className="truncate text-sm text-ink dark:text-paper">{w.title}</span>

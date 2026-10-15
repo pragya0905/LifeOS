@@ -3,6 +3,7 @@ import { Clock, Timer } from "lucide-react";
 import { useApi } from "../api/useApi";
 import { todayLocal } from "../lib/date";
 import { ALL_DAYS, formatSchedule } from "../lib/weekdays";
+import { computeRoutineStreak, routineStreakWindowStart } from "../lib/routineStreak";
 import { Skeleton } from "../components/Skeleton";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icon";
@@ -90,40 +91,8 @@ function byTimeOfDay(a: RoutineTemplate, b: RoutineTemplate): number {
   return a.timeOfDay.localeCompare(b.timeOfDay);
 }
 
-const STREAK_WINDOW_DAYS = 30;
-
 function today(): string {
   return todayLocal();
-}
-
-function daysAgo(n: number): string {
-  const d = new Date(`${today()}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - n);
-  return d.toISOString().slice(0, 10);
-}
-
-// A day "counts" toward the streak only if every step of the routine was logged done OR
-// not_applicable that day — a single skipped or missing step breaks it, same rigor as
-// Medications' adherence. not_applicable is exempted rather than counted as a miss, since it
-// means the step genuinely didn't apply that day, not that it was neglected.
-// Today never breaks the streak just because it isn't finished yet (the day isn't over).
-function computeStreak(routine: RoutineTemplate, logsByDateStep: Map<string, RoutineStepLog["status"]>): number {
-  let streak = 0;
-  for (let i = 0; i < STREAK_WINDOW_DAYS; i++) {
-    const dateStr = daysAgo(i);
-    const complete = routine.steps.every((_, index) => {
-      const status = logsByDateStep.get(`${dateStr}#${routine.routineId}#${index}`);
-      return status === "done" || status === "not_applicable";
-    });
-    if (complete) {
-      streak++;
-    } else if (i === 0) {
-      continue; // today not finished yet — doesn't break the streak
-    } else {
-      break;
-    }
-  }
-  return streak;
 }
 
 // Module-level (not nested in Routines) so React keeps element identity across
@@ -441,7 +410,7 @@ export default function Routines() {
       setLoading(true);
       setError(null);
       try {
-        const windowStart = daysAgo(STREAK_WINDOW_DAYS - 1);
+        const windowStart = routineStreakWindowStart();
         const [routinesData, logsData, rangeLogsData] = await Promise.all([
           request<{ routines: RoutineTemplate[] }>("/routines"),
           request<{ logs: RoutineStepLog[] }>(`/routine-logs/${today()}`),
@@ -706,7 +675,7 @@ export default function Routines() {
                   key={routine.routineId}
                   routine={routine}
                   stepLogs={stepLogs}
-                  streak={computeStreak(routine, logsByDateStep)}
+                  streak={computeRoutineStreak(routine, logsByDateStep)}
                   pending={pending}
                   removing={removingId === routine.routineId}
                   onSetStepStatus={setStepStatus}

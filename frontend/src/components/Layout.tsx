@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   Calendar,
@@ -28,8 +28,13 @@ import type { UserProfile } from "../types";
 import OnlineStatusBadge from "./OnlineStatusBadge";
 import { Icon } from "./Icon";
 import { BottomSheet } from "./BottomSheet";
-import { QuickAddSheet, type QuickAddTarget } from "./QuickAddSheet";
-import { CommandPalette } from "./CommandPalette";
+import type { QuickAddTarget } from "./QuickAddSheet";
+
+// Lazy — these are the two heaviest pieces of nav chrome (a multi-target form sheet and a
+// full action-search overlay) but only render once a user actually opens one, so neither
+// needs to sit in the shared entry chunk every page already pays for.
+const QuickAddSheet = lazy(() => import("./QuickAddSheet").then((m) => ({ default: m.QuickAddSheet })));
+const CommandPalette = lazy(() => import("./CommandPalette").then((m) => ({ default: m.CommandPalette })));
 
 const TABS: { to: string; label: string; icon: LucideIcon }[] = [
   { to: "/dashboard", label: "Today", icon: Home },
@@ -346,18 +351,22 @@ export default function Layout() {
         </button>
       </BottomSheet>
 
-      <QuickAddSheet
-        open={quickAddOpen}
-        onClose={() => setQuickAddOpen(false)}
-        initialTarget={quickAddTarget}
-      />
+      {quickAddOpen && (
+        <Suspense fallback={null}>
+          <QuickAddSheet open={quickAddOpen} onClose={() => setQuickAddOpen(false)} initialTarget={quickAddTarget} />
+        </Suspense>
+      )}
 
-      <CommandPalette
-        open={paletteOpen}
-        onClose={() => setPaletteOpen(false)}
-        onQuickAdd={openQuickAdd}
-        hideCycle={hideCycle}
-      />
+      {paletteOpen && (
+        <Suspense fallback={null}>
+          <CommandPalette
+            open={paletteOpen}
+            onClose={() => setPaletteOpen(false)}
+            onQuickAdd={openQuickAdd}
+            hideCycle={hideCycle}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

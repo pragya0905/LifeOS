@@ -5,6 +5,20 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: {
+        // useApi.ts is imported directly by Layout.tsx (not lazy) and by every lazy page —
+        // without this it's a toss-up whether Rollup's automatic chunking keeps it split out
+        // (cacheable across page navigations) or inlines it into the main entry; pinning it
+        // explicitly keeps that outcome deterministic rather than shifting with every
+        // unrelated change to the lazy-import graph (full vendor-chunking review is Phase 6).
+        manualChunks(id) {
+          if (id.includes('/src/api/useApi.ts')) return 'useApi'
+        },
+      },
+    },
+  },
   plugins: [
     react(),
     tailwindcss(),
