@@ -35,6 +35,10 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     return errorResponse(400, "Invalid JSON body");
   }
 
+  if (body.title !== undefined && (typeof body.title !== "string" || !body.title.trim())) {
+    return errorResponse(400, "title must be a non-empty string");
+  }
+  if (typeof body.title === "string") body.title = body.title.trim();
   if (body.type !== undefined && !WISH_TYPES.includes(body.type as never)) {
     return errorResponse(400, `type must be one of ${WISH_TYPES.join(", ")}`);
   }
@@ -51,6 +55,15 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     if (typeof body.percentage !== "number" || body.percentage < 0 || body.percentage > 100) {
       return errorResponse(400, "percentage must be between 0 and 100");
     }
+  }
+  if (body.quantityTarget !== undefined && (typeof body.quantityTarget !== "number" || body.quantityTarget <= 0)) {
+    return errorResponse(400, "quantityTarget must be a positive number");
+  }
+  if (
+    body.habitLinkTargetValue !== undefined &&
+    (typeof body.habitLinkTargetValue !== "number" || body.habitLinkTargetValue <= 0)
+  ) {
+    return errorResponse(400, "habitLinkTargetValue must be a positive number");
   }
 
   const updates = UPDATABLE_FIELDS.filter((field) => body[field] !== undefined);

@@ -85,6 +85,35 @@ function WishCard({
   const [quantityDraft, setQuantityDraft] = useState(String(wish.quantityCurrent ?? 0));
   const [newMilestoneText, setNewMilestoneText] = useState("");
 
+  const [editing, setEditing] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(wish.title);
+  const [typeDraft, setTypeDraft] = useState<WishType>(wish.type);
+  const [targetDateDraft, setTargetDateDraft] = useState(wish.targetDate ?? "");
+  const [quantityTargetDraft, setQuantityTargetDraft] = useState(String(wish.quantityTarget ?? ""));
+  const [quantityUnitDraft, setQuantityUnitDraft] = useState(wish.quantityUnit ?? "");
+  const [habitLinkTargetValueDraft, setHabitLinkTargetValueDraft] = useState(
+    String(wish.habitLinkTargetValue ?? ""),
+  );
+
+  function handleSaveEdit() {
+    if (!titleDraft.trim()) return;
+    if (wish.progressMode === "time_based" && !targetDateDraft) return;
+    if (wish.progressMode === "quantity" && !quantityTargetDraft) return;
+    if (wish.progressMode === "habit_linked" && !habitLinkTargetValueDraft) return;
+    onUpdate({
+      title: titleDraft.trim(),
+      type: typeDraft,
+      targetDate: targetDateDraft || undefined,
+      ...(wish.progressMode === "quantity"
+        ? { quantityTarget: Number(quantityTargetDraft), quantityUnit: quantityUnitDraft || undefined }
+        : {}),
+      ...(wish.progressMode === "habit_linked"
+        ? { habitLinkTargetValue: Number(habitLinkTargetValueDraft) }
+        : {}),
+    });
+    setEditing(false);
+  }
+
   function toggleMilestone(id: string) {
     const next = (wish.milestones ?? []).map((m) => (m.id === id ? { ...m, done: !m.done } : m));
     onUpdate({ milestones: next });
@@ -102,6 +131,106 @@ function WishCard({
 
   const doneMilestones = (wish.milestones ?? []).filter((m) => m.done).length;
   const totalMilestones = wish.milestones?.length ?? 0;
+
+  if (editing) {
+    return (
+      <li className={card}>
+        <div className="mb-2 flex flex-wrap gap-3">
+          <div className="min-w-[200px] flex-1">
+            <label className={label}>Title</label>
+            <input
+              type="text"
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              className={`w-full ${input}`}
+            />
+          </div>
+          <div>
+            <label className={label}>Type</label>
+            <select value={typeDraft} onChange={(e) => setTypeDraft(e.target.value as WishType)} className={input}>
+              {WISH_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {WISH_TYPE_EMOJI[t]} {WISH_TYPE_LABEL[t]}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="mb-2 flex flex-wrap items-end gap-3">
+          <div>
+            <label className={label}>
+              Target date {wish.progressMode === "time_based" ? "" : "(optional)"}
+            </label>
+            <input
+              type="date"
+              required={wish.progressMode === "time_based"}
+              value={targetDateDraft}
+              onChange={(e) => setTargetDateDraft(e.target.value)}
+              className={input}
+            />
+          </div>
+          {wish.progressMode === "quantity" && (
+            <>
+              <div>
+                <label className={label}>Target amount</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={quantityTargetDraft}
+                  onChange={(e) => setQuantityTargetDraft(e.target.value)}
+                  className={`w-24 ${input}`}
+                />
+              </div>
+              <div>
+                <label className={label}>Unit</label>
+                <input
+                  type="text"
+                  value={quantityUnitDraft}
+                  onChange={(e) => setQuantityUnitDraft(e.target.value)}
+                  placeholder="books, km, $"
+                  className={`w-28 ${input}`}
+                />
+              </div>
+            </>
+          )}
+          {wish.progressMode === "habit_linked" && (
+            <div>
+              <label className={label}>Target total (since creation)</label>
+              <input
+                type="number"
+                min={1}
+                value={habitLinkTargetValueDraft}
+                onChange={(e) => setHabitLinkTargetValueDraft(e.target.value)}
+                className={`w-32 ${input}`}
+              />
+            </div>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled={
+              !titleDraft.trim() ||
+              (wish.progressMode === "time_based" && !targetDateDraft) ||
+              (wish.progressMode === "quantity" && !quantityTargetDraft) ||
+              (wish.progressMode === "habit_linked" && !habitLinkTargetValueDraft)
+            }
+            onClick={handleSaveEdit}
+            className={`${secondaryButton} px-3 py-1 text-xs`}
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditing(false)}
+            className={`${secondaryButton} px-3 py-1 text-xs`}
+          >
+            Cancel
+          </button>
+        </div>
+      </li>
+    );
+  }
 
   return (
     <li
@@ -127,6 +256,13 @@ function WishCard({
           </div>
         </div>
         <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="text-xs text-bloom hover:underline"
+          >
+            Edit
+          </button>
           {wish.status === "active" ? (
             <button
               type="button"
