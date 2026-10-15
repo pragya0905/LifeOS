@@ -4,7 +4,8 @@ import { useApi } from "../api/useApi";
 import { todayLocal } from "../lib/date";
 import { appliesOnDate } from "../lib/weekdays";
 import { computeRoutineStreak, routineStreakWindowStart } from "../lib/routineStreak";
-import { nextWishIncrementPatch, wishRevertPatch } from "../lib/wishProgress";
+import { medicationStatusLabel, routineStatusLabel } from "../lib/statusDisplay";
+import { loadEveningHour } from "../lib/preferences";
 import {
   defaultModuleConfig,
   loadModuleConfig,
@@ -13,7 +14,6 @@ import {
   type TodayModuleId,
 } from "../lib/todayModules";
 import type {
-  Goal,
   HabitLog,
   LogEntry,
   Medication,
@@ -23,17 +23,19 @@ import type {
   RoutineTemplate,
   Task,
   UserProfile,
-  Wish,
 } from "../types";
 import { Icon } from "../components/Icon";
 import { Card } from "../components/Card";
 import { useToast } from "../components/Toast";
 import { Skeleton } from "../components/Skeleton";
 import { EmptyState } from "../components/EmptyState";
-import { TodayOverview } from "../components/TodayOverview";
-import { TodayPinnedChips } from "../components/TodayPinnedChips";
-import { TodayTimeline, type TimelineItem } from "../components/TodayTimeline";
-import { TodayNextUp, type NextUpItem } from "../components/TodayNextUp";
+import { Celebration } from "../components/Celebration";
+import { TodayHeader } from "../components/TodayHeader";
+import { TodayTasksSection, type TaskRowAction } from "../components/TodayTasksSection";
+import { TodayRoutinesSection, type RoutineGroup, type RoutineStepRow } from "../components/TodayRoutinesSection";
+import { TodayMedicationsSection, type MedicationRow } from "../components/TodayMedicationsSection";
+import { TodayLogYourDay } from "../components/TodayLogYourDay";
+import { TodayAssistantPrompt } from "../components/TodayAssistantPrompt";
 import { TodayCustomizePanel } from "../components/TodayCustomizePanel";
 import { TodayJournalPrompt } from "../components/TodayJournalPrompt";
 import { TodayInsightsRecap } from "../components/TodayInsightsRecap";
@@ -44,9 +46,7 @@ import TodayMeals from "../components/TodayMeals";
 import TodayExpenses from "../components/TodayExpenses";
 import TodayCycle from "../components/TodayCycle";
 import BudgetPreview from "../components/BudgetPreview";
-import { errorText, mutedText, page, pageTitle, secondaryButton } from "../components/ui";
-
-const DEFAULT_WATER_GOAL_ML = 2000;
+import { errorText, mutedText, page, pageTitle, secondaryButton, sectionLabel } from "../components/ui";
 
 function greeting(): string {
   const hour = new Date().getHours();
@@ -68,13 +68,18 @@ interface TodayData {
   medications: Medication[];
   medicationLogs: MedicationLog[];
   habits: HabitLog[];
-  goals: Goal[];
-  wishes: Wish[];
   profile: UserProfile | null;
   progressSummary: ProgressSummary | null;
   journalToday: LogEntry[];
   cycleToday: LogEntry[];
   moodToday: LogEntry[];
+}
+
+function isRoutineComplete(routine: RoutineTemplate, logs: RoutineStepLog[], date: string): boolean {
+  return routine.steps.every((_, i) => {
+    const status = logs.find((l) => l.date === date && l.routineId === routine.routineId && l.stepIndex === i)?.status;
+    return status === "done" || status === "not_applicable";
+  });
 }
 
 export default function Dashboard() {
@@ -87,6 +92,7 @@ export default function Dashboard() {
   const [pendingKeys, setPendingKeys] = useState<Set<string>>(new Set());
   const [modules, setModules] = useState<TodayModuleConfig[]>(defaultModuleConfig);
   const [customizeOpen, setCustomizeOpen] = useState(false);
+  const [celebration, setCelebration] = useState<string | null>(null);
 
   useEffect(() => {
     setModules(loadModuleConfig());
@@ -103,8 +109,6 @@ export default function Dashboard() {
       request<{ medications: Medication[] }>("/medications"),
       request<{ logs: MedicationLog[] }>(`/medication-logs/${today}`),
       request<{ habits: HabitLog[] }>(`/habits/${today}`),
-      request<{ goals: Goal[] }>("/goals"),
-      request<{ wishes: Wish[] }>("/wishes"),
       request<UserProfile>("/profile"),
       request<ProgressSummary>("/progress-summary"),
       request<{ entries: LogEntry[] }>(`/journal?from=${today}&to=${today}`),
@@ -119,8 +123,6 @@ export default function Dashboard() {
           medicationsRes,
           medicationLogsRes,
           habitsRes,
-          goalsRes,
-          wishesRes,
           profileRes,
           progressSummaryRes,
           journalRes,
@@ -135,8 +137,6 @@ export default function Dashboard() {
             medications: medicationsRes.medications,
             medicationLogs: medicationLogsRes.logs,
             habits: habitsRes.habits,
-            goals: goalsRes.goals,
-            wishes: wishesRes.wishes,
             profile: profileRes,
             progressSummary: progressSummaryRes,
             journalToday: journalRes.entries,
@@ -174,40 +174,170 @@ export default function Dashboard() {
   // pages already use; nothing here changes an API contract. ---
 
   async function completeTask(taskId: string) {
+    const prevStatus = data?.tasks.find((t) => t.taskId === taskId)?.status ?? "todo";
     const updated = await withPending(`task:${taskId}`, () =>
       request<Task>(`/tasks/${taskId}`, { method: "PATCH", body: JSON.stringify({ status: "done" }) }),
     );
     setData((prev) => prev && { ...prev, tasks: prev.tasks.map((t) => (t.taskId === taskId ? updated : t)) });
-  }
-
-  async function addTask(title: string) {
-    const task = await request<Task>("/tasks", {
-      method: "POST",
-      body: JSON.stringify({ title, dueDate: today, dueTime: "23:59" }),
+    showToast(`"${updated.title}" done`, {
+      undo: () => {
+        request<Task>(`/tasks/${taskId}`, { method: "PATCH", body: JSON.stringify({ status: prevStatus }) })
+          .then((reverted) => setData((prev) => prev && { ...prev, tasks: prev.tasks.map((t) => (t.taskId === taskId ? reverted : t)) }))
+          .catch(() => {});
+      },
     });
-    setData((prev) => prev && { ...prev, tasks: [...prev.tasks, task] });
   }
 
-  async function completeRoutineStep(routineId: string, stepIndex: number) {
+  // Low-level — PATCHes one step and applies the optimistic update, no toast. Both the
+  // single-row path and the bulk (Mark all done / Skip all remaining) paths build on this;
+  // the bulk paths show one combined toast instead of one per step.
+  async function patchRoutineStep(routineId: string, stepIndex: number, status: RoutineStepLog["status"], note?: string) {
     const key = `routine:${routineId}:${stepIndex}`;
     const updated = await withPending(key, () =>
       request<RoutineStepLog>(`/routine-logs/${today}/${routineId}/${stepIndex}`, {
         method: "PATCH",
-        body: JSON.stringify({ status: "done" }),
+        body: JSON.stringify({ status, note: note ?? "" }),
       }),
     );
     setData((prev) => prev && { ...prev, routineRangeLogs: [...prev.routineRangeLogs.filter((l) => l.dateRoutineStep !== updated.dateRoutineStep), updated] });
+    return updated;
   }
 
-  async function completeMedication(medicationId: string) {
+  function findRoutineLog(routineId: string, stepIndex: number): RoutineStepLog | undefined {
+    return data?.routineRangeLogs.find((l) => l.date === today && l.routineId === routineId && l.stepIndex === stepIndex);
+  }
+
+  function maybeCelebrateRoutine(routine: RoutineTemplate, updatedSteps: RoutineStepLog[]) {
+    if (!data) return;
+    const wasComplete = isRoutineComplete(routine, data.routineRangeLogs, today);
+    const mergedLogs = [...data.routineRangeLogs.filter((l) => !updatedSteps.some((u) => u.dateRoutineStep === l.dateRoutineStep)), ...updatedSteps];
+    const isComplete = isRoutineComplete(routine, mergedLogs, today);
+    if (!wasComplete && isComplete) setCelebration(`${routine.name} — all done!`);
+  }
+
+  // Shared by the always-visible per-step Done/Skipped/N-A buttons and the inline note save.
+  async function setRoutineStepStatus(routine: RoutineTemplate, stepIndex: number, status: RoutineStepLog["status"], note?: string) {
+    const prevLog = findRoutineLog(routine.routineId, stepIndex);
+    const updated = await patchRoutineStep(routine.routineId, stepIndex, status, note);
+    if (status === "done") maybeCelebrateRoutine(routine, [updated]);
+    showToast(routineStatusLabel(status, note), {
+      undo: () => {
+        request<RoutineStepLog>(`/routine-logs/${today}/${routine.routineId}/${stepIndex}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: prevLog?.status ?? "skipped", note: prevLog?.note ?? "" }),
+        })
+          .then((reverted) =>
+            setData((prev) => prev && { ...prev, routineRangeLogs: [...prev.routineRangeLogs.filter((l) => l.dateRoutineStep !== reverted.dateRoutineStep), reverted] }),
+          )
+          .catch(() => {});
+      },
+    });
+  }
+
+  // Only steps with NO log yet today are affected — a step already explicitly Skipped or
+  // N/A is left alone, same rule for both "Mark all done" and "Skip all remaining".
+  function pendingStepIndexes(routine: RoutineTemplate): number[] {
+    return routine.steps.map((_, i) => i).filter((i) => findRoutineLog(routine.routineId, i) === undefined);
+  }
+
+  async function markAllDoneSteps(routine: RoutineTemplate) {
+    const pendingSteps = pendingStepIndexes(routine);
+    if (pendingSteps.length === 0) return;
+    const updated = await Promise.all(pendingSteps.map((i) => patchRoutineStep(routine.routineId, i, "done")));
+    maybeCelebrateRoutine(routine, updated);
+    showToast(`${routine.name}: ${pendingSteps.length} step${pendingSteps.length === 1 ? "" : "s"} marked done`, {
+      undo: () => {
+        Promise.all(pendingSteps.map((i) => request<RoutineStepLog>(`/routine-logs/${today}/${routine.routineId}/${i}`, { method: "PATCH", body: JSON.stringify({ status: "skipped" }) })))
+          .then((reverted) =>
+            setData(
+              (prev) =>
+                prev && {
+                  ...prev,
+                  routineRangeLogs: [...prev.routineRangeLogs.filter((l) => !reverted.some((r) => r.dateRoutineStep === l.dateRoutineStep)), ...reverted],
+                },
+            ),
+          )
+          .catch(() => {});
+      },
+    });
+  }
+
+  async function skipRemainingSteps(routine: RoutineTemplate) {
+    const pendingSteps = pendingStepIndexes(routine);
+    if (pendingSteps.length === 0) return;
+    await Promise.all(pendingSteps.map((i) => patchRoutineStep(routine.routineId, i, "skipped")));
+    showToast(`${routine.name}: ${pendingSteps.length} remaining step${pendingSteps.length === 1 ? "" : "s"} skipped`, {
+      undo: () => {
+        Promise.all(pendingSteps.map((i) => request<RoutineStepLog>(`/routine-logs/${today}/${routine.routineId}/${i}`, { method: "PATCH", body: JSON.stringify({ status: "done" }) })))
+          .then((reverted) =>
+            setData(
+              (prev) =>
+                prev && {
+                  ...prev,
+                  routineRangeLogs: [...prev.routineRangeLogs.filter((l) => !reverted.some((r) => r.dateRoutineStep === l.dateRoutineStep)), ...reverted],
+                },
+            ),
+          )
+          .catch(() => {});
+      },
+    });
+  }
+
+  // Low-level — PATCHes one medication log and applies the optimistic update, no toast.
+  async function patchMedicationStatus(medicationId: string, status: MedicationLog["status"]) {
     const key = `med:${medicationId}`;
     const updated = await withPending(key, () =>
-      request<MedicationLog>(`/medication-logs/${today}/${medicationId}`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: "taken" }),
-      }),
+      request<MedicationLog>(`/medication-logs/${today}/${medicationId}`, { method: "PATCH", body: JSON.stringify({ status }) }),
     );
     setData((prev) => prev && { ...prev, medicationLogs: [...prev.medicationLogs.filter((l) => l.dateMedicationId !== updated.dateMedicationId), updated] });
+    return updated;
+  }
+
+  function maybeCelebrateMeds(updatedLogs: MedicationLog[]) {
+    if (!data) return;
+    const applicable = data.medications.filter((m) => appliesOnDate(m.daysOfWeek, new Date(`${today}T00:00:00`)));
+    const wasAllTaken = applicable.every((m) => data.medicationLogs.find((l) => l.date === today && l.medicationId === m.medicationId)?.status === "taken");
+    const mergedLogs = [...data.medicationLogs.filter((l) => !updatedLogs.some((u) => u.dateMedicationId === l.dateMedicationId)), ...updatedLogs];
+    const isAllTaken = applicable.length > 0 && applicable.every((m) => mergedLogs.find((l) => l.date === today && l.medicationId === m.medicationId)?.status === "taken");
+    if (!wasAllTaken && isAllTaken) setCelebration("All of today's medications taken!");
+  }
+
+  // Shared by every medication status change (one-tap, and Mark all taken).
+  async function setMedicationStatus(medicationId: string, status: MedicationLog["status"]) {
+    const prevStatus = data?.medicationLogs.find((l) => l.date === today && l.medicationId === medicationId)?.status;
+    const medName = data?.medications.find((m) => m.medicationId === medicationId)?.name ?? "Medication";
+    const updated = await patchMedicationStatus(medicationId, status);
+    if (status === "taken") maybeCelebrateMeds([updated]);
+    showToast(`${medName}: ${medicationStatusLabel(status)}`, {
+      undo: () => {
+        request<MedicationLog>(`/medication-logs/${today}/${medicationId}`, { method: "PATCH", body: JSON.stringify({ status: prevStatus ?? "missed" }) })
+          .then((reverted) =>
+            setData((prev) => prev && { ...prev, medicationLogs: [...prev.medicationLogs.filter((l) => l.dateMedicationId !== reverted.dateMedicationId), reverted] }),
+          )
+          .catch(() => {});
+      },
+    });
+  }
+
+  async function markAllMedicationsTaken(medicationIds: string[]) {
+    if (medicationIds.length === 0) return;
+    const updated = await Promise.all(medicationIds.map((id) => patchMedicationStatus(id, "taken")));
+    maybeCelebrateMeds(updated);
+    showToast(`${medicationIds.length} medication${medicationIds.length === 1 ? "" : "s"} marked taken`, {
+      undo: () => {
+        Promise.all(medicationIds.map((id) => request<MedicationLog>(`/medication-logs/${today}/${id}`, { method: "PATCH", body: JSON.stringify({ status: "missed" }) })))
+          .then((reverted) =>
+            setData(
+              (prev) =>
+                prev && {
+                  ...prev,
+                  medicationLogs: [...prev.medicationLogs.filter((l) => !reverted.some((r) => r.dateMedicationId === l.dateMedicationId)), ...reverted],
+                },
+            ),
+          )
+          .catch(() => {});
+      },
+    });
   }
 
   async function logWater(amountMl: number) {
@@ -221,40 +351,26 @@ export default function Dashboard() {
           habits: [...prev.habits.filter((h) => h.habitType !== "water"), { ...prev.habits.find((h) => h.habitType === "water"), habitType: "water", value: next } as HabitLog],
         },
     );
+    showToast(`+${amountMl}ml water logged`);
   }
 
-  async function logMood(rating: number) {
+  async function logMood(rating: number, note?: string) {
     const current = data?.moodToday[0];
     const updated = await withPending("mood", () =>
       current
-        ? request<LogEntry>(`/logs/${current.logId}`, { method: "PATCH", body: JSON.stringify({ data: { rating } }) })
-        : request<LogEntry>("/logs", { method: "POST", body: JSON.stringify({ logType: "mood", date: today, data: { rating } }) }),
+        ? request<LogEntry>(`/logs/${current.logId}`, { method: "PATCH", body: JSON.stringify({ data: { rating, note } }) })
+        : request<LogEntry>("/logs", { method: "POST", body: JSON.stringify({ logType: "mood", date: today, data: { rating, note } }) }),
     );
     setData((prev) => prev && { ...prev, moodToday: [updated] });
+    showToast(`Mood logged: ${rating}/5`);
   }
 
   async function logPeriodStarted() {
-    await withPending("cycle", () =>
+    const entry = await withPending("cycle", () =>
       request<LogEntry>("/logs", { method: "POST", body: JSON.stringify({ logType: "cycle", date: today, data: { event: "period_start" } }) }),
-    ).then((entry) => {
-      setData((prev) => prev && { ...prev, cycleToday: [...prev.cycleToday, entry] });
-    });
-  }
-
-  async function incrementWish(wish: Wish) {
-    const patch = nextWishIncrementPatch(wish);
-    if (!patch) return;
-    const updated = await withPending(`wish:${wish.wishId}`, () =>
-      request<Wish>(`/wishes/${wish.wishId}`, { method: "PATCH", body: JSON.stringify(patch) }),
     );
-    setData((prev) => prev && { ...prev, wishes: prev.wishes.map((w) => (w.wishId === wish.wishId ? updated : w)) });
-    showToast(`"${wish.title}" progress updated`, {
-      undo: () => {
-        request<Wish>(`/wishes/${wish.wishId}`, { method: "PATCH", body: JSON.stringify(wishRevertPatch(wish)) })
-          .then((reverted) => setData((prev) => prev && { ...prev, wishes: prev.wishes.map((w) => (w.wishId === wish.wishId ? reverted : w)) }))
-          .catch(() => {});
-      },
-    });
+    setData((prev) => prev && { ...prev, cycleToday: [...prev.cycleToday, entry] });
+    showToast("Period started logged");
   }
 
   // --- Derived view model ---
@@ -290,148 +406,89 @@ export default function Dashboard() {
   );
 
   const applicableMeds = useMemo(() => (data ? data.medications.filter((m) => appliesOnDate(m.daysOfWeek, now)) : []), [data, now]);
-  const medsTakenIds = useMemo(
-    () => new Set((data?.medicationLogs ?? []).filter((l) => l.status === "taken").map((l) => l.medicationId)),
-    [data],
-  );
-  const medsDone = applicableMeds.filter((m) => medsTakenIds.has(m.medicationId)).length;
+  const medStatusByMedId = useMemo(() => {
+    const map = new Map<string, MedicationLog["status"]>();
+    for (const log of data?.medicationLogs ?? []) map.set(log.medicationId, log.status);
+    return map;
+  }, [data]);
+  const medsDone = applicableMeds.filter((m) => medStatusByMedId.get(m.medicationId) === "taken").length;
 
-  const waterMl = data?.habits.find((h) => h.habitType === "water")?.value ?? 0;
-  const waterGoalMl = data?.goals.find((g) => g.metric === "water")?.targetValue ?? DEFAULT_WATER_GOAL_ML;
   const moodLoggedToday = (data?.moodToday[0]?.data.rating as number | undefined) ?? null;
 
   const hideCycle = data?.profile?.sex === "male";
   const cycleLoggedToday = (data?.cycleToday ?? []).some((e) => e.data.event === "period_start");
   const journaledToday = (data?.journalToday ?? []).length > 0;
 
-  const mostRecentWish = useMemo(() => {
-    if (!data) return null;
-    return (
-      data.wishes
-        .filter((w) => w.status === "active")
-        .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))[0] ?? null
-    );
-  }, [data]);
+  const waterLogged = (data?.habits ?? []).some((h) => h.habitType === "water");
+  const moodLogged = moodLoggedToday !== null;
+  const dayFullyLogged = waterLogged && moodLogged && (hideCycle || cycleLoggedToday);
+  const isEvening = new Date().getHours() >= loadEveningHour();
+  const showLogYourDay = isEvening && !dayFullyLogged;
 
-  const timelineItems: TimelineItem[] = useMemo(() => {
-    if (!data) return [];
-    const items: TimelineItem[] = [];
-
-    for (const task of todaysTasks) {
-      const overdue = Boolean(task.dueDate && task.dueDate < today && task.status !== "done");
-      items.push({
-        key: `task:${task.taskId}`,
-        time: task.dueTime ?? task.scheduleTime ?? null,
-        domain: "task",
-        label: task.title,
-        sublabel: overdue ? `Overdue — was due ${task.dueDate}` : task.dueTime ? undefined : task.scheduleTime,
-        completed: task.status === "done",
-        overdue,
+  const taskRows: TaskRowAction[] = useMemo(
+    () =>
+      todaysTasks.map((task) => ({
+        task,
+        overdue: Boolean(task.dueDate && task.dueDate < today && task.status !== "done"),
         pending: isPending(`task:${task.taskId}`),
         onComplete: () => void completeTask(task.taskId),
-      });
-    }
-
-    for (const routine of applicableRoutines) {
-      routine.steps.forEach((step, i) => {
-        const status = routineLogsByDateStep.get(`${today}#${routine.routineId}#${i}`);
-        const completed = status === "done" || status === "not_applicable";
-        items.push({
-          key: `routine:${routine.routineId}:${i}`,
-          time: routine.timeOfDay ?? null,
-          domain: "routine",
-          label: step,
-          sublabel: routine.name,
-          completed,
-          pending: isPending(`routine:${routine.routineId}:${i}`),
-          onComplete: () => void completeRoutineStep(routine.routineId, i),
-        });
-      });
-    }
-
-    for (const med of applicableMeds) {
-      items.push({
-        key: `med:${med.medicationId}`,
-        time: med.timeOfDay ?? null,
-        domain: "medication",
-        label: med.name,
-        sublabel: med.dosage,
-        completed: medsTakenIds.has(med.medicationId),
-        pending: isPending(`med:${med.medicationId}`),
-        onComplete: () => void completeMedication(med.medicationId),
-      });
-    }
-
-    return items;
+      })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, todaysTasks, applicableRoutines, applicableMeds, routineLogsByDateStep, medsTakenIds, pendingKeys]);
+    [todaysTasks, today, pendingKeys],
+  );
 
-  const nextUp: NextUpItem | null = useMemo(() => {
-    if (!data) return null;
-
-    const overdueHigh = todaysTasks.find((t) => t.status !== "done" && t.priority === "High" && t.dueDate && t.dueDate < today);
-    if (overdueHigh) {
-      return {
-        label: overdueHigh.title,
-        sublabel: `Overdue — was due ${overdueHigh.dueDate}`,
-        domain: "task",
-        actionLabel: "Mark done",
-        pending: isPending(`task:${overdueHigh.taskId}`),
-        onAction: () => void completeTask(overdueHigh.taskId),
-      };
-    }
-
-    const nextTask = tasksDueToday
-      .filter((t) => t.status !== "done")
-      .sort((a, b) => (a.dueTime ?? "23:59").localeCompare(b.dueTime ?? "23:59"))[0];
-    if (nextTask) {
-      return {
-        label: nextTask.title,
-        sublabel: nextTask.dueTime ? `Due ${nextTask.dueTime}` : "Due today",
-        domain: "task",
-        actionLabel: "Mark done",
-        pending: isPending(`task:${nextTask.taskId}`),
-        onAction: () => void completeTask(nextTask.taskId),
-      };
-    }
-
-    const nextRoutine = applicableRoutines
-      .slice()
-      .sort((a, b) => (a.timeOfDay ?? "99:99").localeCompare(b.timeOfDay ?? "99:99"))
-      .flatMap((r) => r.steps.map((step, i) => ({ routine: r, step, i })))
-      .find(({ routine, i }) => {
-        const status = routineLogsByDateStep.get(`${today}#${routine.routineId}#${i}`);
+  // The one routine whose timeOfDay is nearest the current time and isn't already fully
+  // done gets auto-expanded; every other routine starts visible but collapsed.
+  const nextRoutineId = useMemo(() => {
+    const nowStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const incomplete = applicableRoutines.filter((r) =>
+      r.steps.some((_, i) => {
+        const status = routineLogsByDateStep.get(`${today}#${r.routineId}#${i}`);
         return status !== "done" && status !== "not_applicable";
-      });
-    if (nextRoutine) {
-      return {
-        label: nextRoutine.step,
-        sublabel: nextRoutine.routine.name,
-        domain: "routine",
-        actionLabel: "Mark done",
-        pending: isPending(`routine:${nextRoutine.routine.routineId}:${nextRoutine.i}`),
-        onAction: () => void completeRoutineStep(nextRoutine.routine.routineId, nextRoutine.i),
-      };
-    }
-
-    const nextMed = applicableMeds
-      .slice()
-      .sort((a, b) => (a.timeOfDay ?? "99:99").localeCompare(b.timeOfDay ?? "99:99"))
-      .find((m) => !medsTakenIds.has(m.medicationId));
-    if (nextMed) {
-      return {
-        label: nextMed.name,
-        sublabel: nextMed.timeOfDay ? `Scheduled ${nextMed.timeOfDay}` : undefined,
-        domain: "medication",
-        actionLabel: "Mark taken",
-        pending: isPending(`med:${nextMed.medicationId}`),
-        onAction: () => void completeMedication(nextMed.medicationId),
-      };
-    }
-
-    return null;
+      }),
+    );
+    if (incomplete.length === 0) return null;
+    const upcoming = incomplete.filter((r) => (r.timeOfDay ?? "00:00") >= nowStr).sort((a, b) => (a.timeOfDay ?? "").localeCompare(b.timeOfDay ?? ""));
+    return (upcoming[0] ?? incomplete[0]).routineId;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, todaysTasks, tasksDueToday, applicableRoutines, applicableMeds, routineLogsByDateStep, medsTakenIds, pendingKeys]);
+  }, [applicableRoutines, routineLogsByDateStep, today]);
+
+  const routineGroups: RoutineGroup[] = useMemo(
+    () =>
+      applicableRoutines.map((routine) => {
+        const steps: RoutineStepRow[] = routine.steps.map((label, i) => {
+          const log = data?.routineRangeLogs.find((l) => l.date === today && l.routineId === routine.routineId && l.stepIndex === i);
+          return {
+            index: i,
+            label,
+            status: log?.status ?? null,
+            note: log?.note,
+            pending: isPending(`routine:${routine.routineId}:${i}`),
+          };
+        });
+        return {
+          routine,
+          steps,
+          initiallyExpanded: routine.routineId === nextRoutineId,
+          onSetStatus: (stepIndex, status, note) => setRoutineStepStatus(routine, stepIndex, status, note),
+          onMarkAllDone: () => void markAllDoneSteps(routine),
+          onSkipRemaining: () => void skipRemainingSteps(routine),
+        };
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [applicableRoutines, data, today, nextRoutineId, pendingKeys],
+  );
+
+  const medicationRows: MedicationRow[] = useMemo(
+    () =>
+      applicableMeds.map((medication) => ({
+        medication,
+        status: medStatusByMedId.get(medication.medicationId) ?? null,
+        pending: isPending(`med:${medication.medicationId}`),
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [applicableMeds, medStatusByMedId, pendingKeys],
+  );
 
   // --- Module customization ---
 
@@ -463,6 +520,46 @@ export default function Dashboard() {
 
   function renderModule(id: TodayModuleId) {
     switch (id) {
+      case "header":
+        return <TodayHeader streakDays={routineStreakDays} done={tasksDoneToday + routinesDone + medsDone} total={tasksDueToday.length + routinesTotal + applicableMeds.length} />;
+      case "tasks":
+        return taskRows.length > 0 ? (
+          <Card>
+            <h2 className={`mb-3 ${sectionLabel}`}>Tasks</h2>
+            <TodayTasksSection rows={taskRows} />
+          </Card>
+        ) : null;
+      case "routines":
+        return routineGroups.length > 0 ? (
+          <Card>
+            <h2 className={`mb-3 ${sectionLabel}`}>Routines</h2>
+            <TodayRoutinesSection groups={routineGroups} />
+          </Card>
+        ) : null;
+      case "medications":
+        return medicationRows.length > 0 ? (
+          <Card>
+            <h2 className={`mb-3 ${sectionLabel}`}>Medications</h2>
+            <TodayMedicationsSection rows={medicationRows} onSetStatus={setMedicationStatus} onMarkAllTaken={(ids) => void markAllMedicationsTaken(ids)} />
+          </Card>
+        ) : null;
+      case "logYourDay":
+        return showLogYourDay ? (
+          <Card>
+            <h2 className={`mb-3 ${sectionLabel}`}>Log your day</h2>
+            <TodayLogYourDay
+              onLogWater={(amount) => void logWater(amount)}
+              waterPending={isPending("water")}
+              onLogMood={(rating, note) => void logMood(rating, note)}
+              moodPending={isPending("mood")}
+              moodLoggedToday={moodLoggedToday}
+              showCycleChip={!hideCycle}
+              cycleLoggedToday={cycleLoggedToday}
+              onLogPeriodStarted={() => void logPeriodStarted()}
+              cyclePending={isPending("cycle")}
+            />
+          </Card>
+        ) : null;
       case "habits":
         return <TodayHabits date={today} />;
       case "cycle":
@@ -493,23 +590,22 @@ export default function Dashboard() {
   }
 
   if (!data) {
+    // Shaped to roughly match the real layout below (header strip, a couple of section
+    // cards) so real content doesn't cause a large layout shift once it arrives.
     return (
       <div className={page}>
         <Skeleton className="mb-2 h-8 w-48" />
         <Skeleton className="mb-6 h-4 w-32" />
-        <div className="mb-4 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-20 w-full" />
-          ))}
-        </div>
-        <Skeleton className="mb-4 h-32 w-full" />
-        <Skeleton className="h-48 w-full" />
+        <Skeleton className="mb-4 h-16 w-full" />
+        <Skeleton className="mb-4 h-40 w-full" />
+        <Skeleton className="mb-4 h-56 w-full" />
+        <Skeleton className="h-40 w-full" />
       </div>
     );
   }
 
   const isEmptyDay =
-    timelineItems.length === 0 && !mostRecentWish && applicableRoutines.length === 0 && applicableMeds.length === 0;
+    taskRows.length === 0 && applicableRoutines.length === 0 && applicableMeds.length === 0 && !showLogYourDay;
 
   return (
     <div className={page}>
@@ -531,65 +627,19 @@ export default function Dashboard() {
 
       <WelcomeCard />
 
-      {!isEmptyDay && (
-        <Card className="mb-4">
-          <TodayOverview
-            tasksDone={tasksDoneToday}
-            tasksTotal={tasksDueToday.length}
-            routinesDone={routinesDone}
-            routinesTotal={routinesTotal}
-            medsDone={medsDone}
-            medsTotal={applicableMeds.length}
-            waterMl={waterMl}
-            waterGoalMl={waterGoalMl}
-            routineStreakDays={routineStreakDays}
-            habitStreaks={data.progressSummary?.habits ?? []}
-          />
-        </Card>
-      )}
-
-      <div className="mb-4">
-        <TodayPinnedChips
-          onLogWater={(amount) => void logWater(amount)}
-          waterPending={isPending("water")}
-          onLogMood={(rating) => void logMood(rating)}
-          moodPending={isPending("mood")}
-          moodLoggedToday={moodLoggedToday}
-          showCycleChip={!hideCycle}
-          cycleLoggedToday={cycleLoggedToday}
-          onLogPeriodStarted={() => void logPeriodStarted()}
-          cyclePending={isPending("cycle")}
-          mostRecentWish={mostRecentWish}
-          onIncrementWish={() => mostRecentWish && void incrementWish(mostRecentWish)}
-          wishPending={mostRecentWish ? isPending(`wish:${mostRecentWish.wishId}`) : false}
-          onAddTask={(title) => void addTask(title)}
-          taskAddPending={false}
-        />
-      </div>
-
       {isEmptyDay ? (
-        <EmptyState
-          icon="🌤️"
-          title="Nothing on the books today"
-          hint="Add a task above, or start a routine from the Routines tab."
-        />
+        <EmptyState icon="🌤️" title="Nothing on the books today" hint="Add a task from the + button, or start a routine from the Routines tab." />
       ) : (
-        <>
-          <Card className="mb-4">
-            <TodayTimeline items={timelineItems} isToday />
-          </Card>
-
-          <div className="mb-4">
-            <TodayNextUp item={nextUp} />
-          </div>
-        </>
+        <div className="flex flex-col gap-4">
+          {modules.filter((m) => m.visible).map((m) => {
+            const rendered = renderModule(m.id);
+            return rendered ? <div key={m.id}>{rendered}</div> : null;
+          })}
+        </div>
       )}
 
-      <div className="flex flex-col gap-4">
-        {modules.filter((m) => m.visible).map((m) => {
-          const rendered = renderModule(m.id);
-          return rendered ? <div key={m.id}>{rendered}</div> : null;
-        })}
+      <div className="mt-4">
+        <TodayAssistantPrompt />
       </div>
 
       <TodayCustomizePanel
@@ -600,6 +650,8 @@ export default function Dashboard() {
         onMove={moveModule}
         onReset={resetModules}
       />
+
+      {celebration && <Celebration onDone={() => setCelebration(null)} />}
     </div>
   );
 }

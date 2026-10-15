@@ -108,7 +108,29 @@ export default function Layout() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [hideCycle, setHideCycle] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(loadSidebarCollapsed);
+  const [fabVisible, setFabVisible] = useState(true);
   const moreActive = MORE_ROUTES.some((r) => location.pathname.startsWith(r));
+
+  // The FAB never covers a row the user is trying to tap: hide it while scrolling down
+  // (reading/acting further down the page), show it again on scroll-up or near the top.
+  useEffect(() => {
+    let lastY = window.scrollY;
+    let ticking = false;
+    function onScroll() {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        const y = window.scrollY;
+        if (y < 80) setFabVisible(true);
+        else if (y > lastY + 4) setFabVisible(false);
+        else if (y < lastY - 4) setFabVisible(true);
+        lastY = y;
+        ticking = false;
+      });
+    }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   useEffect(() => {
     setMoreOpen(false);
@@ -306,8 +328,12 @@ export default function Layout() {
         type="button"
         onClick={() => openQuickAdd()}
         aria-label="Quick add"
-        className="fixed right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-bloom text-paper-card shadow-raised transition-colors hover:bg-bloom-light md:hidden dark:shadow-raised-dark"
-        style={{ bottom: "calc(env(safe-area-inset-bottom) + 4.75rem)" }}
+        aria-hidden={!fabVisible}
+        tabIndex={fabVisible ? 0 : -1}
+        className={`fixed right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-bloom text-paper-card shadow-raised transition-[opacity,transform,background-color] hover:bg-bloom-light md:hidden dark:shadow-raised-dark motion-reduce:transition-none ${
+          fabVisible ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-20 opacity-0"
+        }`}
+        style={{ bottom: "calc(env(safe-area-inset-bottom) + 4.75rem)", transitionDuration: "var(--duration-base)" }}
       >
         <Icon icon={Plus} size={26} />
       </button>

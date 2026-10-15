@@ -5,6 +5,7 @@ import DeleteAccount from "../components/DeleteAccount";
 import Profile from "../components/Profile";
 import PwaSettings from "../components/PwaSettings";
 import ThemeToggle from "../components/ThemeToggle";
+import TodayPreferences from "../components/TodayPreferences";
 import { page, pageTitle, sectionLabel } from "../components/ui";
 
 export default function Settings() {
@@ -17,6 +18,7 @@ export default function Settings() {
         <Profile />
         <ThemeToggle />
         <PwaSettings />
+        <TodayPreferences />
       </div>
 
       <p className={`mb-2 ${sectionLabel}`}>Assistant</p>

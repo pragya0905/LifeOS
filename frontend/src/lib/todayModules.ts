@@ -1,6 +1,12 @@
-// The Today page's secondary modules (everything below the core hero/chips/timeline/
-// next-up block) are user-hideable and reorderable, persisted locally per device.
+// Every block on the Today page is a user-hideable, reorderable module, persisted locally
+// per device. Status buttons themselves (Done/Skipped/N-A, Taken/Missed) are never part of
+// this system — they live inside the Routines/Medications modules and are always visible.
 export type TodayModuleId =
+  | "header"
+  | "tasks"
+  | "routines"
+  | "medications"
+  | "logYourDay"
   | "habits"
   | "cycle"
   | "budget"
@@ -16,6 +22,11 @@ export interface TodayModuleConfig {
 }
 
 export const MODULE_LABELS: Record<TodayModuleId, string> = {
+  header: "Streak & progress bar",
+  tasks: "Tasks",
+  routines: "Routines",
+  medications: "Medications",
+  logYourDay: "Log your day",
   habits: "Habits detail",
   cycle: "Cycle glance",
   budget: "Budget glance",
@@ -27,6 +38,11 @@ export const MODULE_LABELS: Record<TodayModuleId, string> = {
 };
 
 export const DEFAULT_MODULE_ORDER: TodayModuleId[] = [
+  "header",
+  "tasks",
+  "routines",
+  "medications",
+  "logYourDay",
   "habits",
   "cycle",
   "budget",

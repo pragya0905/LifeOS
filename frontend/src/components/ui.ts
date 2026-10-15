@@ -34,7 +34,9 @@ export const pillButtonInactive =
 export const pillButtonDone = "border-bloom bg-bloom text-paper-card";
 export const pillButtonMissed = "border-alert bg-alert text-paper-card";
 export const pillButtonSkipped = "border-mist-muted bg-mist-muted text-paper-card";
-export const pillButtonNotApplicable = "border-amber bg-amber text-paper-card";
+// Deliberately a neutral blue-gray, not amber/orange — amber reads as a warning, which is
+// wrong for "this genuinely doesn't apply today."
+export const pillButtonNotApplicable = "border-slate bg-slate text-paper-card";
 
 export const badge = "rounded-full bg-bloom-soft px-2 py-0.5 text-xs font-medium text-bloom dark:bg-bloom-soft-dark dark:text-bloom-light";
 

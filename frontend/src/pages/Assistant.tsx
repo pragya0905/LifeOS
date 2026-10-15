@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useLocation } from "react-router-dom";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Paperclip } from "lucide-react";
@@ -114,10 +115,14 @@ interface AssistantProps {
 export default function Assistant({ onboarding = false, onFinish }: AssistantProps) {
   const { request } = useApi();
   const { sendMessage: streamMessage } = useAssistantStream();
+  const location = useLocation();
+  // Set by TodayAssistantPrompt's "Tell me about your day" bar — a deliberate handoff, never
+  // auto-sent, so the user still reviews/edits before tapping Send here.
+  const prefillText = (location.state as { prefillText?: string } | null)?.prefillText;
   const [messages, setMessages] = useState<ChatMessage[]>(
     onboarding ? [{ role: "assistant", content: ONBOARDING_GREETING }] : [],
   );
-  const [text, setText] = useState("");
+  const [text, setText] = useState(prefillText ?? "");
   const [sending, setSending] = useState(false);
   const [statusLabel, setStatusLabel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

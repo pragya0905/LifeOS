@@ -63,6 +63,16 @@
   --color-success-ink: #1f7a48;
   --color-success-ink-dark: #7bd9a4;
 
+  /* semantic — "not applicable" status, deliberately a neutral blue-gray —
+     amber/orange reads as a warning (wrong for "this genuinely doesn't
+     apply today"), and this needs to be visually distinct from Skipped's
+     muted gray so the two never look like the same state. */
+  --color-slate: #5b7290;
+  --color-slate-soft: #e4e9f0;
+  --color-slate-soft-dark: #212b38;
+  --color-slate-ink: #3d5068;
+  --color-slate-ink-dark: #aebfd4;
+
   /* per-domain accents — used sparingly (a card's left-edge accent, an
      icon tint) so each domain reads at a glance in a mixed list, without
      competing with bloom (brand) or the alert/amber/success priority
