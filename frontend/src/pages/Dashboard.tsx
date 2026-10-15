@@ -241,14 +241,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <Link
-        to="/assistant"
-        aria-label="Open Assistant chat"
-        className="fixed right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-bloom text-2xl text-paper-card shadow-lg transition-transform hover:scale-105 active:scale-95"
-        style={{ bottom: "calc(5.5rem + env(safe-area-inset-bottom))" }}
-      >
-        💬
-      </Link>
     </div>
   );
 }

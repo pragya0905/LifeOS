@@ -49,6 +49,11 @@ function byTimeOfDay(a: Medication, b: Medication): number {
   return a.timeOfDay.localeCompare(b.timeOfDay);
 }
 
+// Below this many scheduled days of history, a percentage is more misleading than
+// useful (a brand-new medication reads as "0% adherence" in alert-red before its first
+// dose is even due) — those render as "New" instead, in computeAdherence's caller.
+const ADHERENCE_MIN_ACTIVE_DAYS = 3;
+
 // % of scheduled days (within the last 14 days, clamped to the medication's own start/end
 // date range and its own daysOfWeek) logged as "taken". Days with no log at all count
 // against adherence, same as "missed" — but a day it isn't even scheduled for doesn't count.
@@ -57,7 +62,7 @@ function computeAdherence(
   logs: MedicationLog[],
   windowStart: string,
   windowEnd: string,
-): number | null {
+): number | "new" | null {
   const activeStart = medication.startDate > windowStart ? medication.startDate : windowStart;
   const activeEnd = medication.endDate < windowEnd ? medication.endDate : windowEnd;
   if (activeStart > activeEnd) return null;
@@ -83,7 +88,9 @@ function computeAdherence(
     }
     cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
-  return activeDays > 0 ? Math.round((takenDays / activeDays) * 100) : null;
+  if (activeDays === 0) return null;
+  if (activeDays < ADHERENCE_MIN_ACTIVE_DAYS) return "new";
+  return Math.round((takenDays / activeDays) * 100);
 }
 
 function MedicationCard({
@@ -95,7 +102,7 @@ function MedicationCard({
   onSave,
 }: {
   medication: Medication;
-  adherence: number | null;
+  adherence: number | "new" | null;
   pending: boolean;
   removing: boolean;
   onDelete: (medicationId: string) => void;
@@ -282,7 +289,12 @@ function MedicationCard({
         {medication.notes && (
           <p className="mt-0.5 text-xs italic text-ink-muted dark:text-mist-muted">{medication.notes}</p>
         )}
-        {adherence !== null && (
+        {adherence === "new" && (
+          <span className="mt-1 inline-block rounded-full bg-stone px-2 py-0.5 text-xs font-medium text-ink-muted dark:bg-stone-dark dark:text-mist-muted">
+            New — not enough history yet
+          </span>
+        )}
+        {typeof adherence === "number" && (
           <span
             className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${
               URGENCY_BADGE_CLASS[adherence >= 80 ? "low" : adherence >= 50 ? "medium" : "high"]

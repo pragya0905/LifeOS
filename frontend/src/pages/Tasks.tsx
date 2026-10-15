@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type TouchEvent as ReactTo
 import { useSearchParams } from "react-router-dom";
 import { useApi } from "../api/useApi";
 import { useSpeechToText } from "../hooks/useSpeechToText";
-import { todayLocal, toLocalDateStr } from "../lib/date";
+import { computeDueAtUtc, todayLocal, toLocalDateStr } from "../lib/date";
 import { ALL_DAYS, formatSchedule } from "../lib/weekdays";
 import { URGENCY_BORDER_CLASS, URGENCY_DOT_CLASS, URGENCY_STROKE_CLASS, type UrgencyLevel } from "../lib/urgency";
 import { Skeleton } from "../components/Skeleton";
@@ -79,15 +79,6 @@ const DATE_PRESETS: { label: string; days: number }[] = [
   { label: "Tomorrow", days: 1 },
   { label: "Next week", days: 7 },
 ];
-
-// The browser is the only place that actually knows the user's timezone — computed here
-// (not on the server) so the reminder scheduler can compare due times in UTC without
-// having to guess what timezone dueDate/dueTime were entered in.
-function computeDueAtUtc(dueDate: string, dueTime: string): string | undefined {
-  if (!dueDate || !dueTime) return undefined;
-  const d = new Date(`${dueDate}T${dueTime}`);
-  return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
-}
 
 function hoursUntilDue(task: Task, now: Date): number | null {
   if (!task.dueDate) return null;

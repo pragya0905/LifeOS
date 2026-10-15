@@ -21,3 +21,12 @@ export function addDays(dateStr: string, delta: number): string {
   d.setDate(d.getDate() + delta);
   return toLocalDateStr(d);
 }
+
+// Shared by Tasks.tsx and the quick-add sheet — parses dueDate+dueTime in the browser's
+// own local timezone (no "Z" suffix) so the resulting instant is unambiguous, same
+// reasoning as createTask's dueAtUtc comment on the backend.
+export function computeDueAtUtc(dueDate: string, dueTime: string): string | undefined {
+  if (!dueDate || !dueTime) return undefined;
+  const d = new Date(`${dueDate}T${dueTime}`);
+  return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
+}
