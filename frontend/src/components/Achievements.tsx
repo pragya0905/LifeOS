@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { Trophy } from "lucide-react";
 import { useApi } from "../api/useApi";
 import type { Badge } from "../types";
+import { Icon } from "./Icon";
 import { Skeleton } from "./Skeleton";
 import { card, mutedText, sectionLabel } from "./ui";
 
@@ -70,7 +72,9 @@ export default function Achievements() {
         aria-expanded={expanded}
         className="mb-3 flex w-full items-center justify-between text-left"
       >
-        <h2 className={sectionLabel}>🏆 Achievements</h2>
+        <h2 className={`${sectionLabel} inline-flex items-center gap-1`}>
+          <Icon icon={Trophy} size={13} /> Achievements
+        </h2>
         <span className="flex items-center gap-1.5">
           {badges && (
             <span className={mutedText}>

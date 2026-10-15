@@ -4,6 +4,7 @@ import { useApi } from "../api/useApi";
 import { useSpeechToText } from "../hooks/useSpeechToText";
 import { todayLocal, toLocalDateStr } from "../lib/date";
 import { ALL_DAYS, formatSchedule } from "../lib/weekdays";
+import { URGENCY_BORDER_CLASS, URGENCY_DOT_CLASS, URGENCY_STROKE_CLASS, type UrgencyLevel } from "../lib/urgency";
 import { Skeleton } from "../components/Skeleton";
 import { EmptyState } from "../components/EmptyState";
 import DayOfWeekPicker from "../components/DayOfWeekPicker";
@@ -158,11 +159,15 @@ const STATUS_CYCLE: Record<TaskStatus, TaskStatus> = {
   done: "todo",
 };
 
-const PRIORITY_EMOJI: Record<TaskPriority, string> = {
-  Low: "🟢",
-  Medium: "🟡",
-  High: "🔴",
+const PRIORITY_URGENCY: Record<TaskPriority, UrgencyLevel> = {
+  Low: "low",
+  Medium: "medium",
+  High: "high",
 };
+
+function PriorityDot({ priority }: { priority: TaskPriority }) {
+  return <span className={`inline-block h-2 w-2 rounded-full ${URGENCY_DOT_CLASS[PRIORITY_URGENCY[priority]]}`} />;
+}
 
 // A single click-to-cycle control (todo -> in_progress -> done -> todo) instead of a
 // plain dropdown, so the most common action (marking progress) is one tap/click away.
@@ -230,7 +235,7 @@ function DeadlineRing({ task }: { task: Task }) {
   const RADIUS = (SIZE - STROKE) / 2;
   const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
   const offset = CIRCUMFERENCE * (1 - fraction);
-  const colorClass = fraction >= 0.67 ? "stroke-alert" : fraction >= 0.34 ? "stroke-amber" : "stroke-bloom";
+  const colorClass = URGENCY_STROKE_CLASS[fraction >= 0.67 ? "high" : fraction >= 0.34 ? "medium" : "low"];
 
   return (
     <div
@@ -449,13 +454,7 @@ function TaskCard({
           transform: `translateX(${swipeX}px)`,
           transition: swiping ? "none" : "transform 0.25s ease-out",
         }}
-        className={`relative flex flex-col gap-3 border-l-4 transition-shadow hover:shadow-md ${card} ${
-          task.priority === "High"
-            ? "border-l-alert"
-            : task.priority === "Medium"
-              ? "border-l-amber"
-              : "border-l-mist-muted"
-        }`}
+        className={`relative flex flex-col gap-3 border-l-4 transition-shadow hover:shadow-md ${card} ${URGENCY_BORDER_CLASS[PRIORITY_URGENCY[task.priority]]}`}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
@@ -487,7 +486,7 @@ function TaskCard({
               className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${priorityBadgeClass[task.priority]}`}
               title={`Priority source: ${task.prioritySource}`}
             >
-              <span aria-hidden="true">{PRIORITY_EMOJI[task.priority]}</span>
+              <PriorityDot priority={task.priority} />
               {task.priority}
             </span>
             {task.prioritySource === "ai" && <span className={badge}>AI</span>}

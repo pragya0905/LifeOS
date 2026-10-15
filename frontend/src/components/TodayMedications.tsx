@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { Bell, Timer } from "lucide-react";
 import { useApi } from "../api/useApi";
 import { appliesOnDate } from "../lib/weekdays";
 import type { Medication, MedicationLog, MedicationLogStatus } from "../types";
 import { EmptyState } from "./EmptyState";
+import { Icon } from "./Icon";
 import { Skeleton } from "./Skeleton";
 import {
   card,
@@ -109,9 +111,15 @@ export default function TodayMedications({ date }: { date: string }) {
                 <span className="text-sm text-ink dark:text-paper">
                   {medication.name}
                   {medication.dosage && <span className={`ml-1.5 ${mutedText}`}>{medication.dosage}</span>}
-                  {medication.timeOfDay && <span className={`ml-1.5 ${mutedText}`}>🔔 {medication.timeOfDay}</span>}
+                  {medication.timeOfDay && (
+                    <span className={`ml-1.5 inline-flex items-center gap-1 ${mutedText}`}>
+                      <Icon icon={Bell} size={12} /> {medication.timeOfDay}
+                    </span>
+                  )}
                   {medication.estimatedMinutes !== undefined && (
-                    <span className={`ml-1.5 ${mutedText}`}>⏱ ~{medication.estimatedMinutes} min</span>
+                    <span className={`ml-1.5 inline-flex items-center gap-1 ${mutedText}`}>
+                      <Icon icon={Timer} size={12} />~{medication.estimatedMinutes} min
+                    </span>
                   )}
                   {medication.notes && (
                     <span className="block text-xs italic text-ink-muted dark:text-mist-muted">

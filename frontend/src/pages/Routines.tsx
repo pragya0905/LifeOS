@@ -1,9 +1,12 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { Clock, Timer } from "lucide-react";
 import { useApi } from "../api/useApi";
 import { todayLocal } from "../lib/date";
 import { ALL_DAYS, formatSchedule } from "../lib/weekdays";
 import { Skeleton } from "../components/Skeleton";
 import { EmptyState } from "../components/EmptyState";
+import { Icon } from "../components/Icon";
+import { StreakBadge } from "../components/StreakBadge";
 import DayOfWeekPicker from "../components/DayOfWeekPicker";
 import type { RoutineCategory, RoutineStepLog, RoutineTemplate } from "../types";
 import {
@@ -311,11 +314,20 @@ function RoutineCard({
             {doneCount}/{routine.steps.length} done
           </span>{" "}
           <span className={badge}>{formatSchedule(routine.daysOfWeek)}</span>
-          {routine.timeOfDay && <span className={badge}>🕐 {routine.timeOfDay}</span>}
-          {routine.estimatedMinutes !== undefined && <span className={badge}>⏱ ~{routine.estimatedMinutes} min</span>}
+          {routine.timeOfDay && (
+            <span className={`${badge} inline-flex items-center gap-1`}>
+              <Icon icon={Clock} size={12} />
+              {routine.timeOfDay}
+            </span>
+          )}
+          {routine.estimatedMinutes !== undefined && (
+            <span className={`${badge} inline-flex items-center gap-1`}>
+              <Icon icon={Timer} size={12} />~{routine.estimatedMinutes} min
+            </span>
+          )}
           {streak > 0 && (
-            <span className="ml-1.5 rounded-full bg-amber-soft px-2 py-0.5 text-xs font-medium text-amber-ink dark:bg-amber-soft-dark dark:text-amber-ink-dark">
-              🔥 {streak} day{streak === 1 ? "" : "s"}
+            <span className="ml-1.5">
+              <StreakBadge days={streak} />
             </span>
           )}
         </p>

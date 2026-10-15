@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { Paperclip } from "lucide-react";
 import { useApi } from "../api/useApi";
 import { useAssistantStream, type AssistantStreamEvent } from "../hooks/useAssistantStream";
 import { useSpeechToText } from "../hooks/useSpeechToText";
 import { describeToolUse } from "../lib/toolLabels";
 import VoiceMode from "../components/VoiceMode";
+import { Icon } from "../components/Icon";
 import {
   card,
   errorText,
@@ -429,7 +431,9 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
                 }`}
               >
                 {m.attachmentLabel && (
-                  <div className="mb-1 text-xs opacity-80">📎 {m.attachmentLabel}</div>
+                  <div className="mb-1 inline-flex items-center gap-1 text-xs opacity-80">
+                    <Icon icon={Paperclip} size={12} /> {m.attachmentLabel}
+                  </div>
                 )}
                 {m.role === "assistant" ? (
                   <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
@@ -461,7 +465,9 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
 
       {pendingAttachment && (
         <div className="mb-2 flex items-center gap-2 text-xs text-ink-muted dark:text-mist-muted">
-          <span>📎 {pendingAttachment.fileName}</span>
+          <span className="inline-flex items-center gap-1">
+            <Icon icon={Paperclip} size={12} /> {pendingAttachment.fileName}
+          </span>
           <button
             type="button"
             onClick={() => setPendingAttachment(null)}
@@ -490,7 +496,7 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
           aria-label="Attach a photo or document"
           className={`${pillButton} ${pillButtonInactive} cursor-pointer px-3 py-2 ${attaching ? "opacity-50" : ""}`}
         >
-          {attaching ? "…" : "📎"}
+          {attaching ? "…" : <Icon icon={Paperclip} size={16} />}
         </label>
         <textarea
           ref={textareaRef}

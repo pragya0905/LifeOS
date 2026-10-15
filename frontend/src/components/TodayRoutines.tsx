@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { Clock, Timer } from "lucide-react";
 import { useApi } from "../api/useApi";
 import { appliesOnDate } from "../lib/weekdays";
 import type { RoutineStepLog, RoutineTemplate } from "../types";
 import { EmptyState } from "./EmptyState";
+import { Icon } from "./Icon";
 import { Skeleton } from "./Skeleton";
 import {
   badge,
@@ -135,7 +137,11 @@ export default function TodayRoutines({ date }: { date: string }) {
             return (
               <li key={routine.routineId}>
                 <p className="mb-1.5 text-sm font-medium text-ink dark:text-paper">
-                  {routine.timeOfDay && <span className={`mr-1 ${mutedText}`}>🕐 {routine.timeOfDay}</span>}
+                  {routine.timeOfDay && (
+                    <span className={`mr-1 inline-flex items-center gap-1 ${mutedText}`}>
+                      <Icon icon={Clock} size={12} /> {routine.timeOfDay}
+                    </span>
+                  )}
                   {routine.name}{" "}
                   <span className="font-normal text-ink-muted dark:text-mist-muted">
                     ({categoryLabel(routine.category)})
@@ -144,7 +150,9 @@ export default function TodayRoutines({ date }: { date: string }) {
                     {doneCount}/{routine.steps.length} done
                   </span>{" "}
                   {routine.estimatedMinutes !== undefined && (
-                    <span className={badge}>⏱ ~{routine.estimatedMinutes} min</span>
+                    <span className={`${badge} inline-flex items-center gap-1`}>
+                      <Icon icon={Timer} size={12} />~{routine.estimatedMinutes} min
+                    </span>
                   )}
                 </p>
                 <ul className="flex flex-col gap-1.5">

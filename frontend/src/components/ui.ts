@@ -2,6 +2,8 @@
 // Plain className strings (not components) so they drop into existing
 // JSX without changing each page's structure.
 
+import { URGENCY_BADGE_CLASS } from "../lib/urgency";
+
 export const page = "mx-auto mt-10 w-full max-w-2xl px-4 pb-16";
 
 export const pageTitle = "font-display mb-6 text-3xl font-medium text-ink dark:text-paper";
@@ -39,8 +41,11 @@ export const badge = "rounded-full bg-bloom-soft px-2 py-0.5 text-xs font-medium
 export const errorText = "text-sm text-alert";
 export const mutedText = "text-sm text-ink-muted dark:text-mist-muted";
 
+// Derived from the shared urgency mapping (lib/urgency.ts) — Low priority reads as
+// success green (paired with a label, never color alone), not gray ("no priority set")
+// or the brand accent (which used to leak into a couple of "this is fine" states).
 export const priorityBadgeClass: Record<"Low" | "Medium" | "High", string> = {
-  Low: "bg-stone text-ink-muted dark:bg-stone-dark dark:text-mist-muted",
-  Medium: "bg-amber-soft text-amber-ink dark:bg-amber-soft-dark dark:text-amber-ink-dark",
-  High: "bg-alert-soft text-alert dark:bg-alert-soft-dark dark:text-alert-light",
+  Low: URGENCY_BADGE_CLASS.low,
+  Medium: URGENCY_BADGE_CLASS.medium,
+  High: URGENCY_BADGE_CLASS.high,
 };

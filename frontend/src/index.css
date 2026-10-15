@@ -54,8 +54,56 @@
   --color-amber-ink: #8a5a17;
   --color-amber-ink-dark: #f0be72;
 
+  /* semantic — success / low priority (never color-only: always paired
+     with a label or icon, same as alert/amber above) */
+  --color-success: #2e9960;
+  --color-success-light: #4fc17f;
+  --color-success-soft: #e1f3e8;
+  --color-success-soft-dark: #163524;
+  --color-success-ink: #1f7a48;
+  --color-success-ink-dark: #7bd9a4;
+
+  /* per-domain accents — used sparingly (a card's left-edge accent, an
+     icon tint) so each domain reads at a glance in a mixed list, without
+     competing with bloom (brand) or the alert/amber/success priority
+     colors. Wishes intentionally reuses bloom itself. */
+  --color-routine: #2b8f8a;
+  --color-routine-soft: #dcf0ee;
+  --color-routine-soft-dark: #16302e;
+  --color-medication: #4a63e0;
+  --color-medication-soft: #e3e7fb;
+  --color-medication-soft-dark: #1c2142;
+  --color-cycle: #c23c74;
+  --color-cycle-soft: #fbe3ed;
+  --color-cycle-soft-dark: #3d1829;
+  --color-budget: #3f6fae;
+  --color-budget-soft: #e1ebf7;
+  --color-budget-soft-dark: #182840;
+
+  /* elevation — cards rely on border only today; these give the new
+     Modal/BottomSheet/Toast a defined "above the page" surface in both
+     themes (dark needs a lighter rim, not a darker shadow, so it's a
+     separate token rather than one shadow reused everywhere) */
+  --shadow-card: 0 1px 2px 0 rgb(36 27 46 / 0.06);
+  --shadow-card-dark: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow-raised: 0 12px 32px -8px rgb(36 27 46 / 0.22), 0 2px 8px -2px rgb(36 27 46 / 0.12);
+  --shadow-raised-dark: 0 12px 32px -8px rgb(0 0 0 / 0.55), 0 2px 8px -2px rgb(0 0 0 / 0.4);
+
+  /* radius — formalizes the ad hoc rounded-xl/2xl/3xl mix already in use */
+  --radius-control: 0.75rem; /* matches existing rounded-xl inputs/buttons */
+  --radius-card: 1rem; /* matches existing rounded-2xl cards */
+  --radius-sheet: 1.5rem; /* matches existing rounded-3xl bottom sheet */
+
+  /* motion — duration/easing for Phase 4's celebratory micro-interactions;
+     fade-in-up/pop above stay as-is for existing uses */
+  --ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-fast: 120ms;
+  --duration-base: 220ms;
+  --duration-celebrate: 600ms;
+
   --animate-fade-in-up: fade-in-up 0.35s ease-out both;
   --animate-pop: pop 0.25s ease-out both;
+  --animate-celebrate: celebrate-pop var(--duration-celebrate) var(--ease-standard) both;
 }
 
 @keyframes fade-in-up {

@@ -1,9 +1,12 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { Bell, Timer } from "lucide-react";
 import { useApi } from "../api/useApi";
 import { todayLocal, toLocalDateStr } from "../lib/date";
 import { ALL_DAYS, appliesOnDate, formatSchedule } from "../lib/weekdays";
+import { URGENCY_BADGE_CLASS } from "../lib/urgency";
 import { Skeleton } from "../components/Skeleton";
 import { EmptyState } from "../components/EmptyState";
+import { Icon } from "../components/Icon";
 import DayOfWeekPicker from "../components/DayOfWeekPicker";
 import type { Medication, MedicationLog, MedicationLogStatus } from "../types";
 import {
@@ -260,8 +263,18 @@ function MedicationCard({
         </p>
         <p className="text-xs text-ink-muted dark:text-mist-muted">
           {medication.startDate} → {medication.endDate} ({medication.durationDays} days)
-          {medication.timeOfDay && ` · 🔔 ${medication.timeOfDay}`}
-          {medication.estimatedMinutes !== undefined && ` · ⏱ ~${medication.estimatedMinutes} min`}
+          {medication.timeOfDay && (
+            <>
+              {" · "}
+              <Icon icon={Bell} size={12} className="inline" /> {medication.timeOfDay}
+            </>
+          )}
+          {medication.estimatedMinutes !== undefined && (
+            <>
+              {" · "}
+              <Icon icon={Timer} size={12} className="inline" /> ~{medication.estimatedMinutes} min
+            </>
+          )}
           {medication.daysOfWeek && medication.daysOfWeek.length > 0 && medication.daysOfWeek.length < 7
             ? ` · ${formatSchedule(medication.daysOfWeek)}`
             : ""}
@@ -271,12 +284,8 @@ function MedicationCard({
         )}
         {adherence !== null && (
           <span
-            className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-              adherence >= 80
-                ? "bg-bloom-soft text-bloom dark:bg-bloom-soft-dark dark:text-bloom-light"
-                : adherence >= 50
-                  ? "bg-amber-soft text-amber-ink dark:bg-amber-soft-dark dark:text-amber-ink-dark"
-                  : "bg-alert-soft text-alert dark:bg-alert-soft-dark dark:text-alert-light"
+            className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${
+              URGENCY_BADGE_CLASS[adherence >= 80 ? "low" : adherence >= 50 ? "medium" : "high"]
             }`}
           >
             {adherence}% adherence (last {ADHERENCE_WINDOW_DAYS}d)
@@ -557,8 +566,9 @@ export default function Medications() {
           </p>
         </div>
         {timeOfDay && (
-          <p className={mutedText}>
-            🔔 You'll get a push reminder around {timeOfDay} on days this medication is scheduled
+          <p className={`inline-flex items-start gap-1 ${mutedText}`}>
+            <Icon icon={Bell} size={13} className="mt-0.5 shrink-0" />
+            You'll get a push reminder around {timeOfDay} on days this medication is scheduled
             for, unless you've already marked it taken.
           </p>
         )}
@@ -595,10 +605,14 @@ export default function Medications() {
                         <span className={`ml-1.5 font-normal ${mutedText}`}>{medication.dosage}</span>
                       )}
                       {medication.timeOfDay && (
-                        <span className={`ml-1.5 font-normal ${mutedText}`}>🔔 {medication.timeOfDay}</span>
+                        <span className={`ml-1.5 inline-flex items-center gap-1 font-normal ${mutedText}`}>
+                          <Icon icon={Bell} size={12} /> {medication.timeOfDay}
+                        </span>
                       )}
                       {medication.estimatedMinutes !== undefined && (
-                        <span className={`ml-1.5 font-normal ${mutedText}`}>⏱ ~{medication.estimatedMinutes} min</span>
+                        <span className={`ml-1.5 inline-flex items-center gap-1 font-normal ${mutedText}`}>
+                          <Icon icon={Timer} size={12} />~{medication.estimatedMinutes} min
+                        </span>
                       )}
                       {medication.notes && (
                         <span className="block text-xs font-normal italic text-ink-muted dark:text-mist-muted">

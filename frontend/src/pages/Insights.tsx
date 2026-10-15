@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useApi } from "../api/useApi";
 import LineChart from "../components/LineChart";
 import WeightTrend from "../components/WeightTrend";
+import { StreakBadge } from "../components/StreakBadge";
 import { toLocalDateStr } from "../lib/date";
 import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_BAR, EXPENSE_CATEGORY_EMOJI, EXPENSE_CATEGORY_LABEL, formatINR } from "../lib/expenseCategories";
 import type { Expense, HabitLog, Insights as InsightsData, LogEntry, ProgressSummary } from "../types";
@@ -342,9 +343,15 @@ export default function Insights() {
                   {progressSummary.habits.map((h) => (
                     <li key={h.habitType} className="flex items-center justify-between gap-2 text-sm">
                       <span className="capitalize text-ink dark:text-paper">{h.habitType}</span>
-                      <span className={mutedText}>
-                        {h.currentStreakDays > 0 ? `🔥 ${h.currentStreakDays}d streak` : "No current streak"} · missed{" "}
-                        {h.missedInLast7Days}/7d
+                      <span className={`inline-flex items-center gap-1 ${mutedText}`}>
+                        {h.currentStreakDays > 0 ? (
+                          <>
+                            <StreakBadge days={h.currentStreakDays} unit="d" compact variant="inline" /> streak
+                          </>
+                        ) : (
+                          "No current streak"
+                        )}{" "}
+                        · missed {h.missedInLast7Days}/7d
                       </span>
                     </li>
                   ))}
