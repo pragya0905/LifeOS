@@ -32,31 +32,60 @@ export function BottomSheet({
   // (real back gesture) closes the sheet via onClose.
   //
   // If the sheet instead closes some other way (X button, backdrop, a quick-add form
-  // completing) the pushed entry is popped in cleanup so back-history isn't left polluted
-  // — but ONLY if our dummy entry is still the current one. Tapping a nav link *inside*
-  // the sheet pushes its own route entry on top of ours first (React Router's own
-  // pushState), and in that case calling history.back() here would wrongly undo that
-  // navigation instead of just removing our marker — the state check below detects that
-  // and skips the cleanup pop, accepting one harmless extra back-press in that one case
-  // rather than ever reverting a real navigation.
+  // completing) the pushed entry is popped so back-history isn't left polluted — but ONLY
+  // if our dummy entry is still the current one. Tapping a nav link *inside* the sheet
+  // pushes its own route entry on top of ours first (React Router's own pushState), and in
+  // that case calling history.back() here would wrongly undo that navigation instead of
+  // just removing our marker — the state check below detects that and skips the pop,
+  // accepting one harmless extra back-press in that one case rather than ever reverting a
+  // real navigation.
+  //
+  // React.StrictMode double-invokes this effect in dev (mount -> cleanup -> mount again,
+  // synchronously, within the same commit) to surface exactly this kind of bug: the naive
+  // version pushed a *second* history entry on remount and, worse, its cleanup scheduled an
+  // unconditional `history.back()` whose popstate callback landed on the second mount's
+  // listener and closed the sheet immediately after it opened. `pushedRef` makes the push
+  // idempotent across the phantom remount (skipped if we already have an entry), and the
+  // pop is deferred via a 0ms timer that the very next (same-tick) mount cancels — so a real
+  // close still pops exactly once, while the phantom StrictMode cleanup pops nothing.
+  const pushedRef = useRef(false);
   const closingViaPopRef = useRef(false);
+  const popTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    window.history.pushState({ lifeosSheet: true }, "");
+
+    if (popTimerRef.current !== null) {
+      window.clearTimeout(popTimerRef.current);
+      popTimerRef.current = null;
+    }
+    if (!pushedRef.current) {
+      window.history.pushState({ lifeosSheet: true }, "");
+      pushedRef.current = true;
+    }
 
     function onPopState() {
       closingViaPopRef.current = true;
+      pushedRef.current = false;
       onClose();
     }
     window.addEventListener("popstate", onPopState);
 
     return () => {
       window.removeEventListener("popstate", onPopState);
-      if (!closingViaPopRef.current && (window.history.state as { lifeosSheet?: boolean } | null)?.lifeosSheet) {
-        window.history.back();
+      if (closingViaPopRef.current) {
+        closingViaPopRef.current = false;
+        return;
       }
-      closingViaPopRef.current = false;
+      popTimerRef.current = window.setTimeout(() => {
+        popTimerRef.current = null;
+        if (pushedRef.current) {
+          pushedRef.current = false;
+          if ((window.history.state as { lifeosSheet?: boolean } | null)?.lifeosSheet) {
+            window.history.back();
+          }
+        }
+      }, 0);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
