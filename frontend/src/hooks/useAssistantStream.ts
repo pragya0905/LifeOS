@@ -3,9 +3,25 @@ import { useAuth } from "../auth/AuthContext";
 
 const STREAM_URL = import.meta.env.VITE_ASSISTANT_STREAM_URL as string;
 
+// Mirrors backend/src/common/toolResultSummary.ts's ToolResultSummary — no shared types
+// module between the two packages (same pattern as Task/UserProfile/etc. elsewhere), so this
+// is kept in sync by hand.
+export interface AssistantToolResultSummary {
+  itemType: string;
+  id?: string;
+  title: string;
+  fields?: Record<string, string>;
+  deleted?: boolean;
+}
+
 export type AssistantStreamEvent =
   | { type: "text"; delta: string }
-  | { type: "tool_use"; name: string }
+  // A tool call fires this event twice: once with no `result` the moment it starts (the
+  // existing "tool is running" progress signal), and — only on success, and only for tools
+  // with something structured to show — a second time with `result` once it's done. `result`
+  // is absent for an older backend, a failed call, or a tool with nothing to summarize; never
+  // assume it's there.
+  | { type: "tool_use"; name: string; result?: AssistantToolResultSummary }
   | { type: "done"; conversationId: string }
   | { type: "error"; message: string };
 

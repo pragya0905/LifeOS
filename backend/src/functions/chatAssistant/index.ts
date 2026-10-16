@@ -10,6 +10,7 @@ import { EXPENSE_CATEGORIES } from "../../common/expenseCategories";
 import { computeProgressSummary, progressFractionForWish, type WishWithProgress } from "../../common/progressSummary";
 import { isMedicationActiveOnDate } from "../../common/medications";
 import { geocodeLocation, fetchWeather } from "../../common/weather";
+import { summarizeToolResult } from "../../common/toolResultSummary";
 import type {
   AssistantConversationTurn,
   AssistantTone,
@@ -1604,15 +1605,27 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
       );
       const toolResults: Anthropic.ToolResultBlockParam[] = [];
       for (const tool of toolUseBlocks) {
+        // Fired before the tool runs, same as always — this is the live "tool is running now"
+        // progress signal the frontend already shows (e.g. "Creating task…"), and it carries
+        // no result since nothing's been computed yet.
         writeEvent(responseStream, { type: "tool_use", name: tool.name });
+        const toolInput = tool.input as Record<string, unknown>;
         const { content, isError } = await executeTool(
           API_URL,
           userId,
           tool.name,
-          tool.input as Record<string, unknown>,
+          toolInput,
           authHeader as string,
           timezoneOffsetMinutes,
         );
+        // A second event, only on success and only when there's something safe/meaningful to
+        // summarize (see toolResultSummary.ts) — old frontends just see a harmless duplicate
+        // tool_use event for the same tool name; new frontends use the presence of `result` to
+        // render a confirmation card instead of (or alongside) the generic status line.
+        if (!isError) {
+          const result = summarizeToolResult(tool.name, toolInput, content);
+          if (result) writeEvent(responseStream, { type: "tool_use", name: tool.name, result });
+        }
         toolResults.push({ type: "tool_result", tool_use_id: tool.id, content, is_error: isError });
       }
       messages.push({ role: "user", content: toolResults });
