@@ -17,7 +17,7 @@ import {
 import { useApi } from "../api/useApi";
 import { useToast } from "./Toast";
 import { useSpeechToText } from "../hooks/useSpeechToText";
-import { computeDueAtUtc, END_OF_DAY_TIME, isValidDateStr, todayLocal } from "../lib/date";
+import { computeDueAtUtc, END_OF_DAY_TIME, TASK_TIME_PRESETS, isValidDateStr, todayLocal } from "../lib/date";
 import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_EMOJI, EXPENSE_CATEGORY_LABEL } from "../lib/expenseCategories";
 import { nextWishIncrementPatch, wishIsIncrementable, wishRevertPatch } from "../lib/wishProgress";
 import type {
@@ -56,17 +56,6 @@ const TARGETS: { id: QuickAddTarget; label: string; icon: LucideIcon }[] = [
   { id: "medication", label: "Medication", icon: Pill },
   { id: "routine", label: "Routine step", icon: ListChecks },
   { id: "wish", label: "Wish progress", icon: Target },
-];
-
-// Default stays "end of day" (23:59, same as before) — these are just a faster way to pick
-// a different time than typing into the native time input below, which still works for
-// anything more specific.
-const TASK_TIME_PRESETS: { label: string; time: string }[] = [
-  { label: "Morning", time: "09:00" },
-  { label: "Afternoon", time: "14:00" },
-  { label: "Evening", time: "18:00" },
-  { label: "Night", time: "21:00" },
-  { label: "End of day", time: END_OF_DAY_TIME },
 ];
 
 function defaultDueDate(location: Location): string {

@@ -21,6 +21,7 @@ export interface Task {
   description?: string;
   dueDate?: string;
   dueTime?: string;
+  dueAtUtc?: string;
   estimatedHours?: number;
   voiceInput?: boolean;
   priority: TaskPriority;
@@ -28,6 +29,8 @@ export interface Task {
   // distinct from "ai" (a one-shot model suggestion) and "manual" (the user's own choice).
   prioritySource: "manual" | "ai" | "auto";
   status: TaskStatus;
+  // Free-text, like RoutineTemplate.category — optional since it predates this field.
+  category?: string;
   scheduleTime?: string;
   recurrence?: TaskRecurrence;
   createdAt: string;

@@ -41,6 +41,17 @@ export function formatDueTime(dueTime: string | undefined): string | undefined {
   return dueTime === END_OF_DAY_TIME ? "End of day" : dueTime;
 }
 
+// Shared by the quick-add sheet's Task form and the Tasks page's own add/edit forms — same
+// chips everywhere a due time is picked, so they don't drift apart. A faster way to pick a
+// common time than the native time input below, which still works for anything more specific.
+export const TASK_TIME_PRESETS: { label: string; time: string }[] = [
+  { label: "Morning", time: "09:00" },
+  { label: "Afternoon", time: "14:00" },
+  { label: "Evening", time: "18:00" },
+  { label: "Night", time: "21:00" },
+  { label: "End of day", time: END_OF_DAY_TIME },
+];
+
 // Strict YYYY-MM-DD check (format AND calendar validity, e.g. rejects "2026-13-40") — used to
 // validate a `?date=` URL param before trusting it, since it comes from the address bar.
 export function isValidDateStr(s: string): boolean {

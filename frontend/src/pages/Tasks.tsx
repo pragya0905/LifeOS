@@ -1,16 +1,18 @@
-import { useEffect, useRef, useState, type FormEvent, type TouchEvent as ReactTouchEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
+import { Check, Clock, Copy, Pencil, Repeat, Trash2 } from "lucide-react";
 import { useApi } from "../api/useApi";
 import { useSpeechToText } from "../hooks/useSpeechToText";
-import { computeDueAtUtc, formatDueTime, todayLocal, toLocalDateStr } from "../lib/date";
+import { useToast } from "../components/Toast";
+import { computeDueAtUtc, formatDueTime, TASK_TIME_PRESETS, todayLocal, toLocalDateStr } from "../lib/date";
 import { ALL_DAYS, formatSchedule } from "../lib/weekdays";
-import { URGENCY_BORDER_CLASS, URGENCY_DOT_CLASS, URGENCY_STROKE_CLASS, type UrgencyLevel } from "../lib/urgency";
+import { Icon } from "../components/Icon";
+import { Chip } from "../components/Chip";
 import { Skeleton } from "../components/Skeleton";
 import { EmptyState } from "../components/EmptyState";
 import DayOfWeekPicker from "../components/DayOfWeekPicker";
 import type { RecurrenceFrequency, Task, TaskPriority, TaskRecurrence, TaskStatus } from "../types";
 import {
-  badge,
   card,
   errorText,
   input,
@@ -21,17 +23,36 @@ import {
   pillButton,
   pillButtonInactive,
   primaryButton,
-  priorityBadgeClass,
   secondaryButton,
   sectionLabel,
 } from "../components/ui";
 
 const PRIORITIES: TaskPriority[] = ["Low", "Medium", "High"];
+const STATUSES: TaskStatus[] = ["todo", "in_progress", "done"];
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
   todo: "To do",
   in_progress: "In progress",
   done: "Done",
+};
+
+// Priority is always a color + a label, never color alone — High=red, Medium=amber, Low=green.
+const PRIORITY_CLASS: Record<TaskPriority, string> = {
+  High: "border-alert bg-alert-soft text-alert dark:bg-alert-soft-dark dark:text-alert-light",
+  Medium: "border-amber bg-amber-soft text-amber-ink dark:bg-amber-soft-dark dark:text-amber-ink-dark",
+  Low: "border-success bg-success-soft text-success-ink dark:bg-success-soft-dark dark:text-success-ink-dark",
+};
+
+const STATUS_BUTTON_CLASS: Record<TaskStatus, string> = {
+  todo: "border-stone text-ink-muted dark:border-stone-dark dark:text-mist-muted",
+  in_progress: "border-amber bg-amber-soft text-amber-ink dark:bg-amber-soft-dark dark:text-amber-ink-dark",
+  done: "border-success bg-success text-paper-card",
+};
+
+const PRIORITY_SOURCE_LABEL: Record<Task["prioritySource"], string> = {
+  manual: "Manual",
+  ai: "AI suggested",
+  auto: "Auto-escalated",
 };
 
 const RECURRENCE_FREQUENCY_LABEL: Record<RecurrenceFrequency, string> = {
@@ -41,17 +62,19 @@ const RECURRENCE_FREQUENCY_LABEL: Record<RecurrenceFrequency, string> = {
   monthly: "Monthly",
 };
 
+const SUGGESTED_CATEGORIES = ["Work", "Personal", "Health", "Errands"];
+
 function formatRecurrence(recurrence: TaskRecurrence | undefined): string | null {
   if (!recurrence) return null;
   switch (recurrence.frequency) {
     case "daily":
-      return "🔁 Daily";
+      return "Daily";
     case "weekly":
-      return `🔁 ${formatSchedule(recurrence.daysOfWeek)}`;
+      return formatSchedule(recurrence.daysOfWeek);
     case "every_n_days":
-      return `🔁 Every ${recurrence.intervalDays} day${recurrence.intervalDays === 1 ? "" : "s"}`;
+      return `Every ${recurrence.intervalDays} day${recurrence.intervalDays === 1 ? "" : "s"}`;
     case "monthly":
-      return `🔁 Monthly (${recurrence.dayOfMonth}${ordinalSuffix(recurrence.dayOfMonth ?? 1)})`;
+      return `Monthly (${recurrence.dayOfMonth}${ordinalSuffix(recurrence.dayOfMonth ?? 1)})`;
   }
 }
 
@@ -95,15 +118,10 @@ function TaskTimeline({ task }: { task: Task }) {
   const remaining = hoursUntilDue(task, now);
   if (remaining === null) return null;
 
-  // "forced" is a live recomputation against the current clock — it can go true well after
-  // the task was created/last suggested, so it must never claim priority IS High unless that's
-  // actually the stored value; otherwise it visibly contradicts the priority badge above it.
   const forced = remaining <= task.estimatedHours;
   const staleForced = forced && task.priority !== "High";
   const dueLabel = task.dueTime ? `${task.dueDate} ${formatDueTime(task.dueTime)}` : task.dueDate;
 
-  // Bar spans now (0%) to due (100%); the trigger marker sits at due - estimate,
-  // i.e. where remaining time stops exceeding the estimated effort.
   const windowHours = Math.max(remaining, 1);
   const triggerHoursFromNow = remaining - task.estimatedHours;
   const triggerPct = Math.min(Math.max((triggerHoursFromNow / windowHours) * 100, 0), 100);
@@ -111,19 +129,9 @@ function TaskTimeline({ task }: { task: Task }) {
   return (
     <div className="flex flex-col gap-1">
       <div className="relative h-1.5 overflow-visible rounded-full bg-stone dark:bg-stone-dark">
-        <div
-          className="absolute inset-y-0 left-0 rounded-full bg-bloom/50"
-          style={{ width: `${triggerPct}%` }}
-        />
-        <div
-          className="absolute -top-[3px] h-3 w-0.5 rounded-sm bg-amber"
-          style={{ left: `${triggerPct}%` }}
-          title="Priority forced High from here"
-        />
-        <div
-          className="absolute -top-[3px] right-0 h-3 w-0.5 rounded-sm bg-alert"
-          title="Due"
-        />
+        <div className="absolute inset-y-0 left-0 rounded-full bg-bloom/50" style={{ width: `${triggerPct}%` }} />
+        <div className="absolute -top-[3px] h-3 w-0.5 rounded-sm bg-amber" style={{ left: `${triggerPct}%` }} title="Priority forced High from here" />
+        <div className="absolute -top-[3px] right-0 h-3 w-0.5 rounded-sm bg-alert" title="Due" />
       </div>
       <div className="flex justify-between text-[10px] uppercase tracking-[0.1em] text-mist-muted">
         <span>Now</span>
@@ -144,62 +152,27 @@ function TaskTimeline({ task }: { task: Task }) {
   );
 }
 
-const STATUS_CYCLE: Record<TaskStatus, TaskStatus> = {
-  todo: "in_progress",
-  in_progress: "done",
-  done: "todo",
-};
-
-const PRIORITY_URGENCY: Record<TaskPriority, UrgencyLevel> = {
-  Low: "low",
-  Medium: "medium",
-  High: "high",
-};
-
-function PriorityDot({ priority }: { priority: TaskPriority }) {
-  return <span className={`inline-block h-2 w-2 rounded-full ${URGENCY_DOT_CLASS[PRIORITY_URGENCY[priority]]}`} />;
-}
-
-// A single click-to-cycle control (todo -> in_progress -> done -> todo) instead of a
-// plain dropdown, so the most common action (marking progress) is one tap/click away.
-function StatusToggle({ status, onCycle }: { status: TaskStatus; onCycle: () => void }) {
+// Always-visible, labeled status buttons (per DESIGN.md: never a hidden/cycling single
+// control) — jumping directly to any of the three states is one tap, including "Done" from
+// any starting state.
+function TaskStatusButtons({ status, onSetStatus }: { status: TaskStatus; onSetStatus: (status: TaskStatus) => void }) {
   return (
-    <button
-      type="button"
-      onClick={onCycle}
-      title={`Status: ${STATUS_LABEL[status]} — click to advance`}
-      className="group flex items-center gap-1.5 rounded-full border border-stone py-1 pl-1 pr-2.5 text-xs font-medium text-ink transition-colors hover:bg-stone/40 dark:border-stone-dark dark:text-paper dark:hover:bg-stone-dark/40"
-    >
-      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-        <circle
-          cx="8"
-          cy="8"
-          r="6.5"
-          fill={status === "done" ? "currentColor" : "none"}
-          className={
-            status === "done"
-              ? "text-bloom"
-              : status === "in_progress"
-                ? "text-amber"
-                : "text-mist-muted"
-          }
-          strokeWidth={status === "done" ? 0 : 1.75}
-          stroke="currentColor"
-          strokeDasharray={status === "in_progress" ? "6 4" : undefined}
-        />
-        {status === "done" && (
-          <path
-            d="M5 8.2l2 2 4-4.4"
-            stroke="var(--color-paper-card)"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            fill="none"
-          />
-        )}
-      </svg>
-      {STATUS_LABEL[status]}
-    </button>
+    <div className="flex gap-1.5">
+      {STATUSES.map((s) => (
+        <button
+          key={s}
+          type="button"
+          onClick={() => onSetStatus(s)}
+          aria-pressed={status === s}
+          className={`flex min-h-10 items-center justify-center gap-1.5 rounded-control border px-3 text-xs font-medium transition-colors ${
+            status === s ? STATUS_BUTTON_CLASS[s] : "border-stone text-ink-muted hover:bg-stone/40 dark:border-stone-dark dark:text-mist-muted dark:hover:bg-stone-dark/40"
+          }`}
+        >
+          {s === "done" && <Icon icon={Check} size={13} strokeWidth={2.4} />}
+          {STATUS_LABEL[s]}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -226,23 +199,12 @@ function DeadlineRing({ task }: { task: Task }) {
   const RADIUS = (SIZE - STROKE) / 2;
   const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
   const offset = CIRCUMFERENCE * (1 - fraction);
-  const colorClass = URGENCY_STROKE_CLASS[fraction >= 0.67 ? "high" : fraction >= 0.34 ? "medium" : "low"];
+  const colorClass = fraction >= 0.67 ? "stroke-alert" : fraction >= 0.34 ? "stroke-amber" : "stroke-success";
 
   return (
-    <div
-      className="relative shrink-0"
-      style={{ width: SIZE, height: SIZE }}
-      title={remaining <= 0 ? "Overdue" : `${remaining.toFixed(1)}h remaining until due`}
-    >
+    <div className="relative shrink-0" style={{ width: SIZE, height: SIZE }} title={remaining <= 0 ? "Overdue" : `${remaining.toFixed(1)}h remaining until due`}>
       <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} role="img" aria-label="Time until due">
-        <circle
-          cx={SIZE / 2}
-          cy={SIZE / 2}
-          r={RADIUS}
-          fill="none"
-          strokeWidth={STROKE}
-          className="stroke-stone dark:stroke-stone-dark"
-        />
+        <circle cx={SIZE / 2} cy={SIZE / 2} r={RADIUS} fill="none" strokeWidth={STROKE} className="stroke-stone dark:stroke-stone-dark" />
         <circle
           cx={SIZE / 2}
           cy={SIZE / 2}
@@ -260,17 +222,9 @@ function DeadlineRing({ task }: { task: Task }) {
   );
 }
 
-const SWIPE_THRESHOLD = 90;
-
 // Shared by the add-task form and TaskCard's inline edit form. Module-level so React keeps
-// element identity across re-renders, same reasoning as TaskCard itself below.
-function RecurrenceEditor({
-  value,
-  onChange,
-}: {
-  value: TaskRecurrence | undefined;
-  onChange: (v: TaskRecurrence | undefined) => void;
-}) {
+// element identity across re-renders.
+function RecurrenceEditor({ value, onChange }: { value: TaskRecurrence | undefined; onChange: (v: TaskRecurrence | undefined) => void }) {
   const frequency = value?.frequency;
   const daysOfWeek = value?.daysOfWeek && value.daysOfWeek.length > 0 ? value.daysOfWeek : ALL_DAYS;
 
@@ -314,9 +268,7 @@ function RecurrenceEditor({
             type="number"
             min={1}
             value={value?.intervalDays ?? 1}
-            onChange={(e) =>
-              onChange({ frequency: "every_n_days", intervalDays: Math.max(1, Number(e.target.value) || 1) })
-            }
+            onChange={(e) => onChange({ frequency: "every_n_days", intervalDays: Math.max(1, Number(e.target.value) || 1) })}
             className={`w-16 ${input}`}
           />
           <span className={mutedText}>days</span>
@@ -330,9 +282,7 @@ function RecurrenceEditor({
             min={1}
             max={31}
             value={value?.dayOfMonth ?? 1}
-            onChange={(e) =>
-              onChange({ frequency: "monthly", dayOfMonth: Math.min(31, Math.max(1, Number(e.target.value) || 1)) })
-            }
+            onChange={(e) => onChange({ frequency: "monthly", dayOfMonth: Math.min(31, Math.max(1, Number(e.target.value) || 1)) })}
             className={`w-16 ${input}`}
           />
           <span className={mutedText}>of the month</span>
@@ -342,12 +292,58 @@ function RecurrenceEditor({
   );
 }
 
-// Module-level (not nested in Tasks) so React doesn't remount it — and lose local
-// swipe-gesture state — on every parent re-render, same fix applied to WishCard earlier.
+function CategoryEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <div>
+      <label className={label}>Category (optional)</label>
+      <input type="text" value={value} onChange={(e) => onChange(e.target.value)} placeholder="Work, Health, ..." maxLength={40} className={`w-36 ${input}`} />
+      <div className="mt-1.5 flex flex-wrap gap-1.5">
+        {SUGGESTED_CATEGORIES.map((c) => (
+          <button
+            key={c}
+            type="button"
+            onClick={() => onChange(value === c ? "" : c)}
+            className={`${pillButton} ${value === c ? "border-bloom bg-bloom text-paper-card" : pillButtonInactive}`}
+          >
+            {c}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// A compact inline control for the one field people change most often without opening the
+// full edit form — tap "Edit time", pick a preset or type one, Save/Cancel right there.
+function QuickTimeEditor({ initial, onSave, onCancel }: { initial: string; onSave: (time: string) => void; onCancel: () => void }) {
+  const [value, setValue] = useState(initial);
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-control border border-stone p-2.5 dark:border-stone-dark">
+      <div className="flex flex-wrap gap-1.5">
+        {TASK_TIME_PRESETS.map((preset) => (
+          <Chip key={preset.label} active={value === preset.time} onClick={() => setValue(preset.time)}>
+            {preset.label}
+          </Chip>
+        ))}
+      </div>
+      <input type="time" value={value} onChange={(e) => setValue(e.target.value)} className={input} />
+      <button type="button" onClick={() => onSave(value)} className={`${secondaryButton} px-3 py-1.5 text-xs`}>
+        Save
+      </button>
+      <button type="button" onClick={onCancel} className={`${secondaryButton} px-3 py-1.5 text-xs`}>
+        Cancel
+      </button>
+    </div>
+  );
+}
+
+// Module-level (not nested in Tasks) so React doesn't remount it on every parent re-render.
 function TaskCard({
   task,
   isEditing,
+  isQuickEditingTime,
   onToggleEdit,
+  onToggleQuickEditTime,
   onUpdate,
   onDuplicate,
   onDelete,
@@ -359,6 +355,8 @@ function TaskCard({
   setEditDueTime,
   editEstimatedHours,
   setEditEstimatedHours,
+  editCategory,
+  setEditCategory,
   editSuggestPriority,
   setEditSuggestPriority,
   editRecurrence,
@@ -369,7 +367,9 @@ function TaskCard({
 }: {
   task: Task;
   isEditing: boolean;
+  isQuickEditingTime: boolean;
   onToggleEdit: () => void;
+  onToggleQuickEditTime: () => void;
   onUpdate: (patch: Record<string, unknown>) => Promise<boolean>;
   onDuplicate: () => void;
   onDelete: () => void;
@@ -381,6 +381,8 @@ function TaskCard({
   setEditDueTime: (v: string) => void;
   editEstimatedHours: string;
   setEditEstimatedHours: (v: string) => void;
+  editCategory: string;
+  setEditCategory: (v: string) => void;
   editSuggestPriority: boolean;
   setEditSuggestPriority: (v: boolean) => void;
   editRecurrence: TaskRecurrence | undefined;
@@ -389,245 +391,176 @@ function TaskCard({
   onSaveEdit: () => void;
   selectClass: string;
 }) {
-  const [swipeX, setSwipeX] = useState(0);
-  const [swiping, setSwiping] = useState(false);
-  const startXRef = useRef<number | null>(null);
-
-  function onTouchStart(e: ReactTouchEvent) {
-    if (task.status === "done") return;
-    startXRef.current = e.touches[0].clientX;
-    setSwiping(true);
-  }
-  function onTouchMove(e: ReactTouchEvent) {
-    if (startXRef.current === null) return;
-    const dx = e.touches[0].clientX - startXRef.current;
-    if (dx > 0) setSwipeX(Math.min(dx, 130));
-  }
-  async function onTouchEnd() {
-    if (swipeX > SWIPE_THRESHOLD) {
-      // Hold the swipe position (don't snap back yet) while the PATCH is in flight — resetting
-      // immediately made the card look "unswiped and still not done" for the round-trip
-      // duration. On success the card leaves this section before the reset below is visible;
-      // on failure it snaps back, which is correct since nothing changed.
-      setSwipeX(SWIPE_THRESHOLD);
-      setSwiping(false);
-      await onUpdate({ status: "done" });
-    }
-    setSwipeX(0);
-    setSwiping(false);
-    startXRef.current = null;
-  }
+  const recurrenceLabel = formatRecurrence(task.recurrence);
 
   return (
-    <li className="relative animate-fade-in-up overflow-hidden rounded-2xl">
-      <div
-        className="absolute inset-0 flex items-center gap-2 rounded-2xl bg-bloom px-5 text-paper-card"
-        aria-hidden="true"
-        style={{ opacity: Math.min(swipeX / SWIPE_THRESHOLD, 1) }}
-      >
-        <svg width="20" height="20" viewBox="0 0 16 16">
-          <path
-            d="M3 8.5l3 3 7-7.5"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            fill="none"
-          />
-        </svg>
-        Done
-      </div>
-      <div
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-        style={{
-          transform: `translateX(${swipeX}px)`,
-          transition: swiping ? "none" : "transform 0.25s ease-out",
-        }}
-        className={`relative flex flex-col gap-3 border-l-4 transition-shadow hover:shadow-md ${card} ${URGENCY_BORDER_CLASS[PRIORITY_URGENCY[task.priority]]}`}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <DeadlineRing task={task} />
-            <div className="min-w-0">
-              <p
-                className={`font-medium text-ink dark:text-paper ${
-                  task.status === "done" ? "line-through opacity-60" : ""
-                }`}
-              >
-                {task.title}
+    <li className={`flex flex-col gap-3 border-l-4 ${PRIORITY_CLASS[task.priority].split(" ")[0]} ${card}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <DeadlineRing task={task} />
+          <div className="min-w-0">
+            <p className={`font-medium text-ink dark:text-paper ${task.status === "done" ? "line-through opacity-60" : ""}`} style={{ overflowWrap: "anywhere" }}>
+              {task.title}
+            </p>
+            {task.description && (
+              <p className="mt-0.5 text-sm text-ink-muted dark:text-mist-muted" style={{ overflowWrap: "anywhere" }}>
+                {task.description}
               </p>
-              {task.description && (
-                <p className="mt-0.5 max-w-md text-sm text-ink-muted dark:text-mist-muted">
-                  {task.description}
-                </p>
-              )}
-              <p className="text-xs tabular-nums text-ink-muted dark:text-mist-muted">
-                {task.dueDate ?? "No due date"}
-                {task.dueTime ? ` ${formatDueTime(task.dueTime)}` : ""}
-                {task.estimatedHours !== undefined ? ` · ~${task.estimatedHours}h` : ""}
-                {task.scheduleTime ? ` · scheduled ${task.scheduleTime}` : ""}
-                {formatRecurrence(task.recurrence) ? ` · ${formatRecurrence(task.recurrence)}` : ""}
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${priorityBadgeClass[task.priority]}`}
-              title={`Priority source: ${task.prioritySource}`}
-            >
-              <PriorityDot priority={task.priority} />
-              {task.priority}
-            </span>
-            {task.prioritySource === "ai" && <span className={badge}>AI</span>}
-            {task.prioritySource === "auto" && (
-              <span className={badge} title="Escalated automatically once remaining time no longer fit the estimate">
-                Auto
-              </span>
             )}
-            <select
-              value={task.priority}
-              onChange={(e) => onUpdate({ priority: e.target.value as TaskPriority })}
-              className={selectClass}
-            >
-              {PRIORITIES.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-            <StatusToggle status={task.status} onCycle={() => onUpdate({ status: STATUS_CYCLE[task.status] })} />
-            <button
-              type="button"
-              onClick={onToggleEdit}
-              className={`${secondaryButton} px-2 py-1 text-xs`}
-            >
-              {isEditing ? "Cancel" : "Edit"}
-            </button>
-            <button
-              type="button"
-              onClick={onDuplicate}
-              title="Create a new task with the same title, priority, and estimate"
-              className={`${secondaryButton} px-2 py-1 text-xs`}
-            >
-              Duplicate
-            </button>
-            <button
-              type="button"
-              onClick={onDelete}
-              className={`${secondaryButton} px-2 py-1 text-xs`}
-            >
-              Delete
-            </button>
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs tabular-nums text-ink-muted dark:text-mist-muted">
+              <span className={task.dueDate ? "font-medium text-ink dark:text-paper" : ""}>
+                {task.dueDate ?? "No due date"}
+                {task.dueTime ? ` · ${formatDueTime(task.dueTime)}` : ""}
+              </span>
+              {task.estimatedHours !== undefined && <span>~{task.estimatedHours}h</span>}
+              {task.category && <span className={badgeFlat}>{task.category}</span>}
+              {recurrenceLabel && (
+                <span className="inline-flex items-center gap-1">
+                  <Icon icon={Repeat} size={11} />
+                  {recurrenceLabel}
+                </span>
+              )}
+            </div>
           </div>
         </div>
-
-        <TaskTimeline task={task} />
-
-        {isEditing && (
-          <div className="flex flex-wrap items-end gap-3 border-t border-stone/60 pt-3 dark:border-stone-dark/60">
-            <div className="min-w-[200px] flex-1">
-              <label className={label}>Description (optional)</label>
-              <input
-                type="text"
-                value={editDescription}
-                onChange={(e) => setEditDescription(e.target.value)}
-                placeholder="Notes, links, anything you'll want later"
-                className={`w-full ${input}`}
-              />
-            </div>
-            <div>
-              <label className={label}>Due date</label>
-              <input
-                type="date"
-                value={editDueDate}
-                onChange={(e) => setEditDueDate(e.target.value)}
-                className={input}
-              />
-              <div className="mt-1.5 flex gap-1.5">
-                {DATE_PRESETS.map((preset) => {
-                  const presetDate = dateOffsetDays(preset.days);
-                  return (
-                    <button
-                      key={preset.label}
-                      type="button"
-                      onClick={() => setEditDueDate(presetDate)}
-                      className={`${pillButton} ${
-                        editDueDate === presetDate ? "border-bloom bg-bloom text-paper-card" : pillButtonInactive
-                      }`}
-                    >
-                      {preset.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <div>
-              <label className={label}>Due time</label>
-              <input
-                type="time"
-                value={editDueTime}
-                onChange={(e) => setEditDueTime(e.target.value)}
-                className={input}
-              />
-            </div>
-            <div>
-              <label className={label}>Est. hours</label>
-              <input
-                type="number"
-                min={0}
-                step="0.5"
-                value={editEstimatedHours}
-                onChange={(e) => setEditEstimatedHours(e.target.value)}
-                className={`w-20 ${input}`}
-              />
-            </div>
-            <RecurrenceEditor value={editRecurrence} onChange={setEditRecurrence} />
-            <label className={`flex items-center gap-1.5 pb-2 ${label}`}>
-              <input
-                type="checkbox"
-                checked={editSuggestPriority}
-                onChange={(e) => setEditSuggestPriority(e.target.checked)}
-                className="rounded border-stone text-bloom focus:ring-bloom dark:border-stone-dark"
-              />
-              Re-suggest priority with AI
-            </label>
-            <button type="button" disabled={savingEdit} onClick={onSaveEdit} className={primaryButton}>
-              {savingEdit ? "Saving..." : "Save"}
-            </button>
-          </div>
-        )}
       </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`inline-flex items-center gap-1 rounded-control border px-2 py-1 text-xs font-medium ${PRIORITY_CLASS[task.priority]}`}>
+          {task.priority}
+        </span>
+        <span className="text-xs text-ink-muted dark:text-mist-muted">{PRIORITY_SOURCE_LABEL[task.prioritySource]}</span>
+        <select value={task.priority} onChange={(e) => onUpdate({ priority: e.target.value as TaskPriority })} className={selectClass} aria-label="Edit priority">
+          {PRIORITIES.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <TaskStatusButtons status={task.status} onSetStatus={(status) => onUpdate({ status })} />
+
+      {isQuickEditingTime && (
+        <QuickTimeEditor
+          initial={task.dueTime ?? ""}
+          onSave={(time) => {
+            void onUpdate({ dueTime: time, dueAtUtc: task.dueDate ? computeDueAtUtc(task.dueDate, time) : undefined });
+            onToggleQuickEditTime();
+          }}
+          onCancel={onToggleQuickEditTime}
+        />
+      )}
+
+      <TaskTimeline task={task} />
+
+      <div className="flex flex-wrap items-center gap-2 border-t border-stone/60 pt-3 dark:border-stone-dark/60">
+        <button type="button" onClick={onToggleQuickEditTime} className={`${secondaryButton} flex min-h-10 items-center gap-1.5 px-3 text-xs`}>
+          <Icon icon={Clock} size={13} />
+          Edit time
+        </button>
+        <button type="button" onClick={onToggleEdit} className={`${secondaryButton} flex min-h-10 items-center gap-1.5 px-3 text-xs`}>
+          <Icon icon={Pencil} size={13} />
+          {isEditing ? "Cancel edit" : "Edit"}
+        </button>
+        <button
+          type="button"
+          onClick={onDuplicate}
+          title="Create a new task with the same title, priority, and estimate"
+          className={`${secondaryButton} flex min-h-10 items-center gap-1.5 px-3 text-xs`}
+        >
+          <Icon icon={Copy} size={13} />
+          Duplicate
+        </button>
+        <button type="button" onClick={onDelete} className={`${secondaryButton} flex min-h-10 items-center gap-1.5 px-3 text-xs`}>
+          <Icon icon={Trash2} size={13} />
+          Delete
+        </button>
+      </div>
+
+      {isEditing && (
+        <div className="flex flex-wrap items-end gap-3 border-t border-stone/60 pt-3 dark:border-stone-dark/60">
+          <div className="min-w-[200px] flex-1">
+            <label className={label}>Description (optional)</label>
+            <input type="text" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} placeholder="Notes, links, anything you'll want later" className={`w-full ${input}`} />
+          </div>
+          <div>
+            <label className={label}>Due date</label>
+            <input type="date" value={editDueDate} onChange={(e) => setEditDueDate(e.target.value)} className={input} />
+            <div className="mt-1.5 flex gap-1.5">
+              {DATE_PRESETS.map((preset) => {
+                const presetDate = dateOffsetDays(preset.days);
+                return (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => setEditDueDate(presetDate)}
+                    className={`${pillButton} ${editDueDate === presetDate ? "border-bloom bg-bloom text-paper-card" : pillButtonInactive}`}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <label className={label}>Due time</label>
+            <input type="time" value={editDueTime} onChange={(e) => setEditDueTime(e.target.value)} className={input} />
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {TASK_TIME_PRESETS.map((preset) => (
+                <Chip key={preset.label} active={editDueTime === preset.time} onClick={() => setEditDueTime(preset.time)}>
+                  {preset.label}
+                </Chip>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className={label}>Est. hours</label>
+            <input type="number" min={0} step="0.5" value={editEstimatedHours} onChange={(e) => setEditEstimatedHours(e.target.value)} className={`w-20 ${input}`} />
+          </div>
+          <CategoryEditor value={editCategory} onChange={setEditCategory} />
+          <RecurrenceEditor value={editRecurrence} onChange={setEditRecurrence} />
+          <label className={`flex items-center gap-1.5 pb-2 ${label}`}>
+            <input
+              type="checkbox"
+              checked={editSuggestPriority}
+              onChange={(e) => setEditSuggestPriority(e.target.checked)}
+              className="h-4 w-4 rounded border-stone accent-bloom focus:ring-bloom dark:border-stone-dark"
+            />
+            Re-suggest priority with AI
+          </label>
+          <button type="button" disabled={savingEdit} onClick={onSaveEdit} className={primaryButton}>
+            {savingEdit ? "Saving..." : "Save"}
+          </button>
+        </div>
+      )}
     </li>
   );
 }
 
-type TaskGroup = "Overdue" | "Today" | "Upcoming" | "No due date" | "Done";
-const GROUP_ORDER: TaskGroup[] = ["Overdue", "Today", "Upcoming", "No due date", "Done"];
-const GROUP_EMOJI: Record<TaskGroup, string> = {
-  Overdue: "🔥",
-  Today: "☀️",
-  Upcoming: "📅",
-  "No due date": "📌",
-  Done: "✅",
-};
+const badgeFlat = "rounded-full bg-stone px-2 py-0.5 text-[11px] font-medium text-ink-muted dark:bg-stone-dark dark:text-mist-muted";
+
+type TaskGroup = "Overdue" | "Due today" | "Upcoming" | "Anytime" | "Done";
+const GROUP_ORDER: TaskGroup[] = ["Overdue", "Due today", "Upcoming", "Anytime", "Done"];
 
 function taskGroup(task: Task, today: string): TaskGroup {
   if (task.status === "done") return "Done";
-  if (!task.dueDate) return "No due date";
+  if (!task.dueDate) return "Anytime";
   if (task.dueDate < today) return "Overdue";
-  if (task.dueDate === today) return "Today";
+  if (task.dueDate === today) return "Due today";
   return "Upcoming";
 }
 
 export default function Tasks() {
   const { request } = useApi();
+  const { show: showToast } = useToast();
   const [searchParams] = useSearchParams();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState<TaskPriority | "all">("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -635,6 +568,7 @@ export default function Tasks() {
   const [dueDate, setDueDate] = useState(() => searchParams.get("date") ?? "");
   const [dueTime, setDueTime] = useState("");
   const [estimatedHours, setEstimatedHours] = useState("");
+  const [category, setCategory] = useState("");
   const [priority, setPriority] = useState<TaskPriority>("Medium");
   const [scheduleTime, setScheduleTime] = useState("");
   const [recurrence, setRecurrence] = useState<TaskRecurrence | undefined>(undefined);
@@ -644,10 +578,12 @@ export default function Tasks() {
   const [showMoreOptions, setShowMoreOptions] = useState(false);
 
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [quickEditTimeTaskId, setQuickEditTimeTaskId] = useState<string | null>(null);
   const [editDescription, setEditDescription] = useState("");
   const [editDueDate, setEditDueDate] = useState("");
   const [editDueTime, setEditDueTime] = useState("");
   const [editEstimatedHours, setEditEstimatedHours] = useState("");
+  const [editCategory, setEditCategory] = useState("");
   const [editSuggestPriority, setEditSuggestPriority] = useState(false);
   const [editRecurrence, setEditRecurrence] = useState<TaskRecurrence | undefined>(undefined);
   const [savingEdit, setSavingEdit] = useState(false);
@@ -738,6 +674,7 @@ export default function Tasks() {
           dueTime: dueTime || undefined,
           dueAtUtc: computeDueAtUtc(dueDate, dueTime),
           estimatedHours: estimatedHours ? Number(estimatedHours) : undefined,
+          category: category.trim() || undefined,
           voiceInput: usedVoice,
           priority,
           scheduleTime: scheduleTime || undefined,
@@ -751,6 +688,7 @@ export default function Tasks() {
       setDueDate("");
       setDueTime("");
       setEstimatedHours("");
+      setCategory("");
       setScheduleTime("");
       setPriority("Medium");
       setRecurrence(undefined);
@@ -766,10 +704,7 @@ export default function Tasks() {
   async function updateTask(taskId: string, patch: Record<string, unknown>): Promise<boolean> {
     setError(null);
     try {
-      const updated = await request<Task>(`/tasks/${taskId}`, {
-        method: "PATCH",
-        body: JSON.stringify(patch),
-      });
+      const updated = await request<Task>(`/tasks/${taskId}`, { method: "PATCH", body: JSON.stringify(patch) });
       setTasks((prev) => prev.map((t) => (t.taskId === taskId ? updated : t)));
       return true;
     } catch (err) {
@@ -778,14 +713,38 @@ export default function Tasks() {
     }
   }
 
-  async function deleteTask(taskId: string) {
+  async function deleteTask(task: Task) {
     setError(null);
+    const snapshot = task;
+    setTasks((prev) => prev.filter((t) => t.taskId !== task.taskId));
     try {
-      await request(`/tasks/${taskId}`, { method: "DELETE" });
-      setTasks((prev) => prev.filter((t) => t.taskId !== taskId));
+      await request(`/tasks/${task.taskId}`, { method: "DELETE" });
     } catch (err) {
+      setTasks((prev) => [snapshot, ...prev]);
       setError(err instanceof Error ? err.message : "Failed to delete task");
+      return;
     }
+    showToast(`"${task.title}" deleted`, {
+      undo: () => {
+        request<Task>("/tasks", {
+          method: "POST",
+          body: JSON.stringify({
+            title: snapshot.title,
+            description: snapshot.description,
+            dueDate: snapshot.dueDate,
+            dueTime: snapshot.dueTime,
+            dueAtUtc: snapshot.dueAtUtc,
+            estimatedHours: snapshot.estimatedHours,
+            category: snapshot.category,
+            priority: snapshot.priority,
+            scheduleTime: snapshot.scheduleTime,
+            recurrence: snapshot.recurrence,
+          }),
+        })
+          .then((restored) => setTasks((prev) => [restored, ...prev]))
+          .catch(() => {});
+      },
+    });
   }
 
   async function duplicateTask(task: Task) {
@@ -798,6 +757,7 @@ export default function Tasks() {
           description: task.description,
           priority: task.priority,
           estimatedHours: task.estimatedHours,
+          category: task.category,
         }),
       });
       setTasks((prev) => [copy, ...prev]);
@@ -808,10 +768,12 @@ export default function Tasks() {
 
   function startEdit(task: Task) {
     setEditingTaskId(task.taskId);
+    setQuickEditTimeTaskId(null);
     setEditDescription(task.description ?? "");
     setEditDueDate(task.dueDate ?? "");
     setEditDueTime(task.dueTime ?? "");
     setEditEstimatedHours(task.estimatedHours !== undefined ? String(task.estimatedHours) : "");
+    setEditCategory(task.category ?? "");
     setEditSuggestPriority(false);
     setEditRecurrence(task.recurrence);
   }
@@ -824,6 +786,7 @@ export default function Tasks() {
       dueTime: editDueTime || undefined,
       dueAtUtc: computeDueAtUtc(editDueDate, editDueTime),
       estimatedHours: editEstimatedHours ? Number(editEstimatedHours) : undefined,
+      category: editCategory.trim(),
       recurrence: editRecurrence,
       suggestPriority: editSuggestPriority || undefined,
     });
@@ -832,25 +795,26 @@ export default function Tasks() {
   }
 
   const selectClass =
-    "rounded-xl border border-stone bg-paper-card px-2 py-1 text-xs text-ink focus:border-bloom focus:outline-none dark:border-stone-dark dark:bg-ink-bg-card dark:text-paper";
+    "rounded-xl border border-stone bg-paper-card px-2 py-1.5 text-xs text-ink focus:border-bloom focus:outline-none dark:border-stone-dark dark:bg-ink-bg-card dark:text-paper";
 
-  const filteredTasks = search.trim()
-    ? tasks.filter((t) => t.title.toLowerCase().includes(search.trim().toLowerCase()))
-    : tasks;
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of tasks) if (t.category) set.add(t.category);
+    return Array.from(set).sort();
+  }, [tasks]);
+
+  const filteredTasks = tasks
+    .filter((t) => !search.trim() || t.title.toLowerCase().includes(search.trim().toLowerCase()))
+    .filter((t) => priorityFilter === "all" || t.priority === priorityFilter)
+    .filter((t) => categoryFilter === "all" || t.category === categoryFilter);
 
   const today = todayLocal();
-  const groupedTasks: Record<TaskGroup, Task[]> = {
-    Overdue: [],
-    Today: [],
-    Upcoming: [],
-    "No due date": [],
-    Done: [],
-  };
+  const groupedTasks: Record<TaskGroup, Task[]> = { Overdue: [], "Due today": [], Upcoming: [], Anytime: [], Done: [] };
   for (const task of filteredTasks) {
     groupedTasks[taskGroup(task, today)].push(task);
   }
   for (const group of GROUP_ORDER) {
-    if (group === "No due date") continue;
+    if (group === "Anytime") continue;
     groupedTasks[group].sort((a, b) => {
       const aKey = `${a.dueDate ?? ""}${a.dueTime ?? ""}`;
       const bKey = `${b.dueDate ?? ""}${b.dueTime ?? ""}`;
@@ -867,65 +831,29 @@ export default function Tasks() {
           <div className="mb-1 flex items-center justify-between">
             <label className={label}>Title</label>
             {voiceSupported && (
-              <button
-                type="button"
-                onClick={handleToggleVoice}
-                className={`${pillButton} ${
-                  listening
-                    ? "border-alert bg-alert text-paper-card"
-                    : pillButtonInactive
-                }`}
-              >
+              <button type="button" onClick={handleToggleVoice} className={`${pillButton} ${listening ? "border-alert bg-alert text-paper-card" : pillButtonInactive}`}>
                 {listening ? "⏹️ Stop" : "🎤 Voice input"}
               </button>
             )}
           </div>
-          <input
-            type="text"
-            required
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className={`w-full ${input}`}
-          />
+          <input type="text" required value={title} onChange={(e) => setTitle(e.target.value)} className={`w-full ${input}`} />
           {voiceError && <p className={`mt-1 text-xs ${errorText}`}>{voiceError}</p>}
         </div>
         <div className="min-w-[200px] flex-1">
           <div className="mb-1 flex items-center justify-between">
             <label className={label}>Description (optional)</label>
             {descriptionVoiceSupported && (
-              <button
-                type="button"
-                onClick={handleToggleDescriptionVoice}
-                className={`${pillButton} ${
-                  descriptionListening
-                    ? "border-alert bg-alert text-paper-card"
-                    : pillButtonInactive
-                }`}
-              >
+              <button type="button" onClick={handleToggleDescriptionVoice} className={`${pillButton} ${descriptionListening ? "border-alert bg-alert text-paper-card" : pillButtonInactive}`}>
                 {descriptionListening ? "⏹️ Stop" : "🎤 Voice input"}
               </button>
             )}
           </div>
-          <input
-            type="text"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Notes, links, anything you'll want later"
-            className={`w-full ${input}`}
-          />
-          {descriptionVoiceError && (
-            <p className={`mt-1 text-xs ${errorText}`}>{descriptionVoiceError}</p>
-          )}
+          <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Notes, links, anything you'll want later" className={`w-full ${input}`} />
+          {descriptionVoiceError && <p className={`mt-1 text-xs ${errorText}`}>{descriptionVoiceError}</p>}
         </div>
         <div>
           <label className={label}>Due date</label>
-          <input
-            type="date"
-            required
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-            className={input}
-          />
+          <input type="date" required value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={input} />
           <div className="mt-1.5 flex gap-1.5">
             {DATE_PRESETS.map((preset) => {
               const presetDate = dateOffsetDays(preset.days);
@@ -934,9 +862,7 @@ export default function Tasks() {
                   key={preset.label}
                   type="button"
                   onClick={() => setDueDate(presetDate)}
-                  className={`${pillButton} ${
-                    dueDate === presetDate ? "border-bloom bg-bloom text-paper-card" : pillButtonInactive
-                  }`}
+                  className={`${pillButton} ${dueDate === presetDate ? "border-bloom bg-bloom text-paper-card" : pillButtonInactive}`}
                 >
                   {preset.label}
                 </button>
@@ -945,16 +871,21 @@ export default function Tasks() {
           </div>
         </div>
         <div>
-          <label className={label}>Est. hours</label>
-          <input
-            type="number"
-            min={0}
-            step="0.5"
-            value={estimatedHours}
-            onChange={(e) => setEstimatedHours(e.target.value)}
-            className={`w-20 ${input}`}
-          />
+          <label className={label}>Due time</label>
+          <input type="time" value={dueTime} onChange={(e) => setDueTime(e.target.value)} className={input} />
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {TASK_TIME_PRESETS.map((preset) => (
+              <Chip key={preset.label} active={dueTime === preset.time} onClick={() => setDueTime(preset.time)}>
+                {preset.label}
+              </Chip>
+            ))}
+          </div>
         </div>
+        <div>
+          <label className={label}>Est. hours</label>
+          <input type="number" min={0} step="0.5" value={estimatedHours} onChange={(e) => setEstimatedHours(e.target.value)} className={`w-20 ${input}`} />
+        </div>
+        <CategoryEditor value={category} onChange={setCategory} />
         <RecurrenceEditor value={recurrence} onChange={setRecurrence} />
         <div>
           <label className={label}>Priority</label>
@@ -979,40 +910,20 @@ export default function Tasks() {
             type="checkbox"
             checked={suggestPriority}
             onChange={(e) => setSuggestPriority(e.target.checked)}
-            className="rounded border-stone text-bloom focus:ring-bloom dark:border-stone-dark"
+            className="h-4 w-4 rounded border-stone accent-bloom focus:ring-bloom dark:border-stone-dark"
           />
           Suggest with AI
         </label>
 
-        <button
-          type="button"
-          onClick={() => setShowMoreOptions((v) => !v)}
-          className="w-full pb-1 text-left text-xs font-medium text-bloom hover:underline"
-        >
-          {showMoreOptions ? "Fewer options ▴" : "Due time, schedule time ▾"}
+        <button type="button" onClick={() => setShowMoreOptions((v) => !v)} className="w-full pb-1 text-left text-xs font-medium text-bloom hover:underline">
+          {showMoreOptions ? "Fewer options ▴" : "Schedule time ▾"}
         </button>
 
         {showMoreOptions && (
-          <>
-            <div>
-              <label className={label}>Due time</label>
-              <input
-                type="time"
-                value={dueTime}
-                onChange={(e) => setDueTime(e.target.value)}
-                className={input}
-              />
-            </div>
-            <div>
-              <label className={label}>Schedule time</label>
-              <input
-                type="time"
-                value={scheduleTime}
-                onChange={(e) => setScheduleTime(e.target.value)}
-                className={input}
-              />
-            </div>
-          </>
+          <div>
+            <label className={label}>Schedule time</label>
+            <input type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} className={input} />
+          </div>
         )}
 
         <button type="submit" disabled={creating} className={primaryButton}>
@@ -1023,14 +934,31 @@ export default function Tasks() {
       {error && <p className={`mb-4 ${errorText}`}>{error}</p>}
 
       {tasks.length > 0 && (
-        <input
-          type="search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search tasks..."
-          aria-label="Search tasks"
-          className={`mb-4 w-full ${input}`}
-        />
+        <>
+          <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search tasks..." aria-label="Search tasks" className={`mb-3 w-full ${input}`} />
+          <div className="mb-6 flex flex-wrap gap-1.5">
+            <Chip active={priorityFilter === "all"} onClick={() => setPriorityFilter("all")}>
+              All priority
+            </Chip>
+            {PRIORITIES.map((p) => (
+              <Chip key={p} active={priorityFilter === p} onClick={() => setPriorityFilter(priorityFilter === p ? "all" : p)}>
+                {p}
+              </Chip>
+            ))}
+            {categories.length > 0 && (
+              <>
+                <Chip active={categoryFilter === "all"} onClick={() => setCategoryFilter("all")}>
+                  All categories
+                </Chip>
+                {categories.map((c) => (
+                  <Chip key={c} active={categoryFilter === c} onClick={() => setCategoryFilter(categoryFilter === c ? "all" : c)}>
+                    {c}
+                  </Chip>
+                ))}
+              </>
+            )}
+          </div>
+        </>
       )}
 
       {loading ? (
@@ -1042,14 +970,13 @@ export default function Tasks() {
       ) : tasks.length === 0 ? (
         <EmptyState icon="✅" title="No tasks yet" hint="Add your first task above to get started." />
       ) : filteredTasks.length === 0 ? (
-        <p className={mutedText}>No tasks match "{search}". 🔍</p>
+        <p className={mutedText}>No tasks match your filters.</p>
       ) : (
         <div className="flex flex-col gap-6">
           {GROUP_ORDER.filter((g) => groupedTasks[g].length > 0).map((group) => (
             <div key={group}>
-              <p className={`mb-2 ${sectionLabel}`}>
-                {GROUP_EMOJI[group]} {group}{" "}
-                <span className="normal-case text-mist-muted">({groupedTasks[group].length})</span>
+              <p className={`mb-2 border-l-2 border-stone pl-2 dark:border-stone-dark ${sectionLabel}`}>
+                {group} <span className="normal-case text-mist-muted">({groupedTasks[group].length})</span>
               </p>
               <ul className="flex flex-col gap-3">
                 {groupedTasks[group].map((task) => (
@@ -1057,12 +984,12 @@ export default function Tasks() {
                     key={task.taskId}
                     task={task}
                     isEditing={editingTaskId === task.taskId}
-                    onToggleEdit={() =>
-                      editingTaskId === task.taskId ? setEditingTaskId(null) : startEdit(task)
-                    }
+                    isQuickEditingTime={quickEditTimeTaskId === task.taskId}
+                    onToggleEdit={() => (editingTaskId === task.taskId ? setEditingTaskId(null) : startEdit(task))}
+                    onToggleQuickEditTime={() => setQuickEditTimeTaskId((prev) => (prev === task.taskId ? null : task.taskId))}
                     onUpdate={(patch) => updateTask(task.taskId, patch)}
                     onDuplicate={() => duplicateTask(task)}
-                    onDelete={() => deleteTask(task.taskId)}
+                    onDelete={() => deleteTask(task)}
                     editDescription={editDescription}
                     setEditDescription={setEditDescription}
                     editDueDate={editDueDate}
@@ -1071,6 +998,8 @@ export default function Tasks() {
                     setEditDueTime={setEditDueTime}
                     editEstimatedHours={editEstimatedHours}
                     setEditEstimatedHours={setEditEstimatedHours}
+                    editCategory={editCategory}
+                    setEditCategory={setEditCategory}
                     editSuggestPriority={editSuggestPriority}
                     setEditSuggestPriority={setEditSuggestPriority}
                     editRecurrence={editRecurrence}
