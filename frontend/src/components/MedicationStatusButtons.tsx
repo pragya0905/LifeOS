@@ -16,11 +16,14 @@ export function MedicationStatusButtons({
   status,
   note,
   pending,
+  showAddNote = true,
   onSetStatus,
 }: {
   status: MedicationLogStatus | undefined | null;
   note?: string;
   pending: boolean;
+  /** false on a future date — nothing to annotate yet, so the affordance is hidden. */
+  showAddNote?: boolean;
   onSetStatus: (status: MedicationLogStatus, note?: string) => void;
 }) {
   const [noteOpen, setNoteOpen] = useState(false);
@@ -41,7 +44,7 @@ export function MedicationStatusButtons({
       {status && status !== "taken" && !noteOpen && (
         <p className="text-xs text-ink-muted dark:text-mist-muted">{medicationStatusLabel(status, note)}</p>
       )}
-      {!noteOpen ? (
+      {!showAddNote ? null : !noteOpen ? (
         <button
           type="button"
           onClick={() => {

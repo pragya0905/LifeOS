@@ -40,3 +40,11 @@ export function formatDueTime(dueTime: string | undefined): string | undefined {
   if (!dueTime) return undefined;
   return dueTime === END_OF_DAY_TIME ? "End of day" : dueTime;
 }
+
+// Strict YYYY-MM-DD check (format AND calendar validity, e.g. rejects "2026-13-40") — used to
+// validate a `?date=` URL param before trusting it, since it comes from the address bar.
+export function isValidDateStr(s: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(`${s}T00:00:00`);
+  return !Number.isNaN(d.getTime()) && toLocalDateStr(d) === s;
+}

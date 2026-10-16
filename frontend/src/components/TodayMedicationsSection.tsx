@@ -9,6 +9,8 @@ export interface MedicationRow {
   status: MedicationLogStatus | null; // null = no log yet today
   note?: string;
   pending: boolean;
+  /** false on a future date — a planning view only, nothing can be marked yet. */
+  editable: boolean;
 }
 
 type Bucket = "Morning" | "Afternoon" | "Night" | "Anytime";
@@ -50,6 +52,7 @@ export function TodayMedicationsSection({
         // Only "taken" is a resolved, collapsible state — same rule as routines' done/N-A
         // vs skipped: a skipped medication stays visible so its reason stays reachable.
         const allTaken = bucketRows.every((r) => r.status === "taken");
+        const bucketEditable = bucketRows.every((r) => r.editable);
         const pendingIds = bucketRows.filter((r) => r.status === null).map((r) => r.medication.medicationId);
         return (
           <div key={bucket}>
@@ -66,7 +69,7 @@ export function TodayMedicationsSection({
                     <MedicationRowItem key={r.medication.medicationId} row={r} onSetStatus={onSetStatus} />
                   ))}
                 </ul>
-                {pendingIds.length > 0 && (
+                {pendingIds.length > 0 && bucketEditable && (
                   <button
                     type="button"
                     onClick={() => onMarkAllTaken(pendingIds)}
@@ -75,6 +78,9 @@ export function TodayMedicationsSection({
                     <Icon icon={Check} size={13} />
                     Mark all taken
                   </button>
+                )}
+                {pendingIds.length > 0 && !bucketEditable && (
+                  <p className="mt-2 text-xs text-ink-muted dark:text-mist-muted">Can't mark future items</p>
                 )}
               </>
             )}
@@ -92,7 +98,7 @@ function MedicationRowItem({
   row: MedicationRow;
   onSetStatus: (medicationId: string, status: MedicationLogStatus, note?: string) => Promise<void>;
 }) {
-  const { medication, status, note, pending } = row;
+  const { medication, status, note, pending, editable } = row;
   const instructions = [medication.dosage, medication.notes].filter(Boolean).join(" · ");
 
   return (
@@ -105,7 +111,8 @@ function MedicationRowItem({
       <MedicationStatusButtons
         status={status}
         note={note}
-        pending={pending}
+        pending={pending || !editable}
+        showAddNote={editable}
         onSetStatus={(next, nextNote) => void onSetStatus(medication.medicationId, next, nextNote)}
       />
     </li>

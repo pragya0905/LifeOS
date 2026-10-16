@@ -12,7 +12,7 @@ function encouragement(done: number, total: number): string {
 
 // The streak pill is deliberately the larger, warmer Variant-A treatment (not B's compact
 // "4d" text) — it's meant to read as encouraging, not as one more small stat.
-export function TodayHeader({ streakDays, done, total }: { streakDays: number; done: number; total: number }) {
+export function TodayHeader({ streakDays, done, total, isToday = true }: { streakDays: number; done: number; total: number; isToday?: boolean }) {
   const ratio = total > 0 ? Math.min(done / total, 1) : 0;
 
   return (
@@ -31,7 +31,7 @@ export function TodayHeader({ streakDays, done, total }: { streakDays: number; d
           />
         </div>
         <p className="mt-1.5 text-xs tabular-nums text-ink-muted dark:text-mist-muted">
-          {done} of {total} done today{encouragement(done, total) && ` — ${encouragement(done, total)}`}
+          {done} of {total} done{isToday ? " today" : ""}{encouragement(done, total) && ` — ${encouragement(done, total)}`}
         </p>
       </div>
     </div>

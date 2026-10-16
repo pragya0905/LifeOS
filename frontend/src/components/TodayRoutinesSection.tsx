@@ -20,6 +20,8 @@ export interface RoutineGroup {
   routine: RoutineTemplate;
   steps: RoutineStepRow[];
   expanded: boolean;
+  /** false on a future date — a planning view only, nothing can be marked yet. */
+  editable: boolean;
   onToggleExpand: () => void;
   onSetStatus: (stepIndex: number, status: RoutineStepStatus, note?: string) => Promise<void>;
   onMarkAllDone: () => void;
@@ -97,7 +99,7 @@ export function TodayRoutinesSection({
 }
 
 function RoutineRow({ group }: { group: RoutineGroup }) {
-  const { routine, steps, expanded, onToggleExpand, onSetStatus, onMarkAllDone, onSkipRemaining } = group;
+  const { routine, steps, expanded, editable, onToggleExpand, onSetStatus, onMarkAllDone, onSkipRemaining } = group;
   const doneCount = steps.filter((s) => isCounted(s.status)).length;
   const allDone = doneCount === steps.length && steps.length > 0;
   const resolved = isRoutineResolved(steps);
@@ -146,25 +148,29 @@ function RoutineRow({ group }: { group: RoutineGroup }) {
 
       {expanded && (
         <div className="border-t border-stone px-3 py-2 dark:border-stone-dark">
-          <ExpandedSteps steps={steps} onSetStatus={onSetStatus} />
-          <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={onMarkAllDone}
-              className="inline-flex min-h-10 items-center gap-1.5 rounded-control border border-success px-3 text-xs font-medium text-success-ink hover:bg-success-soft dark:border-success dark:text-success-ink-dark dark:hover:bg-success-soft-dark"
-            >
-              <Icon icon={Check} size={13} />
-              Mark all done
-            </button>
-            <button
-              type="button"
-              onClick={onSkipRemaining}
-              className="inline-flex min-h-10 items-center gap-1.5 rounded-control border border-stone px-3 text-xs font-medium text-ink-muted hover:bg-stone/40 dark:border-stone-dark dark:text-mist-muted dark:hover:bg-stone-dark/40"
-            >
-              <Icon icon={SkipForward} size={13} />
-              Skip all remaining
-            </button>
-          </div>
+          <ExpandedSteps steps={steps} editable={editable} onSetStatus={onSetStatus} />
+          {editable ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={onMarkAllDone}
+                className="inline-flex min-h-10 items-center gap-1.5 rounded-control border border-success px-3 text-xs font-medium text-success-ink hover:bg-success-soft dark:border-success dark:text-success-ink-dark dark:hover:bg-success-soft-dark"
+              >
+                <Icon icon={Check} size={13} />
+                Mark all done
+              </button>
+              <button
+                type="button"
+                onClick={onSkipRemaining}
+                className="inline-flex min-h-10 items-center gap-1.5 rounded-control border border-stone px-3 text-xs font-medium text-ink-muted hover:bg-stone/40 dark:border-stone-dark dark:text-mist-muted dark:hover:bg-stone-dark/40"
+              >
+                <Icon icon={SkipForward} size={13} />
+                Skip all remaining
+              </button>
+            </div>
+          ) : (
+            <p className="mt-2 text-xs text-ink-muted dark:text-mist-muted">Can't mark future items</p>
+          )}
         </div>
       )}
     </div>
@@ -173,17 +179,19 @@ function RoutineRow({ group }: { group: RoutineGroup }) {
 
 function ExpandedSteps({
   steps,
+  editable,
   onSetStatus,
   className = "",
 }: {
   steps: RoutineStepRow[];
+  editable: boolean;
   onSetStatus: (stepIndex: number, status: RoutineStepStatus, note?: string) => Promise<void>;
   className?: string;
 }) {
   return (
     <div className={`flex flex-col gap-3 ${className}`}>
       {steps.map((step) => (
-        <StepRow key={step.index} step={step} onSetStatus={onSetStatus} />
+        <StepRow key={step.index} step={step} editable={editable} onSetStatus={onSetStatus} />
       ))}
     </div>
   );
@@ -191,9 +199,11 @@ function ExpandedSteps({
 
 function StepRow({
   step,
+  editable,
   onSetStatus,
 }: {
   step: RoutineStepRow;
+  editable: boolean;
   onSetStatus: (stepIndex: number, status: RoutineStepStatus, note?: string) => Promise<void>;
 }) {
   const [noteOpen, setNoteOpen] = useState(false);
@@ -214,7 +224,7 @@ function StepRow({
             <button
               key={candidate}
               type="button"
-              disabled={step.pending}
+              disabled={step.pending || !editable}
               onClick={() => void onSetStatus(step.index, candidate)}
               aria-pressed={active}
               className={`flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-control border text-xs font-medium transition-colors disabled:opacity-70 ${
@@ -230,7 +240,7 @@ function StepRow({
       {step.status && step.status !== "done" && !noteOpen && (
         <p className="mt-1 text-xs text-ink-muted dark:text-mist-muted">{routineStatusLabel(step.status, step.note)}</p>
       )}
-      {!noteOpen ? (
+      {!editable ? null : !noteOpen ? (
         <button
           type="button"
           onClick={() => {

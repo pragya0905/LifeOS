@@ -9,6 +9,8 @@ export interface TaskRowAction {
   task: Task;
   overdue: boolean;
   pending: boolean;
+  /** false on a future date — nothing can be marked done ahead of time. */
+  editable: boolean;
   onComplete: () => void;
 }
 
@@ -46,13 +48,13 @@ function TaskGroup({ label, rows }: { label?: string; rows: TaskRowAction[] }) {
   );
 }
 
-function TaskRow({ task, overdue, pending, onComplete }: TaskRowAction) {
+function TaskRow({ task, overdue, pending, editable, onComplete }: TaskRowAction) {
   const completed = task.status === "done";
   return (
     <li className={`flex min-h-12 items-center gap-3 rounded-control px-2 py-2 ${completed ? "opacity-60" : ""}`}>
       <button
         type="button"
-        disabled={pending || completed}
+        disabled={pending || completed || !editable}
         onClick={onComplete}
         aria-label={completed ? `${task.title} done` : `Mark ${task.title} done`}
         className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition-colors disabled:opacity-60 ${

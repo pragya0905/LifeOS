@@ -16,6 +16,7 @@ export function TodayLogYourDay({
   cycleLoggedToday,
   onLogPeriodStarted,
   cyclePending,
+  isToday = true,
 }: {
   onLogWater: (amountMl: number) => void;
   waterPending: boolean;
@@ -26,6 +27,7 @@ export function TodayLogYourDay({
   cycleLoggedToday: boolean;
   onLogPeriodStarted: () => void;
   cyclePending: boolean;
+  isToday?: boolean;
 }) {
   const [customOpen, setCustomOpen] = useState(false);
   const [customAmount, setCustomAmount] = useState("");
@@ -105,7 +107,7 @@ export function TodayLogYourDay({
           <p className="mb-1.5 text-xs font-medium text-ink-muted dark:text-mist-muted">Cycle</p>
           <Chip disabled={cyclePending || cycleLoggedToday} onClick={onLogPeriodStarted}>
             <Icon icon={Moon} size={13} />
-            {cycleLoggedToday ? "Period started ✓" : "Period started today"}
+            {cycleLoggedToday ? "Period started ✓" : isToday ? "Period started today" : "Period started"}
           </Chip>
         </div>
       )}

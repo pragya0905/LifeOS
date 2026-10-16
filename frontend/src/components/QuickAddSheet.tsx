@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useLocation, type Location } from "react-router-dom";
 import {
   CheckSquare,
   Droplet,
@@ -16,7 +17,7 @@ import {
 import { useApi } from "../api/useApi";
 import { useToast } from "./Toast";
 import { useSpeechToText } from "../hooks/useSpeechToText";
-import { computeDueAtUtc, END_OF_DAY_TIME, todayLocal } from "../lib/date";
+import { computeDueAtUtc, END_OF_DAY_TIME, isValidDateStr, todayLocal } from "../lib/date";
 import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_EMOJI, EXPENSE_CATEGORY_LABEL } from "../lib/expenseCategories";
 import { nextWishIncrementPatch, wishIsIncrementable, wishRevertPatch } from "../lib/wishProgress";
 import type {
@@ -67,6 +68,14 @@ const TASK_TIME_PRESETS: { label: string; time: string }[] = [
   { label: "Night", time: "21:00" },
   { label: "End of day", time: END_OF_DAY_TIME },
 ];
+
+function defaultDueDate(location: Location): string {
+  if (location.pathname === "/dashboard") {
+    const param = new URLSearchParams(location.search).get("date");
+    if (param && isValidDateStr(param)) return param;
+  }
+  return todayLocal();
+}
 
 const LAST_EXPENSE_CATEGORY_KEY = "lifeos_quickadd_last_expense_category";
 
@@ -122,8 +131,11 @@ export function QuickAddSheet({
 function TaskQuickAdd({ onDone }: { onDone: () => void }) {
   const { request } = useApi();
   const { show } = useToast();
+  const location = useLocation();
   const [title, setTitle] = useState("");
-  const [dueDate, setDueDate] = useState(todayLocal());
+  // Opening the sheet from Today while viewing another day defaults a new task to that same
+  // day, not the real today — the "/dashboard?date=..." the user is already looking at.
+  const [dueDate, setDueDate] = useState(() => defaultDueDate(location));
   const [dueTime, setDueTime] = useState(END_OF_DAY_TIME);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

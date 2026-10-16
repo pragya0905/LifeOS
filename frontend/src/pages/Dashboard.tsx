@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { SlidersHorizontal } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { ChevronLeft, ChevronRight, SlidersHorizontal } from "lucide-react";
 import { useApi } from "../api/useApi";
 import { useAuth } from "../auth/AuthContext";
-import { todayLocal } from "../lib/date";
+import { addDays, isValidDateStr, todayLocal } from "../lib/date";
 import { appliesOnDate, byTimeOfDay } from "../lib/weekdays";
 import { computeRoutineStreak, routineStreakWindowStart } from "../lib/routineStreak";
 import { medicationStatusLabel, routineStatusLabel } from "../lib/statusDisplay";
@@ -48,7 +49,7 @@ import TodayMeals from "../components/TodayMeals";
 import TodayExpenses from "../components/TodayExpenses";
 import TodayCycle from "../components/TodayCycle";
 import BudgetPreview from "../components/BudgetPreview";
-import { errorText, mutedText, page, pageTitle, secondaryButton, sectionLabel } from "../components/ui";
+import { errorText, page, secondaryButton, sectionLabel } from "../components/ui";
 
 function greeting(): string {
   const hour = new Date().getHours();
@@ -59,22 +60,33 @@ function greeting(): string {
   return "Good night";
 }
 
-function formattedDate(): string {
-  return new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+// Full weekday + month + day — used as the page title on any date that isn't today.
+function fullDateLabel(dateStr: string): string {
+  return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+}
+
+// Compact weekday + month + day — sits next to the prev/next arrows and in the banner, so it
+// stays short even when the title line above it already spells the date out in full.
+function compactDateLabel(dateStr: string): string {
+  return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
 
 interface TodayData {
   tasks: Task[];
   routines: RoutineTemplate[];
-  routineRangeLogs: RoutineStepLog[];
+  // Just the viewed date's own routine step logs (from the single-date endpoint) — what every
+  // display/edit path uses. Streak math is separate (see routineStreakLogs below): a streak is
+  // always anchored to the real current day, never to whichever day is being viewed.
+  routineLogsForDate: RoutineStepLog[];
+  routineStreakLogs: RoutineStepLog[];
   medications: Medication[];
   medicationLogs: MedicationLog[];
   habits: HabitLog[];
   profile: UserProfile | null;
   progressSummary: ProgressSummary | null;
   journalToday: LogEntry[];
-  // Full (unfiltered) cycle history, not just today's — TodayCycle needs the whole series
-  // for its phase estimate, and Dashboard only needs a same-day slice of it. One fetch
+  // Full (unfiltered) cycle history, not just the viewed date's — TodayCycle needs the whole
+  // series for its phase estimate, and Dashboard only needs a same-day slice of it. One fetch
   // covers both instead of two independent ones for the same resource.
   cycleAll: LogEntry[];
   moodToday: LogEntry[];
@@ -83,7 +95,7 @@ interface TodayData {
 // Wave 1: everything the always-visible lists need for first paint. Wave 2: everything else
 // (Log-your-day, achievements, insights, cycle/meals/expenses modules) — deferred until
 // after wave 1 has rendered so the useful part of the screen shows up first.
-type Wave1Data = Pick<TodayData, "tasks" | "routines" | "routineRangeLogs" | "medications" | "medicationLogs">;
+type Wave1Data = Pick<TodayData, "tasks" | "routines" | "routineLogsForDate" | "routineStreakLogs" | "medications" | "medicationLogs">;
 type Wave2Data = Pick<TodayData, "habits" | "profile" | "progressSummary" | "journalToday" | "cycleAll" | "moodToday">;
 
 const EMPTY_WAVE2: Wave2Data = {
@@ -95,16 +107,20 @@ const EMPTY_WAVE2: Wave2Data = {
   moodToday: [],
 };
 
-const WAVE1_CACHE_KEY = "today-wave1";
-const WAVE2_CACHE_KEY = "today-wave2";
+function wave1CacheKey(date: string): string {
+  return `today-wave1:${date}`;
+}
+function wave2CacheKey(date: string): string {
+  return `today-wave2:${date}`;
+}
 
 function isAbortError(err: unknown): boolean {
   return typeof err === "object" && err !== null && (err as { name?: unknown }).name === "AbortError";
 }
 
-function isRoutineComplete(routine: RoutineTemplate, logs: RoutineStepLog[], date: string): boolean {
+function isRoutineComplete(routine: RoutineTemplate, logs: RoutineStepLog[]): boolean {
   return routine.steps.every((_, i) => {
-    const status = logs.find((l) => l.date === date && l.routineId === routine.routineId && l.stepIndex === i)?.status;
+    const status = logs.find((l) => l.routineId === routine.routineId && l.stepIndex === i)?.status;
     return status === "done" || status === "not_applicable";
   });
 }
@@ -114,18 +130,86 @@ export default function Dashboard() {
   const { user } = useAuth();
   const userId = user?.userId ?? "";
   const { show: showToast } = useToast();
-  const today = todayLocal();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // The real current date, re-checked at the next local midnight (see the rollover effect
+  // below) rather than on a recurring poll — so a tab left open overnight on "today" follows
+  // the date forward instead of silently freezing on yesterday.
+  const [realToday, setRealToday] = useState(todayLocal());
+  useEffect(() => {
+    function msUntilNextMidnight(): number {
+      const now = new Date();
+      const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
+      return next.getTime() - now.getTime();
+    }
+    let timer: number;
+    function tick() {
+      setRealToday(todayLocal());
+      timer = window.setTimeout(tick, msUntilNextMidnight());
+    }
+    timer = window.setTimeout(tick, msUntilNextMidnight());
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const dateParam = searchParams.get("date");
+  const selectedDate = dateParam && isValidDateStr(dateParam) ? dateParam : realToday;
+  const isToday = selectedDate === realToday;
+  const isFuture = selectedDate > realToday;
+  const editable = !isFuture;
+
+  function goToDate(date: string) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (date === realToday) next.delete("date");
+        else next.set("date", date);
+        return next;
+      },
+      { replace: false },
+    );
+  }
+
+  // Invalid `?date=` (bad format, or a real calendar impossibility) silently falls back to
+  // today for rendering above, but the address bar itself should stop showing the garbage.
+  useEffect(() => {
+    if (dateParam && !isValidDateStr(dateParam)) {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("date");
+        return next;
+      }, { replace: true });
+    }
+  }, [dateParam, setSearchParams]);
+
+  // Midnight rollover while viewing "today": if the URL had no explicit date (or explicitly
+  // matched the old today) and real today just advanced, follow it forward instead of the
+  // view silently becoming "yesterday" under an unchanged URL.
+  const prevRealTodayRef = useRef(realToday);
+  useEffect(() => {
+    if (prevRealTodayRef.current !== realToday) {
+      const wasViewingToday = !dateParam || dateParam === prevRealTodayRef.current;
+      prevRealTodayRef.current = realToday;
+      if (wasViewingToday && dateParam) {
+        setSearchParams((prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("date");
+          return next;
+        }, { replace: true });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [realToday]);
 
   const [data, setData] = useState<TodayData | null>(() => {
     if (!userId) return null;
-    const wave1 = readCache<Wave1Data>(userId, WAVE1_CACHE_KEY);
+    const wave1 = readCache<Wave1Data>(userId, wave1CacheKey(selectedDate));
     if (!wave1) return null;
-    const wave2 = readCache<Wave2Data>(userId, WAVE2_CACHE_KEY);
+    const wave2 = readCache<Wave2Data>(userId, wave2CacheKey(selectedDate));
     return { ...wave1, ...(wave2 ?? EMPTY_WAVE2) };
   });
   // The cached snapshot this load started from (if any) — compared against the fully-settled
   // background refresh so the "Updated just now" hint only fires when something actually
-  // changed, not on every quiet no-op revalidation.
+  // changed, not on every quiet no-op revalidation. Reset whenever the viewed date changes.
   const initialSnapshotRef = useRef<string | null>(data ? JSON.stringify(data) : null);
   // Kept in sync with `data` via the effect below so the fetch effect (which intentionally
   // does not depend on `data`, to avoid re-fetching on every mutation) can still read the
@@ -147,9 +231,72 @@ export default function Dashboard() {
     setModules(loadModuleConfig());
   }, []);
 
-  // Two-wave, cache-backed, cancellable load. See the StrictMode comment on the cleanup
-  // below (same class of bug, same fix, as BottomSheet.tsx's history effect) for why the
-  // abort is deferred via a ref-guarded fetchKey rather than fired directly in cleanup.
+  // Never show a stale day's data while a new date loads: as soon as the selected date
+  // changes, hydrate `data` from that date's own cache (instant SWR paint, same as the
+  // mount-time lazy useState initializer below handles for the first load) or drop straight
+  // to the skeleton if there's no cache for it — never leave the previous date's content on
+  // screen mid-navigation. Skipped on the very first run since the lazy initializer already
+  // covers mount.
+  const skipNextDateEffectRef = useRef(true);
+  useEffect(() => {
+    if (!userId) return;
+    if (skipNextDateEffectRef.current) {
+      skipNextDateEffectRef.current = false;
+      return;
+    }
+    const wave1 = readCache<Wave1Data>(userId, wave1CacheKey(selectedDate));
+    if (!wave1) {
+      setData(null);
+      initialSnapshotRef.current = null;
+      return;
+    }
+    const wave2 = readCache<Wave2Data>(userId, wave2CacheKey(selectedDate));
+    const merged = { ...wave1, ...(wave2 ?? EMPTY_WAVE2) };
+    setData(merged);
+    initialSnapshotRef.current = JSON.stringify(merged);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate, userId]);
+
+  function wave1Fetch(date: string, signal: AbortSignal, windowStart: string) {
+    return Promise.all([
+      request<{ tasks: Task[] }>("/tasks", { signal }),
+      request<{ routines: RoutineTemplate[] }>("/routines", { signal }),
+      request<{ logs: RoutineStepLog[] }>(`/routine-logs/${date}`, { signal }),
+      request<{ logs: RoutineStepLog[] }>(`/routine-logs?from=${windowStart}&to=${realToday}`, { signal }),
+      request<{ medications: Medication[] }>("/medications", { signal }),
+      request<{ logs: MedicationLog[] }>(`/medication-logs/${date}`, { signal }),
+    ]).then(([tasksRes, routinesRes, dateLogsRes, streakLogsRes, medsRes, medLogsRes]): Wave1Data => ({
+      tasks: tasksRes.tasks,
+      routines: routinesRes.routines,
+      routineLogsForDate: dateLogsRes.logs,
+      routineStreakLogs: streakLogsRes.logs,
+      medications: medsRes.medications,
+      medicationLogs: medLogsRes.logs,
+    }));
+  }
+
+  function wave2Fetch(date: string, signal: AbortSignal) {
+    return Promise.all([
+      request<{ habits: HabitLog[] }>(`/habits/${date}`, { signal }),
+      request<UserProfile>("/profile", { signal }),
+      request<ProgressSummary>("/progress-summary", { signal }),
+      request<{ entries: LogEntry[] }>(`/journal?from=${date}&to=${date}`, { signal }),
+      request<{ entries: LogEntry[] }>("/logs?logType=cycle", { signal }),
+      request<{ entries: LogEntry[] }>(`/logs?logType=mood&from=${date}&to=${date}`, { signal }),
+    ]).then(([habitsRes, profileRes, progressSummaryRes, journalRes, cycleRes, moodRes]): Wave2Data => ({
+      habits: habitsRes.habits,
+      profile: profileRes,
+      progressSummary: progressSummaryRes,
+      journalToday: journalRes.entries,
+      cycleAll: cycleRes.entries,
+      moodToday: moodRes.entries,
+    }));
+  }
+
+  // Two-wave, cache-backed, cancellable load for the viewed date, plus a quiet prefetch of
+  // the adjacent two dates so the prev/next arrows feel instant. See the StrictMode comment
+  // on the cleanup below (same class of bug, same fix, as BottomSheet.tsx's history effect)
+  // for why the abort is deferred via a ref-guarded fetchKey rather than fired directly.
   const abortTimerRef = useRef<number | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
   const startedForRef = useRef<string | null>(null);
@@ -157,7 +304,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!userId) return;
-    const fetchKey = `${userId}:${today}`;
+    const fetchKey = `${userId}:${selectedDate}`;
 
     if (abortTimerRef.current !== null) {
       window.clearTimeout(abortTimerRef.current);
@@ -175,24 +322,9 @@ export default function Dashboard() {
 
       async function loadWave2(signal: AbortSignal) {
         try {
-          const [habitsRes, profileRes, progressSummaryRes, journalRes, cycleRes, moodRes] = await Promise.all([
-            request<{ habits: HabitLog[] }>(`/habits/${today}`, { signal }),
-            request<UserProfile>("/profile", { signal }),
-            request<ProgressSummary>("/progress-summary", { signal }),
-            request<{ entries: LogEntry[] }>(`/journal?from=${today}&to=${today}`, { signal }),
-            request<{ entries: LogEntry[] }>("/logs?logType=cycle", { signal }),
-            request<{ entries: LogEntry[] }>(`/logs?logType=mood&from=${today}&to=${today}`, { signal }),
-          ]);
+          const wave2 = await wave2Fetch(selectedDate, signal);
           if (startedForRef.current !== fetchKey) return;
-          const wave2: Wave2Data = {
-            habits: habitsRes.habits,
-            profile: profileRes,
-            progressSummary: progressSummaryRes,
-            journalToday: journalRes.entries,
-            cycleAll: cycleRes.entries,
-            moodToday: moodRes.entries,
-          };
-          writeCache(userId, WAVE2_CACHE_KEY, wave2);
+          writeCache(userId, wave2CacheKey(selectedDate), wave2);
           // Merge via the functional updater (not a value computed from latestDataRef) so
           // this always lands on whatever the truly-current state is, even if a mutation's
           // own optimistic/confirmed write happened in the same tick this wave resolved —
@@ -228,27 +360,24 @@ export default function Dashboard() {
 
       async function loadWave1(signal: AbortSignal) {
         try {
-          const [tasksRes, routinesRes, routineLogsRes, medsRes, medLogsRes] = await Promise.all([
-            request<{ tasks: Task[] }>("/tasks", { signal }),
-            request<{ routines: RoutineTemplate[] }>("/routines", { signal }),
-            request<{ logs: RoutineStepLog[] }>(`/routine-logs?from=${windowStart}&to=${today}`, { signal }),
-            request<{ medications: Medication[] }>("/medications", { signal }),
-            request<{ logs: MedicationLog[] }>(`/medication-logs/${today}`, { signal }),
-          ]);
+          const wave1 = await wave1Fetch(selectedDate, signal, windowStart);
           if (startedForRef.current !== fetchKey) return;
-          const wave1: Wave1Data = {
-            tasks: tasksRes.tasks,
-            routines: routinesRes.routines,
-            routineRangeLogs: routineLogsRes.logs,
-            medications: medsRes.medications,
-            medicationLogs: medLogsRes.logs,
-          };
-          writeCache(userId, WAVE1_CACHE_KEY, wave1);
+          writeCache(userId, wave1CacheKey(selectedDate), wave1);
           setData((prev) => ({ ...(prev ?? { ...wave1, ...EMPTY_WAVE2 }), ...wave1 }));
           setError(null);
           // Deferred to a microtask so wave 1 has a chance to actually paint before wave 2
           // starts competing for the connection/main thread.
           void Promise.resolve().then(() => loadWave2(signal));
+          // Quietly prefetch the neighboring dates (not awaited, not shown loading, failures
+          // ignored outright) so stepping with the arrows reads from cache instantly next
+          // time — a plain uncancelled fetch, not tied to this date's own abort controller,
+          // since switching dates again shouldn't cancel a still-useful background prefetch.
+          for (const neighbor of [addDays(selectedDate, -1), addDays(selectedDate, 1)]) {
+            if (readCache<Wave1Data>(userId, wave1CacheKey(neighbor))) continue;
+            wave1Fetch(neighbor, new AbortController().signal, windowStart)
+              .then((w1) => writeCache(userId, wave1CacheKey(neighbor), w1))
+              .catch(() => {});
+          }
         } catch (err) {
           if (isAbortError(err)) return;
           if (latestDataRef.current) {
@@ -273,7 +402,7 @@ export default function Dashboard() {
       }, 0);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, today]);
+  }, [userId, selectedDate, realToday]);
 
   useEffect(
     () => () => {
@@ -309,7 +438,7 @@ export default function Dashboard() {
     run: () => Promise<T>,
     confirmedApply: (prev: TodayData, result: T) => TodayData,
   ): Promise<T | undefined> {
-    if (!data) return undefined;
+    if (!data || !editable) return undefined;
     // Captured from this render's closure, not a ref — correct for the common case of one
     // mutation at a time. A failed mutation whose in-flight window overlapped a background
     // SWR refresh landing would roll back that refresh's fields too, not just its own; an
@@ -333,7 +462,7 @@ export default function Dashboard() {
     run: () => Promise<T[]>,
     confirmedApply: (prev: TodayData, results: T[]) => TodayData,
   ): Promise<T[] | undefined> {
-    if (!data) return undefined;
+    if (!data || !editable) return undefined;
     // Captured from this render's closure, not a ref — correct for the common case of one
     // mutation at a time. A failed mutation whose in-flight window overlapped a background
     // SWR refresh landing would roll back that refresh's fields too, not just its own; an
@@ -363,10 +492,11 @@ export default function Dashboard() {
   }
 
   // --- Mutations — same endpoints Tasks/Routines/Medications/Wishes/Journal/Habits/Cycle
-  // pages already use; nothing here changes an API contract. ---
+  // pages already use; nothing here changes an API contract. Every mutation applies to
+  // `selectedDate`, not necessarily the real today — editing a past day backfills that day. ---
 
   async function completeTask(taskId: string) {
-    if (!data) return;
+    if (!data || !editable) return;
     const prevStatus = data.tasks.find((t) => t.taskId === taskId)?.status ?? "todo";
     let updated: Task | undefined;
     try {
@@ -390,14 +520,14 @@ export default function Dashboard() {
   }
 
   function findRoutineLog(routineId: string, stepIndex: number): RoutineStepLog | undefined {
-    return data?.routineRangeLogs.find((l) => l.date === today && l.routineId === routineId && l.stepIndex === stepIndex);
+    return data?.routineLogsForDate.find((l) => l.routineId === routineId && l.stepIndex === stepIndex);
   }
 
   function optimisticRoutineLog(routineId: string, stepIndex: number, status: RoutineStepLog["status"], note: string | undefined, prev?: RoutineStepLog): RoutineStepLog {
     return {
       userId: prev?.userId ?? userId,
-      dateRoutineStep: `${today}#${routineId}#${stepIndex}`,
-      date: today,
+      dateRoutineStep: `${selectedDate}#${routineId}#${stepIndex}`,
+      date: selectedDate,
       routineId,
       stepIndex,
       status,
@@ -409,20 +539,21 @@ export default function Dashboard() {
   }
 
   function replaceRoutineLogs(logs: RoutineStepLog[], updates: RoutineStepLog[]): RoutineStepLog[] {
-    // Matched by (date, routineId, stepIndex), not the opaque dateRoutineStep key — an
-    // optimistic entry's guessed key only needs to be internally consistent with itself,
-    // and this match works whether the entry being replaced is optimistic or confirmed.
+    // Matched by (routineId, stepIndex) — every entry in this list is already scoped to
+    // `selectedDate` (the single-date endpoint), so the date itself needn't be part of the
+    // match. An optimistic entry's guessed dateRoutineStep key only needs to be internally
+    // consistent with itself, not byte-identical to the server's.
     return [
-      ...logs.filter((l) => !updates.some((u) => u.date === l.date && u.routineId === l.routineId && u.stepIndex === l.stepIndex)),
+      ...logs.filter((l) => !updates.some((u) => u.routineId === l.routineId && u.stepIndex === l.stepIndex)),
       ...updates,
     ];
   }
 
   function maybeCelebrateRoutine(routine: RoutineTemplate, updatedSteps: RoutineStepLog[]) {
     if (!data) return;
-    const wasComplete = isRoutineComplete(routine, data.routineRangeLogs, today);
-    const mergedLogs = replaceRoutineLogs(data.routineRangeLogs, updatedSteps);
-    const isComplete = isRoutineComplete(routine, mergedLogs, today);
+    const wasComplete = isRoutineComplete(routine, data.routineLogsForDate);
+    const mergedLogs = replaceRoutineLogs(data.routineLogsForDate, updatedSteps);
+    const isComplete = isRoutineComplete(routine, mergedLogs);
     if (!wasComplete && isComplete) setCelebration(`${routine.name} — all done!`);
   }
 
@@ -433,9 +564,9 @@ export default function Dashboard() {
     try {
       updated = await mutate(
         `routine:${routine.routineId}:${stepIndex}`,
-        (prev) => ({ ...prev, routineRangeLogs: replaceRoutineLogs(prev.routineRangeLogs, [optimisticRoutineLog(routine.routineId, stepIndex, status, note, prevLog)]) }),
-        () => request<RoutineStepLog>(`/routine-logs/${today}/${routine.routineId}/${stepIndex}`, { method: "PATCH", body: JSON.stringify({ status, note: note ?? "" }) }),
-        (prev, result) => ({ ...prev, routineRangeLogs: replaceRoutineLogs(prev.routineRangeLogs, [result]) }),
+        (prev) => ({ ...prev, routineLogsForDate: replaceRoutineLogs(prev.routineLogsForDate, [optimisticRoutineLog(routine.routineId, stepIndex, status, note, prevLog)]) }),
+        () => request<RoutineStepLog>(`/routine-logs/${selectedDate}/${routine.routineId}/${stepIndex}`, { method: "PATCH", body: JSON.stringify({ status, note: note ?? "" }) }),
+        (prev, result) => ({ ...prev, routineLogsForDate: replaceRoutineLogs(prev.routineLogsForDate, [result]) }),
       );
     } catch {
       return;
@@ -444,18 +575,18 @@ export default function Dashboard() {
     if (status === "done") maybeCelebrateRoutine(routine, [updated]);
     showToast(routineStatusLabel(status, note), {
       undo: () => {
-        request<RoutineStepLog>(`/routine-logs/${today}/${routine.routineId}/${stepIndex}`, {
+        request<RoutineStepLog>(`/routine-logs/${selectedDate}/${routine.routineId}/${stepIndex}`, {
           method: "PATCH",
           body: JSON.stringify({ status: prevLog?.status ?? "skipped", note: prevLog?.note ?? "" }),
         })
-          .then((reverted) => setData((prev) => prev && { ...prev, routineRangeLogs: replaceRoutineLogs(prev.routineRangeLogs, [reverted]) }))
+          .then((reverted) => setData((prev) => prev && { ...prev, routineLogsForDate: replaceRoutineLogs(prev.routineLogsForDate, [reverted]) }))
           .catch(() => {});
       },
     });
   }
 
-  // Only steps with NO log yet today are affected — a step already explicitly Skipped or
-  // N/A is left alone, same rule for both "Mark all done" and "Skip all remaining".
+  // Only steps with NO log yet on the viewed date are affected — a step already explicitly
+  // Skipped or N/A is left alone, same rule for both "Mark all done" and "Skip all remaining".
   function pendingStepIndexes(routine: RoutineTemplate): number[] {
     return routine.steps.map((_, i) => i).filter((i) => findRoutineLog(routine.routineId, i) === undefined);
   }
@@ -467,9 +598,9 @@ export default function Dashboard() {
     try {
       updated = await mutateBulk(
         pendingSteps.map((i) => `routine:${routine.routineId}:${i}`),
-        (prev) => ({ ...prev, routineRangeLogs: replaceRoutineLogs(prev.routineRangeLogs, pendingSteps.map((i) => optimisticRoutineLog(routine.routineId, i, "done", undefined))) }),
-        () => Promise.all(pendingSteps.map((i) => request<RoutineStepLog>(`/routine-logs/${today}/${routine.routineId}/${i}`, { method: "PATCH", body: JSON.stringify({ status: "done" }) }))),
-        (prev, results) => ({ ...prev, routineRangeLogs: replaceRoutineLogs(prev.routineRangeLogs, results) }),
+        (prev) => ({ ...prev, routineLogsForDate: replaceRoutineLogs(prev.routineLogsForDate, pendingSteps.map((i) => optimisticRoutineLog(routine.routineId, i, "done", undefined))) }),
+        () => Promise.all(pendingSteps.map((i) => request<RoutineStepLog>(`/routine-logs/${selectedDate}/${routine.routineId}/${i}`, { method: "PATCH", body: JSON.stringify({ status: "done" }) }))),
+        (prev, results) => ({ ...prev, routineLogsForDate: replaceRoutineLogs(prev.routineLogsForDate, results) }),
       );
     } catch {
       return;
@@ -478,8 +609,8 @@ export default function Dashboard() {
     maybeCelebrateRoutine(routine, updated);
     showToast(`${routine.name}: ${pendingSteps.length} step${pendingSteps.length === 1 ? "" : "s"} marked done`, {
       undo: () => {
-        Promise.all(pendingSteps.map((i) => request<RoutineStepLog>(`/routine-logs/${today}/${routine.routineId}/${i}`, { method: "PATCH", body: JSON.stringify({ status: "skipped" }) })))
-          .then((reverted) => setData((prev) => prev && { ...prev, routineRangeLogs: replaceRoutineLogs(prev.routineRangeLogs, reverted) }))
+        Promise.all(pendingSteps.map((i) => request<RoutineStepLog>(`/routine-logs/${selectedDate}/${routine.routineId}/${i}`, { method: "PATCH", body: JSON.stringify({ status: "skipped" }) })))
+          .then((reverted) => setData((prev) => prev && { ...prev, routineLogsForDate: replaceRoutineLogs(prev.routineLogsForDate, reverted) }))
           .catch(() => {});
       },
     });
@@ -491,17 +622,17 @@ export default function Dashboard() {
     try {
       await mutateBulk(
         pendingSteps.map((i) => `routine:${routine.routineId}:${i}`),
-        (prev) => ({ ...prev, routineRangeLogs: replaceRoutineLogs(prev.routineRangeLogs, pendingSteps.map((i) => optimisticRoutineLog(routine.routineId, i, "skipped", undefined))) }),
-        () => Promise.all(pendingSteps.map((i) => request<RoutineStepLog>(`/routine-logs/${today}/${routine.routineId}/${i}`, { method: "PATCH", body: JSON.stringify({ status: "skipped" }) }))),
-        (prev, results) => ({ ...prev, routineRangeLogs: replaceRoutineLogs(prev.routineRangeLogs, results) }),
+        (prev) => ({ ...prev, routineLogsForDate: replaceRoutineLogs(prev.routineLogsForDate, pendingSteps.map((i) => optimisticRoutineLog(routine.routineId, i, "skipped", undefined))) }),
+        () => Promise.all(pendingSteps.map((i) => request<RoutineStepLog>(`/routine-logs/${selectedDate}/${routine.routineId}/${i}`, { method: "PATCH", body: JSON.stringify({ status: "skipped" }) }))),
+        (prev, results) => ({ ...prev, routineLogsForDate: replaceRoutineLogs(prev.routineLogsForDate, results) }),
       );
     } catch {
       return;
     }
     showToast(`${routine.name}: ${pendingSteps.length} remaining step${pendingSteps.length === 1 ? "" : "s"} skipped`, {
       undo: () => {
-        Promise.all(pendingSteps.map((i) => request<RoutineStepLog>(`/routine-logs/${today}/${routine.routineId}/${i}`, { method: "PATCH", body: JSON.stringify({ status: "done" }) })))
-          .then((reverted) => setData((prev) => prev && { ...prev, routineRangeLogs: replaceRoutineLogs(prev.routineRangeLogs, reverted) }))
+        Promise.all(pendingSteps.map((i) => request<RoutineStepLog>(`/routine-logs/${selectedDate}/${routine.routineId}/${i}`, { method: "PATCH", body: JSON.stringify({ status: "done" }) })))
+          .then((reverted) => setData((prev) => prev && { ...prev, routineLogsForDate: replaceRoutineLogs(prev.routineLogsForDate, reverted) }))
           .catch(() => {});
       },
     });
@@ -510,8 +641,8 @@ export default function Dashboard() {
   function optimisticMedicationLog(medicationId: string, status: MedicationLog["status"], note: string | undefined, prev?: MedicationLog): MedicationLog {
     return {
       userId: prev?.userId ?? userId,
-      dateMedicationId: `${today}#${medicationId}`,
-      date: today,
+      dateMedicationId: `${selectedDate}#${medicationId}`,
+      date: selectedDate,
       medicationId,
       status,
       note: note || undefined,
@@ -522,33 +653,30 @@ export default function Dashboard() {
   }
 
   function replaceMedicationLogs(logs: MedicationLog[], updates: MedicationLog[]): MedicationLog[] {
-    return [
-      ...logs.filter((l) => !updates.some((u) => u.date === l.date && u.medicationId === l.medicationId)),
-      ...updates,
-    ];
+    return [...logs.filter((l) => !updates.some((u) => u.medicationId === l.medicationId)), ...updates];
   }
 
   function maybeCelebrateMeds(updatedLogs: MedicationLog[]) {
     if (!data) return;
-    const applicable = data.medications.filter((m) => appliesOnDate(m.daysOfWeek, new Date(`${today}T00:00:00`)));
-    const wasAllTaken = applicable.every((m) => data.medicationLogs.find((l) => l.date === today && l.medicationId === m.medicationId)?.status === "taken");
+    const applicable = data.medications.filter((m) => appliesOnDate(m.daysOfWeek, new Date(`${selectedDate}T00:00:00`)));
+    const wasAllTaken = applicable.every((m) => data.medicationLogs.find((l) => l.medicationId === m.medicationId)?.status === "taken");
     const mergedLogs = replaceMedicationLogs(data.medicationLogs, updatedLogs);
-    const isAllTaken = applicable.length > 0 && applicable.every((m) => mergedLogs.find((l) => l.date === today && l.medicationId === m.medicationId)?.status === "taken");
+    const isAllTaken = applicable.length > 0 && applicable.every((m) => mergedLogs.find((l) => l.medicationId === m.medicationId)?.status === "taken");
     if (!wasAllTaken && isAllTaken) setCelebration("All of today's medications taken!");
   }
 
   // Shared by every medication status change (always-visible Taken/Skipped/Missed buttons,
   // and Mark all taken).
   async function setMedicationStatus(medicationId: string, status: MedicationLog["status"], note?: string) {
-    if (!data) return;
-    const prevLog = data.medicationLogs.find((l) => l.date === today && l.medicationId === medicationId);
+    if (!data || !editable) return;
+    const prevLog = data.medicationLogs.find((l) => l.medicationId === medicationId);
     const medName = data.medications.find((m) => m.medicationId === medicationId)?.name ?? "Medication";
     let updated: MedicationLog | undefined;
     try {
       updated = await mutate(
         `med:${medicationId}`,
         (prev) => ({ ...prev, medicationLogs: replaceMedicationLogs(prev.medicationLogs, [optimisticMedicationLog(medicationId, status, note, prevLog)]) }),
-        () => request<MedicationLog>(`/medication-logs/${today}/${medicationId}`, { method: "PATCH", body: JSON.stringify({ status, note: note ?? "" }) }),
+        () => request<MedicationLog>(`/medication-logs/${selectedDate}/${medicationId}`, { method: "PATCH", body: JSON.stringify({ status, note: note ?? "" }) }),
         (prev, result) => ({ ...prev, medicationLogs: replaceMedicationLogs(prev.medicationLogs, [result]) }),
       );
     } catch {
@@ -558,7 +686,7 @@ export default function Dashboard() {
     if (status === "taken") maybeCelebrateMeds([updated]);
     showToast(`${medName}: ${medicationStatusLabel(status, note)}`, {
       undo: () => {
-        request<MedicationLog>(`/medication-logs/${today}/${medicationId}`, { method: "PATCH", body: JSON.stringify({ status: prevLog?.status ?? "missed", note: prevLog?.note ?? "" }) })
+        request<MedicationLog>(`/medication-logs/${selectedDate}/${medicationId}`, { method: "PATCH", body: JSON.stringify({ status: prevLog?.status ?? "missed", note: prevLog?.note ?? "" }) })
           .then((reverted) => setData((prev) => prev && { ...prev, medicationLogs: replaceMedicationLogs(prev.medicationLogs, [reverted]) }))
           .catch(() => {});
       },
@@ -572,7 +700,7 @@ export default function Dashboard() {
       updated = await mutateBulk(
         medicationIds.map((id) => `med:${id}`),
         (prev) => ({ ...prev, medicationLogs: replaceMedicationLogs(prev.medicationLogs, medicationIds.map((id) => optimisticMedicationLog(id, "taken", undefined))) }),
-        () => Promise.all(medicationIds.map((id) => request<MedicationLog>(`/medication-logs/${today}/${id}`, { method: "PATCH", body: JSON.stringify({ status: "taken" }) }))),
+        () => Promise.all(medicationIds.map((id) => request<MedicationLog>(`/medication-logs/${selectedDate}/${id}`, { method: "PATCH", body: JSON.stringify({ status: "taken" }) }))),
         (prev, results) => ({ ...prev, medicationLogs: replaceMedicationLogs(prev.medicationLogs, results) }),
       );
     } catch {
@@ -582,7 +710,7 @@ export default function Dashboard() {
     maybeCelebrateMeds(updated);
     showToast(`${medicationIds.length} medication${medicationIds.length === 1 ? "" : "s"} marked taken`, {
       undo: () => {
-        Promise.all(medicationIds.map((id) => request<MedicationLog>(`/medication-logs/${today}/${id}`, { method: "PATCH", body: JSON.stringify({ status: "missed" }) })))
+        Promise.all(medicationIds.map((id) => request<MedicationLog>(`/medication-logs/${selectedDate}/${id}`, { method: "PATCH", body: JSON.stringify({ status: "missed" }) })))
           .then((reverted) => setData((prev) => prev && { ...prev, medicationLogs: replaceMedicationLogs(prev.medicationLogs, reverted) }))
           .catch(() => {});
       },
@@ -590,7 +718,7 @@ export default function Dashboard() {
   }
 
   async function logWater(amountMl: number) {
-    if (!data) return;
+    if (!data || !editable) return;
     const currentWater = data.habits.find((h) => h.habitType === "water")?.value ?? 0;
     const next = currentWater + amountMl;
     try {
@@ -600,7 +728,7 @@ export default function Dashboard() {
           ...prev,
           habits: [...prev.habits.filter((h) => h.habitType !== "water"), { ...prev.habits.find((h) => h.habitType === "water"), habitType: "water", value: next } as HabitLog],
         }),
-        () => request(`/habits/${today}/water`, { method: "PATCH", body: JSON.stringify({ value: next }) }),
+        () => request(`/habits/${selectedDate}/water`, { method: "PATCH", body: JSON.stringify({ value: next }) }),
         (prev) => prev,
       );
     } catch {
@@ -610,7 +738,7 @@ export default function Dashboard() {
   }
 
   async function logMood(rating: number, note?: string) {
-    if (!data) return;
+    if (!data || !editable) return;
     const current = data.moodToday[0];
     const optimisticEntry: LogEntry = current
       ? { ...current, data: { rating, note } }
@@ -618,7 +746,7 @@ export default function Dashboard() {
           logId: "optimistic",
           userId,
           logType: "mood",
-          date: today,
+          date: selectedDate,
           data: { rating, note },
           source: "manual",
           createdAt: new Date().toISOString(),
@@ -631,7 +759,7 @@ export default function Dashboard() {
         () =>
           current
             ? request<LogEntry>(`/logs/${current.logId}`, { method: "PATCH", body: JSON.stringify({ data: { rating, note } }) })
-            : request<LogEntry>("/logs", { method: "POST", body: JSON.stringify({ logType: "mood", date: today, data: { rating, note } }) }),
+            : request<LogEntry>("/logs", { method: "POST", body: JSON.stringify({ logType: "mood", date: selectedDate, data: { rating, note } }) }),
         (prev, result) => ({ ...prev, moodToday: [result] }),
       );
       if (!updated) return;
@@ -642,7 +770,7 @@ export default function Dashboard() {
   }
 
   async function logCycleEvent(eventType: "period_start" | "period_end" | "symptom", note?: string): Promise<LogEntry | undefined> {
-    if (!data) return undefined;
+    if (!data || !editable) return undefined;
     try {
       return await mutate(
         `cycle:${eventType}`,
@@ -654,7 +782,7 @@ export default function Dashboard() {
               logId: "optimistic",
               userId,
               logType: "cycle",
-              date: today,
+              date: selectedDate,
               data: { event: eventType, note },
               source: "manual",
               createdAt: new Date().toISOString(),
@@ -662,7 +790,7 @@ export default function Dashboard() {
             } satisfies LogEntry,
           ],
         }),
-        () => request<LogEntry>("/logs", { method: "POST", body: JSON.stringify({ logType: "cycle", date: today, data: { event: eventType, note: note || undefined } }) }),
+        () => request<LogEntry>("/logs", { method: "POST", body: JSON.stringify({ logType: "cycle", date: selectedDate, data: { event: eventType, note: note || undefined } }) }),
         (prev, result) => ({ ...prev, cycleAll: [...prev.cycleAll.filter((e) => e.logId !== "optimistic"), result] }),
       );
     } catch {
@@ -675,44 +803,58 @@ export default function Dashboard() {
     if (entry) showToast("Period started logged");
   }
 
-  // --- Derived view model ---
+  // --- Derived view model — all keyed off `selectedDate`, not necessarily the real today. ---
 
-  // Stable per `today` (not per render) so it can sit in useMemo dependency arrays below
-  // without defeating the memoization the way a fresh `new Date()` every render would.
-  const now = useMemo(() => new Date(`${today}T00:00:00`), [today]);
+  // Stable per `selectedDate` (not per render) so it can sit in useMemo dependency arrays
+  // below without defeating the memoization the way a fresh `new Date()` every render would.
+  const selectedDateObj = useMemo(() => new Date(`${selectedDate}T00:00:00`), [selectedDate]);
 
-  const todaysTasks = useMemo(
-    () => (data ? data.tasks.filter((t) => t.dueDate === today || (t.dueDate && t.dueDate < today && t.status !== "done")) : []),
-    [data, today],
-  );
-  const tasksDueToday = useMemo(() => (data ? data.tasks.filter((t) => t.dueDate === today) : []), [data, today]);
+  const todaysTasks = useMemo(() => {
+    if (!data) return [];
+    if (isToday) {
+      return data.tasks.filter((t) => t.dueDate === selectedDate || (t.dueDate && t.dueDate < selectedDate && t.status !== "done"));
+    }
+    // Past/future days: only tasks due exactly on that date — no overdue rollup, which is a
+    // today-only concept — but completed ones still show (as done), same as today's do.
+    return data.tasks.filter((t) => t.dueDate === selectedDate);
+  }, [data, selectedDate, isToday]);
+  const tasksDueToday = useMemo(() => (data ? data.tasks.filter((t) => t.dueDate === selectedDate) : []), [data, selectedDate]);
   const tasksDoneToday = tasksDueToday.filter((t) => t.status === "done").length;
 
   // Sorted once here (same comparator Routines.tsx/Medications.tsx use) so every downstream
   // use — the list itself, "next routine" selection, etc. — stays in one consistent order.
+  // `appliesOnDate` is checked against the VIEWED date, so a weekly/custom-days routine shows
+  // up on exactly the days its own recurrence says it should, on any date being viewed.
   const applicableRoutines = useMemo(
-    () => (data ? data.routines.filter((r) => appliesOnDate(r.daysOfWeek, now)).sort(byTimeOfDay) : []),
-    [data, now],
+    () => (data ? data.routines.filter((r) => appliesOnDate(r.daysOfWeek, selectedDateObj)).sort(byTimeOfDay) : []),
+    [data, selectedDateObj],
   );
   const routinesTotal = applicableRoutines.reduce((sum, r) => sum + r.steps.length, 0);
-  const routineLogsByDateStep = useMemo(() => {
+  const viewedLogsByStep = useMemo(() => {
     const map = new Map<string, RoutineStepLog["status"]>();
-    for (const log of data?.routineRangeLogs ?? []) map.set(`${log.date}#${log.routineId}#${log.stepIndex}`, log.status);
+    for (const log of data?.routineLogsForDate ?? []) map.set(`${log.routineId}#${log.stepIndex}`, log.status);
     return map;
   }, [data]);
   const routinesDone = applicableRoutines.reduce((sum, r) => {
     const doneSteps = r.steps.filter((_, i) => {
-      const status = routineLogsByDateStep.get(`${today}#${r.routineId}#${i}`);
+      const status = viewedLogsByStep.get(`${r.routineId}#${i}`);
       return status === "done" || status === "not_applicable";
     }).length;
     return sum + doneSteps;
   }, 0);
+  // Streak is always anchored to the real current day (computeRoutineStreak itself walks
+  // backward from the real todayLocal()), independent of whichever date is being viewed.
+  const streakLogsByDateStep = useMemo(() => {
+    const map = new Map<string, RoutineStepLog["status"]>();
+    for (const log of data?.routineStreakLogs ?? []) map.set(`${log.date}#${log.routineId}#${log.stepIndex}`, log.status);
+    return map;
+  }, [data]);
   const routineStreakDays = applicableRoutines.reduce(
-    (max, r) => Math.max(max, computeRoutineStreak(r, routineLogsByDateStep)),
+    (max, r) => Math.max(max, computeRoutineStreak(r, streakLogsByDateStep)),
     0,
   );
 
-  const applicableMeds = useMemo(() => (data ? data.medications.filter((m) => appliesOnDate(m.daysOfWeek, now)) : []), [data, now]);
+  const applicableMeds = useMemo(() => (data ? data.medications.filter((m) => appliesOnDate(m.daysOfWeek, selectedDateObj)) : []), [data, selectedDateObj]);
   const medLogByMedId = useMemo(() => {
     const map = new Map<string, MedicationLog>();
     for (const log of data?.medicationLogs ?? []) map.set(log.medicationId, log);
@@ -723,56 +865,62 @@ export default function Dashboard() {
   const moodLoggedToday = (data?.moodToday[0]?.data.rating as number | undefined) ?? null;
 
   const hideCycle = data?.profile?.sex === "male";
-  const cycleLoggedToday = (data?.cycleAll ?? []).some((e) => e.date === today && e.data.event === "period_start");
+  const cycleLoggedToday = (data?.cycleAll ?? []).some((e) => e.date === selectedDate && e.data.event === "period_start");
   const journaledToday = (data?.journalToday ?? []).length > 0;
 
   const waterLogged = (data?.habits ?? []).some((h) => h.habitType === "water");
   const moodLogged = moodLoggedToday !== null;
   const dayFullyLogged = waterLogged && moodLogged && (hideCycle || cycleLoggedToday);
   const isEvening = new Date().getHours() >= loadEveningHour();
-  const showLogYourDay = isEvening && !dayFullyLogged;
+  // Future days are planning-only — nothing to log yet. Today keeps the evening-nudge gate;
+  // a past day shows the card any time there's still something unlogged, for backfilling.
+  const showLogYourDay = isFuture ? false : isToday ? isEvening && !dayFullyLogged : !dayFullyLogged;
 
   const taskRows: TaskRowAction[] = useMemo(
     () =>
       todaysTasks.map((task) => ({
         task,
-        overdue: Boolean(task.dueDate && task.dueDate < today && task.status !== "done"),
+        overdue: isToday && Boolean(task.dueDate && task.dueDate < selectedDate && task.status !== "done"),
         pending: isPending(`task:${task.taskId}`),
+        editable,
         onComplete: () => void completeTask(task.taskId),
       })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [todaysTasks, today, pendingKeys],
+    [todaysTasks, selectedDate, isToday, editable, pendingKeys],
   );
 
-  // Routines with at least one step that has no log at all today (resolved —
+  // Routines with at least one step that has no log at all on the viewed date (resolved —
   // done/skipped/not_applicable alike — doesn't count as "pending" here, only a genuinely
   // untouched step does). These stay expanded by default; "nextRoutineId" below is a separate
-  // concept (which one is due right now) used only for Jump-to-now, not for default-expand.
+  // concept (which one is due right now, today only) used only for Jump-to-now.
   const unresolvedRoutines = useMemo(
     () =>
-      applicableRoutines.filter((r) =>
-        r.steps.some((_, i) => routineLogsByDateStep.get(`${today}#${r.routineId}#${i}`) === undefined),
-      ),
-    [applicableRoutines, routineLogsByDateStep, today],
+      applicableRoutines.filter((r) => r.steps.some((_, i) => viewedLogsByStep.get(`${r.routineId}#${i}`) === undefined)),
+    [applicableRoutines, viewedLogsByStep],
   );
 
   // The unresolved routine whose timeOfDay is nearest the actual current wall-clock time —
-  // real `now`, not the `now` above (which is pinned to midnight of `today` for date-only
-  // comparisons like appliesOnDate, and would always read as "00:00" here).
+  // only meaningful when viewing today; Jump-to-now doesn't apply to a past/future day.
   const nextRoutineId = useMemo(() => {
-    if (unresolvedRoutines.length === 0) return null;
+    if (!isToday || unresolvedRoutines.length === 0) return null;
     const wallNow = new Date();
     const nowStr = `${String(wallNow.getHours()).padStart(2, "0")}:${String(wallNow.getMinutes()).padStart(2, "0")}`;
     const upcoming = unresolvedRoutines
       .filter((r) => r.timeOfDay !== undefined && r.timeOfDay >= nowStr)
       .sort((a, b) => (a.timeOfDay ?? "").localeCompare(b.timeOfDay ?? ""));
     return (upcoming[0] ?? unresolvedRoutines[0]).routineId;
-  }, [unresolvedRoutines]);
+  }, [isToday, unresolvedRoutines]);
 
   // Lifted out of each row so the top-level Expand-all/Collapse-completed toggle and the
   // Jump-to-now control can act on every routine at once, not just whichever row a user
   // happens to be looking at. Every routine with a pending step defaults to expanded (per
   // spec); nextRoutineId only decides where Jump-to-now scrolls, not which rows start open.
+  // Keyed by date too, since the same routineId's expand state shouldn't carry over between
+  // two different days' views.
+  useEffect(() => {
+    setExpandedRoutines({});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate]);
   useEffect(() => {
     setExpandedRoutines((prev) => {
       let changed = false;
@@ -804,7 +952,7 @@ export default function Dashboard() {
     setExpandedRoutines((prev) => {
       const next = { ...prev };
       for (const r of applicableRoutines) {
-        const steps = r.steps.map((_, i) => routineLogsByDateStep.get(`${today}#${r.routineId}#${i}`));
+        const steps = r.steps.map((_, i) => viewedLogsByStep.get(`${r.routineId}#${i}`));
         if (steps.every((s) => s !== undefined)) next[r.routineId] = false;
       }
       return next;
@@ -823,7 +971,7 @@ export default function Dashboard() {
     () =>
       applicableRoutines.map((routine) => {
         const steps: RoutineStepRow[] = routine.steps.map((label, i) => {
-          const log = data?.routineRangeLogs.find((l) => l.date === today && l.routineId === routine.routineId && l.stepIndex === i);
+          const log = data?.routineLogsForDate.find((l) => l.routineId === routine.routineId && l.stepIndex === i);
           return {
             index: i,
             label,
@@ -836,6 +984,7 @@ export default function Dashboard() {
           routine,
           steps,
           expanded: expandedRoutines[routine.routineId] ?? false,
+          editable,
           onToggleExpand: () => toggleRoutineExpanded(routine.routineId),
           onSetStatus: (stepIndex, status, note) => setRoutineStepStatus(routine, stepIndex, status, note),
           onMarkAllDone: () => void markAllDoneSteps(routine),
@@ -843,7 +992,7 @@ export default function Dashboard() {
         };
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [applicableRoutines, data, today, expandedRoutines, pendingKeys],
+    [applicableRoutines, data, expandedRoutines, editable, pendingKeys],
   );
 
   const medicationRows: MedicationRow[] = useMemo(
@@ -853,9 +1002,10 @@ export default function Dashboard() {
         status: medLogByMedId.get(medication.medicationId)?.status ?? null,
         note: medLogByMedId.get(medication.medicationId)?.note,
         pending: isPending(`med:${medication.medicationId}`),
+        editable,
       })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [applicableMeds, medLogByMedId, pendingKeys],
+    [applicableMeds, medLogByMedId, editable, pendingKeys],
   );
 
   // --- Module customization ---
@@ -889,7 +1039,14 @@ export default function Dashboard() {
   function renderModule(id: TodayModuleId) {
     switch (id) {
       case "header":
-        return <TodayHeader streakDays={routineStreakDays} done={tasksDoneToday + routinesDone + medsDone} total={tasksDueToday.length + routinesTotal + applicableMeds.length} />;
+        return (
+          <TodayHeader
+            streakDays={routineStreakDays}
+            done={tasksDoneToday + routinesDone + medsDone}
+            total={tasksDueToday.length + routinesTotal + applicableMeds.length}
+            isToday={isToday}
+          />
+        );
       case "tasks":
         return taskRows.length > 0 ? (
           <Card>
@@ -931,21 +1088,22 @@ export default function Dashboard() {
               cycleLoggedToday={cycleLoggedToday}
               onLogPeriodStarted={() => void logPeriodStarted()}
               cyclePending={isPending("cycle:period_start")}
+              isToday={isToday}
             />
           </Card>
         ) : null;
       case "habits":
-        return <TodayHabits date={today} />;
+        return <TodayHabits date={selectedDate} />;
       case "cycle":
         return hideCycle ? null : (
-          <TodayCycle date={today} entries={data?.cycleAll ?? null} onLogEvent={logCycleEvent} />
+          <TodayCycle date={selectedDate} entries={data?.cycleAll ?? null} onLogEvent={logCycleEvent} />
         );
       case "budget":
         return <BudgetPreview />;
       case "meals":
-        return <TodayMeals date={today} />;
+        return <TodayMeals date={selectedDate} />;
       case "expenses":
-        return <TodayExpenses date={today} />;
+        return <TodayExpenses date={selectedDate} />;
       case "insightsRecap":
         return <TodayInsightsRecap summary={data?.progressSummary ?? null} />;
       case "journalPrompt":
@@ -955,6 +1113,22 @@ export default function Dashboard() {
       default:
         return null;
     }
+  }
+
+  // --- Date-nav header UI ---
+
+  const touchStartXRef = useRef<number | null>(null);
+  function onHeaderTouchStart(e: React.TouchEvent) {
+    touchStartXRef.current = e.touches[0]?.clientX ?? null;
+  }
+  function onHeaderTouchEnd(e: React.TouchEvent) {
+    const startX = touchStartXRef.current;
+    touchStartXRef.current = null;
+    if (startX === null) return;
+    const endX = e.changedTouches[0]?.clientX ?? startX;
+    const delta = endX - startX;
+    if (Math.abs(delta) < 48) return;
+    goToDate(addDays(selectedDate, delta > 0 ? -1 : 1));
   }
 
   if (error) {
@@ -985,31 +1159,84 @@ export default function Dashboard() {
 
   return (
     <div className={page}>
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <h1 className={pageTitle}>{greeting()}</h1>
-          <p className={`-mt-4 ${mutedText}`}>{formattedDate()}</p>
-          {syncHint && (
-            <p className={`-mt-3 text-xs ${syncHint === "offline" ? "text-alert" : "text-ink-muted dark:text-mist-muted"}`}>
-              {syncHint === "offline" ? "Offline — showing saved data" : "Updated just now"}
-            </p>
+      <div className="mb-4 flex flex-col gap-3">
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="min-w-0 flex-1 truncate font-display text-2xl font-medium text-ink dark:text-paper sm:text-3xl">
+            {isToday ? greeting() : fullDateLabel(selectedDate)}
+          </h1>
+          <button
+            type="button"
+            onClick={() => setCustomizeOpen(true)}
+            aria-label="Customize Today"
+            className={`${secondaryButton} flex shrink-0 items-center gap-1.5 px-3 py-1.5 text-xs`}
+          >
+            <Icon icon={SlidersHorizontal} size={13} />
+            Customize
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2" onTouchStart={onHeaderTouchStart} onTouchEnd={onHeaderTouchEnd}>
+          <button
+            type="button"
+            onClick={() => goToDate(addDays(selectedDate, -1))}
+            aria-label="Previous day"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-stone text-ink-muted hover:bg-stone/40 dark:border-stone-dark dark:text-mist-muted dark:hover:bg-stone-dark/40"
+          >
+            <Icon icon={ChevronLeft} size={16} />
+          </button>
+          <div className="relative min-w-0 flex-1 text-center">
+            <p className="truncate text-sm font-medium text-ink dark:text-paper">{compactDateLabel(selectedDate)}</p>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => e.target.value && isValidDateStr(e.target.value) && goToDate(e.target.value)}
+              aria-label="Pick a date"
+              className="absolute inset-0 cursor-pointer opacity-0"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => goToDate(addDays(selectedDate, 1))}
+            aria-label="Next day"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-stone text-ink-muted hover:bg-stone/40 dark:border-stone-dark dark:text-mist-muted dark:hover:bg-stone-dark/40"
+          >
+            <Icon icon={ChevronRight} size={16} />
+          </button>
+          {!isToday && (
+            <button
+              type="button"
+              onClick={() => goToDate(realToday)}
+              className="shrink-0 rounded-control border border-bloom px-2.5 py-1.5 text-xs font-medium text-bloom hover:bg-bloom-soft dark:hover:bg-bloom-soft-dark"
+            >
+              Today
+            </button>
           )}
         </div>
-        <button
-          type="button"
-          onClick={() => setCustomizeOpen(true)}
-          aria-label="Customize Today"
-          className={`${secondaryButton} flex items-center gap-1.5 px-3 py-1.5 text-xs`}
-        >
-          <Icon icon={SlidersHorizontal} size={13} />
-          Customize
-        </button>
+
+        {syncHint && (
+          <p className={`-mt-1 text-xs ${syncHint === "offline" ? "text-alert" : "text-ink-muted dark:text-mist-muted"}`}>
+            {syncHint === "offline" ? "Offline — showing saved data" : "Updated just now"}
+          </p>
+        )}
+
+        {!isToday && (
+          <div className="flex items-center justify-between gap-3 rounded-control border border-stone bg-stone/20 px-3 py-2 dark:border-stone-dark dark:bg-stone-dark/20">
+            <p className="text-sm text-ink dark:text-paper">
+              Viewing {compactDateLabel(selectedDate)}
+              {isFuture ? " — planning view, can't mark future items" : ""}
+            </p>
+          </div>
+        )}
       </div>
 
       <WelcomeCard />
 
       {isEmptyDay ? (
-        <EmptyState icon="🌤️" title="Nothing on the books today" hint="Add a task from the + button, or start a routine from the Routines tab." />
+        <EmptyState
+          icon="🌤️"
+          title={isFuture ? "Nothing scheduled yet" : "Nothing on the books"}
+          hint="Add a task from the + button, or start a routine from the Routines tab."
+        />
       ) : (
         <div className="flex flex-col gap-4">
           {modules.filter((m) => m.visible).map((m) => {
