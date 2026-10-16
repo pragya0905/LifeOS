@@ -10,6 +10,7 @@ import type { Task, TaskPriority, TaskStatus, PrioritySource } from "../../commo
 
 const VALID_PRIORITIES: TaskPriority[] = ["Low", "Medium", "High"];
 const VALID_STATUSES: TaskStatus[] = ["todo", "in_progress", "done"];
+const MAX_CATEGORY_LENGTH = 40;
 
 export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) => {
   const userId = getUserId(event);
@@ -49,6 +50,11 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     );
   }
 
+  if (body.category !== undefined && (typeof body.category !== "string" || body.category.length > MAX_CATEGORY_LENGTH)) {
+    return errorResponse(400, `category must be a string up to ${MAX_CATEGORY_LENGTH} characters`);
+  }
+  const category = typeof body.category === "string" && body.category.trim() ? body.category.trim() : undefined;
+
   let priority: TaskPriority = VALID_PRIORITIES.includes(body.priority as TaskPriority)
     ? (body.priority as TaskPriority)
     : "Medium";
@@ -79,6 +85,7 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     priority,
     prioritySource,
     status,
+    category,
     scheduleTime: typeof body.scheduleTime === "string" ? body.scheduleTime : undefined,
     ...(isValidRecurrence(body.recurrence) ? { recurrence: body.recurrence } : {}),
     createdAt: now,

@@ -9,6 +9,7 @@ import type { Task, TaskPriority, TaskStatus } from "../../common/types";
 
 const VALID_PRIORITIES: TaskPriority[] = ["Low", "Medium", "High"];
 const VALID_STATUSES: TaskStatus[] = ["todo", "in_progress", "done"];
+const MAX_CATEGORY_LENGTH = 40;
 const UPDATABLE_FIELDS = [
   "title",
   "description",
@@ -18,6 +19,7 @@ const UPDATABLE_FIELDS = [
   "estimatedHours",
   "priority",
   "status",
+  "category",
   "scheduleTime",
   "recurrence",
 ] as const;
@@ -45,6 +47,9 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
       400,
       "recurrence must be { frequency: 'daily'|'weekly'|'every_n_days'|'monthly', ... } with the field that frequency requires",
     );
+  }
+  if (body.category !== undefined && (typeof body.category !== "string" || body.category.length > MAX_CATEGORY_LENGTH)) {
+    return errorResponse(400, `category must be a string up to ${MAX_CATEGORY_LENGTH} characters`);
   }
 
   // Completing a recurring task rolls it forward in place instead of actually finishing it —

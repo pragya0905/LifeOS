@@ -30,6 +30,9 @@ export interface Task {
   priority: TaskPriority;
   prioritySource: PrioritySource;
   status: TaskStatus;
+  // Free-text, like RoutineTemplate.category — optional since it predates this field, no
+  // fixed enum so the user isn't boxed into presets the frontend doesn't happen to offer.
+  category?: string;
   scheduleTime?: string;
   reminderSentAt?: string;
   recurrence?: TaskRecurrence;
