@@ -1345,6 +1345,15 @@ const ONBOARDING_SYSTEM_PROMPT_ADDITION =
   "genuinely qualitative context that doesn't fit one of those tools — a motivation, a " +
   "struggle, a preference.";
 
+const VOICE_SYSTEM_PROMPT_ADDITION =
+  "\n\nYou are in voice mode right now — the user is speaking aloud and your reply will be " +
+  "read aloud back to them, not read on screen. Reply conversationally in 1-3 short " +
+  "sentences. No markdown, no bullet or numbered lists, no emoji. Say numbers, times, and " +
+  "dates the way a person would say them aloud (e.g. \"six thirty PM\", \"March third\", " +
+  "\"twenty dollars\"), never digits, symbols, or ISO-style strings. Before any delete, " +
+  "clear, or bulk change, ask the user to confirm out loud first instead of doing it " +
+  "immediately.";
+
 const TONE_INSTRUCTIONS: Record<AssistantTone, string> = {
   warm: "Default tone: warm, supportive, and gentle.",
   direct: "Tone preference: direct and brief — skip the cushioning and get straight to the point, while staying respectful.",
@@ -1355,6 +1364,7 @@ function buildSystemPrompt(
   memories: UserMemory[],
   goalsContext: string,
   isOnboarding: boolean,
+  isVoiceMode: boolean,
   preferredName: string | undefined,
   assistantTone: AssistantTone | undefined,
   location: string | undefined,
@@ -1437,7 +1447,8 @@ function buildSystemPrompt(
     "spending on pace to exceed a budget, say so plainly and name the specific gap and its " +
     "projected outcome BEFORE offering encouragement — don't soften or bury it. Still be warm " +
     "and supportive, but the honest number comes first, every time." +
-    (isOnboarding ? ONBOARDING_SYSTEM_PROMPT_ADDITION : "");
+    (isOnboarding ? ONBOARDING_SYSTEM_PROMPT_ADDITION : "") +
+    (isVoiceMode ? VOICE_SYSTEM_PROMPT_ADDITION : "");
 
   const sections = [goalsContext, memories.length > 0 ? memoryText(memories) : ""].filter(Boolean);
   return sections.length === 0 ? base : `${base}\n\n${sections.join("\n\n")}`;
@@ -1493,6 +1504,9 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
 
     const userMessage = typeof body.message === "string" ? body.message.trim() : "";
     const isOnboarding = body.mode === "onboarding";
+    // Any other value (including an unrecognized string) just leaves this false — same
+    // permissive, non-erroring pattern as isOnboarding above.
+    const isVoiceMode = body.mode === "voice";
     const attachment = parseAttachment(body);
     // Only ever sourced from the client's own clock (JS Date#getTimezoneOffset() convention),
     // never from the model — see create_medication/update_medication's tool descriptions.
@@ -1565,6 +1579,7 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
       memories,
       goalsContext,
       isOnboarding,
+      isVoiceMode,
       profile?.preferredName,
       profile?.assistantTone,
       profile?.location,
