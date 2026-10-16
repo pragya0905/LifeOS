@@ -1,61 +1,43 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useApi } from "../api/useApi";
 import { todayLocal } from "../lib/date";
 import { PHASE_INFO, computeAvgPeriodDays, estimatePhase, predictNextCycle } from "../lib/cyclePhase";
-import type { LogEntry, UserProfile } from "../types";
+import type { LogEntry } from "../types";
 import { Skeleton } from "./Skeleton";
 import { card, errorText, input, mutedText, pillButton, pillButtonDone, pillButtonInactive, sectionLabel } from "./ui";
 
-export default function TodayCycle({ date }: { date: string }) {
+// `entries` is the full (unfiltered) cycle-log history and `onLogEvent` is Dashboard's own
+// mutation — both owned by Dashboard.tsx's single wave-2 fetch/cache instead of this
+// component independently re-fetching the same `/logs?logType=cycle` + `/profile` data
+// Dashboard already has (that duplicate fetch was the whole reason for this refactor).
+export default function TodayCycle({
+  date,
+  entries,
+  onLogEvent,
+}: {
+  date: string;
+  entries: LogEntry[] | null;
+  onLogEvent: (eventType: "period_start" | "period_end" | "symptom", note?: string) => Promise<LogEntry | undefined>;
+}) {
   const isToday = date === todayLocal();
-  const { request } = useApi();
-  const [entries, setEntries] = useState<LogEntry[] | null>(null);
-  const [hide, setHide] = useState(false);
   const [symptomNote, setSymptomNote] = useState("");
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let ignore = false;
-    async function load() {
-      try {
-        const [logsData, profile] = await Promise.all([
-          request<{ entries: LogEntry[] }>("/logs?logType=cycle"),
-          request<UserProfile>("/profile"),
-        ]);
-        if (ignore) return;
-        setEntries(logsData.entries);
-        setHide(profile.sex === "male");
-      } catch (err) {
-        if (!ignore) setError(err instanceof Error ? err.message : "Failed to load cycle data");
-      }
-    }
-    load();
-    return () => {
-      ignore = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   async function logEvent(eventType: "period_start" | "period_end" | "symptom", note?: string) {
     setSaving(eventType);
     setError(null);
     try {
-      const entry = await request<LogEntry>("/logs", {
-        method: "POST",
-        body: JSON.stringify({ logType: "cycle", date, data: { event: eventType, note: note || undefined } }),
-      });
-      setEntries((prev) => [...(prev ?? []), entry]);
+      const entry = await onLogEvent(eventType, note);
+      if (!entry) {
+        setError("Failed to save cycle entry");
+        return;
+      }
       if (eventType === "symptom") setSymptomNote("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save cycle entry");
     } finally {
       setSaving(null);
     }
   }
-
-  if (hide) return null;
 
   if (!entries) {
     return (
@@ -120,7 +102,7 @@ export default function TodayCycle({ date }: { date: string }) {
         <button
           type="button"
           disabled={saving !== null || loggedOnDate.period_start}
-          onClick={() => logEvent("period_start")}
+          onClick={() => void logEvent("period_start")}
           className={`${pillButton} px-2.5 py-1 ${loggedOnDate.period_start ? pillButtonDone : pillButtonInactive}`}
         >
           {loggedOnDate.period_start ? "✓ Period started" : isToday ? "🩸 Period started today" : `🩸 Period started on ${date}`}
@@ -128,7 +110,7 @@ export default function TodayCycle({ date }: { date: string }) {
         <button
           type="button"
           disabled={saving !== null || loggedOnDate.period_end}
-          onClick={() => logEvent("period_end")}
+          onClick={() => void logEvent("period_end")}
           className={`${pillButton} px-2.5 py-1 ${loggedOnDate.period_end ? pillButtonDone : pillButtonInactive}`}
         >
           {loggedOnDate.period_end ? "✓ Period ended" : isToday ? "◻️ Period ended today" : `◻️ Period ended on ${date}`}
@@ -146,7 +128,7 @@ export default function TodayCycle({ date }: { date: string }) {
         <button
           type="button"
           disabled={saving !== null || !symptomNote.trim()}
-          onClick={() => logEvent("symptom", symptomNote.trim())}
+          onClick={() => void logEvent("symptom", symptomNote.trim())}
           className={`${pillButton} ${pillButtonInactive} px-2.5 py-1`}
         >
           🌡️ Log

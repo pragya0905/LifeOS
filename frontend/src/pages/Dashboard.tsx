@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { SlidersHorizontal } from "lucide-react";
 import { useApi } from "../api/useApi";
+import { useAuth } from "../auth/AuthContext";
 import { todayLocal } from "../lib/date";
 import { appliesOnDate, byTimeOfDay } from "../lib/weekdays";
 import { computeRoutineStreak, routineStreakWindowStart } from "../lib/routineStreak";
 import { medicationStatusLabel, routineStatusLabel } from "../lib/statusDisplay";
 import { loadEveningHour, motionAllowed } from "../lib/preferences";
+import { readCache, writeCache } from "../lib/dataCache";
 import {
   defaultModuleConfig,
   loadModuleConfig,
@@ -71,8 +73,33 @@ interface TodayData {
   profile: UserProfile | null;
   progressSummary: ProgressSummary | null;
   journalToday: LogEntry[];
-  cycleToday: LogEntry[];
+  // Full (unfiltered) cycle history, not just today's — TodayCycle needs the whole series
+  // for its phase estimate, and Dashboard only needs a same-day slice of it. One fetch
+  // covers both instead of two independent ones for the same resource.
+  cycleAll: LogEntry[];
   moodToday: LogEntry[];
+}
+
+// Wave 1: everything the always-visible lists need for first paint. Wave 2: everything else
+// (Log-your-day, achievements, insights, cycle/meals/expenses modules) — deferred until
+// after wave 1 has rendered so the useful part of the screen shows up first.
+type Wave1Data = Pick<TodayData, "tasks" | "routines" | "routineRangeLogs" | "medications" | "medicationLogs">;
+type Wave2Data = Pick<TodayData, "habits" | "profile" | "progressSummary" | "journalToday" | "cycleAll" | "moodToday">;
+
+const EMPTY_WAVE2: Wave2Data = {
+  habits: [],
+  profile: null,
+  progressSummary: null,
+  journalToday: [],
+  cycleAll: [],
+  moodToday: [],
+};
+
+const WAVE1_CACHE_KEY = "today-wave1";
+const WAVE2_CACHE_KEY = "today-wave2";
+
+function isAbortError(err: unknown): boolean {
+  return typeof err === "object" && err !== null && (err as { name?: unknown }).name === "AbortError";
 }
 
 function isRoutineComplete(routine: RoutineTemplate, logs: RoutineStepLog[], date: string): boolean {
@@ -84,11 +111,32 @@ function isRoutineComplete(routine: RoutineTemplate, logs: RoutineStepLog[], dat
 
 export default function Dashboard() {
   const { request } = useApi();
+  const { user } = useAuth();
+  const userId = user?.userId ?? "";
   const { show: showToast } = useToast();
   const today = todayLocal();
 
-  const [data, setData] = useState<TodayData | null>(null);
+  const [data, setData] = useState<TodayData | null>(() => {
+    if (!userId) return null;
+    const wave1 = readCache<Wave1Data>(userId, WAVE1_CACHE_KEY);
+    if (!wave1) return null;
+    const wave2 = readCache<Wave2Data>(userId, WAVE2_CACHE_KEY);
+    return { ...wave1, ...(wave2 ?? EMPTY_WAVE2) };
+  });
+  // The cached snapshot this load started from (if any) — compared against the fully-settled
+  // background refresh so the "Updated just now" hint only fires when something actually
+  // changed, not on every quiet no-op revalidation.
+  const initialSnapshotRef = useRef<string | null>(data ? JSON.stringify(data) : null);
+  // Kept in sync with `data` via the effect below so the fetch effect (which intentionally
+  // does not depend on `data`, to avoid re-fetching on every mutation) can still read the
+  // current value when a wave resolves.
+  const latestDataRef = useRef<TodayData | null>(data);
+  useEffect(() => {
+    latestDataRef.current = data;
+  }, [data]);
+
   const [error, setError] = useState<string | null>(null);
+  const [syncHint, setSyncHint] = useState<"offline" | "updated" | null>(null);
   const [pendingKeys, setPendingKeys] = useState<Set<string>>(new Set());
   const [modules, setModules] = useState<TodayModuleConfig[]>(defaultModuleConfig);
   const [customizeOpen, setCustomizeOpen] = useState(false);
@@ -99,62 +147,140 @@ export default function Dashboard() {
     setModules(loadModuleConfig());
   }, []);
 
-  useEffect(() => {
-    let ignore = false;
-    const windowStart = routineStreakWindowStart();
+  // Two-wave, cache-backed, cancellable load. See the StrictMode comment on the cleanup
+  // below (same class of bug, same fix, as BottomSheet.tsx's history effect) for why the
+  // abort is deferred via a ref-guarded fetchKey rather than fired directly in cleanup.
+  const abortTimerRef = useRef<number | null>(null);
+  const controllerRef = useRef<AbortController | null>(null);
+  const startedForRef = useRef<string | null>(null);
+  const updatedHintTimerRef = useRef<number | null>(null);
 
-    Promise.all([
-      request<{ tasks: Task[] }>("/tasks"),
-      request<{ routines: RoutineTemplate[] }>("/routines"),
-      request<{ logs: RoutineStepLog[] }>(`/routine-logs?from=${windowStart}&to=${today}`),
-      request<{ medications: Medication[] }>("/medications"),
-      request<{ logs: MedicationLog[] }>(`/medication-logs/${today}`),
-      request<{ habits: HabitLog[] }>(`/habits/${today}`),
-      request<UserProfile>("/profile"),
-      request<ProgressSummary>("/progress-summary"),
-      request<{ entries: LogEntry[] }>(`/journal?from=${today}&to=${today}`),
-      request<{ entries: LogEntry[] }>(`/logs?logType=cycle&from=${today}&to=${today}`),
-      request<{ entries: LogEntry[] }>(`/logs?logType=mood&from=${today}&to=${today}`),
-    ])
-      .then(
-        ([
-          tasksRes,
-          routinesRes,
-          routineLogsRes,
-          medicationsRes,
-          medicationLogsRes,
-          habitsRes,
-          profileRes,
-          progressSummaryRes,
-          journalRes,
-          cycleRes,
-          moodRes,
-        ]) => {
-          if (ignore) return;
-          setData({
-            tasks: tasksRes.tasks,
-            routines: routinesRes.routines,
-            routineRangeLogs: routineLogsRes.logs,
-            medications: medicationsRes.medications,
-            medicationLogs: medicationLogsRes.logs,
+  useEffect(() => {
+    if (!userId) return;
+    const fetchKey = `${userId}:${today}`;
+
+    if (abortTimerRef.current !== null) {
+      window.clearTimeout(abortTimerRef.current);
+      abortTimerRef.current = null;
+    }
+
+    if (startedForRef.current !== fetchKey) {
+      // A genuine user/date change (not a StrictMode phantom remount of the same key) —
+      // cancel whatever was still in flight for the old key right away and start fresh.
+      controllerRef.current?.abort();
+      startedForRef.current = fetchKey;
+      const controller = new AbortController();
+      controllerRef.current = controller;
+      const windowStart = routineStreakWindowStart();
+
+      async function loadWave2(signal: AbortSignal) {
+        try {
+          const [habitsRes, profileRes, progressSummaryRes, journalRes, cycleRes, moodRes] = await Promise.all([
+            request<{ habits: HabitLog[] }>(`/habits/${today}`, { signal }),
+            request<UserProfile>("/profile", { signal }),
+            request<ProgressSummary>("/progress-summary", { signal }),
+            request<{ entries: LogEntry[] }>(`/journal?from=${today}&to=${today}`, { signal }),
+            request<{ entries: LogEntry[] }>("/logs?logType=cycle", { signal }),
+            request<{ entries: LogEntry[] }>(`/logs?logType=mood&from=${today}&to=${today}`, { signal }),
+          ]);
+          if (startedForRef.current !== fetchKey) return;
+          const wave2: Wave2Data = {
             habits: habitsRes.habits,
             profile: profileRes,
             progressSummary: progressSummaryRes,
             journalToday: journalRes.entries,
-            cycleToday: cycleRes.entries,
+            cycleAll: cycleRes.entries,
             moodToday: moodRes.entries,
+          };
+          writeCache(userId, WAVE2_CACHE_KEY, wave2);
+          // Merge via the functional updater (not a value computed from latestDataRef) so
+          // this always lands on whatever the truly-current state is, even if a mutation's
+          // own optimistic/confirmed write happened in the same tick this wave resolved —
+          // manual edits must never be clobbered by a background refresh landing concurrently.
+          let mergedForHint: TodayData | null = null;
+          setData((prev) => {
+            if (!prev) return prev;
+            const merged = { ...prev, ...wave2 };
+            mergedForHint = merged;
+            return merged;
           });
-        },
-      )
-      .catch((err) => {
-        if (!ignore) setError(err instanceof Error ? err.message : "Failed to load today's data");
-      });
+          if (updatedHintTimerRef.current !== null) {
+            window.clearTimeout(updatedHintTimerRef.current);
+            updatedHintTimerRef.current = null;
+          }
+          if (initialSnapshotRef.current !== null && mergedForHint) {
+            const changed = JSON.stringify(mergedForHint) !== initialSnapshotRef.current;
+            setSyncHint(changed ? "updated" : null);
+            if (changed) {
+              updatedHintTimerRef.current = window.setTimeout(() => {
+                setSyncHint((h) => (h === "updated" ? null : h));
+              }, 3500);
+            }
+          } else {
+            setSyncHint(null);
+          }
+          initialSnapshotRef.current = mergedForHint ? JSON.stringify(mergedForHint) : null;
+        } catch (err) {
+          if (isAbortError(err)) return;
+          setSyncHint(latestDataRef.current ? "offline" : null);
+        }
+      }
+
+      async function loadWave1(signal: AbortSignal) {
+        try {
+          const [tasksRes, routinesRes, routineLogsRes, medsRes, medLogsRes] = await Promise.all([
+            request<{ tasks: Task[] }>("/tasks", { signal }),
+            request<{ routines: RoutineTemplate[] }>("/routines", { signal }),
+            request<{ logs: RoutineStepLog[] }>(`/routine-logs?from=${windowStart}&to=${today}`, { signal }),
+            request<{ medications: Medication[] }>("/medications", { signal }),
+            request<{ logs: MedicationLog[] }>(`/medication-logs/${today}`, { signal }),
+          ]);
+          if (startedForRef.current !== fetchKey) return;
+          const wave1: Wave1Data = {
+            tasks: tasksRes.tasks,
+            routines: routinesRes.routines,
+            routineRangeLogs: routineLogsRes.logs,
+            medications: medsRes.medications,
+            medicationLogs: medLogsRes.logs,
+          };
+          writeCache(userId, WAVE1_CACHE_KEY, wave1);
+          setData((prev) => ({ ...(prev ?? { ...wave1, ...EMPTY_WAVE2 }), ...wave1 }));
+          setError(null);
+          // Deferred to a microtask so wave 1 has a chance to actually paint before wave 2
+          // starts competing for the connection/main thread.
+          void Promise.resolve().then(() => loadWave2(signal));
+        } catch (err) {
+          if (isAbortError(err)) return;
+          if (latestDataRef.current) {
+            setSyncHint("offline");
+          } else {
+            setError(err instanceof Error ? err.message : "Failed to load today's data");
+          }
+        }
+      }
+
+      void loadWave1(controller.signal);
+    }
 
     return () => {
-      ignore = true;
+      abortTimerRef.current = window.setTimeout(() => {
+        abortTimerRef.current = null;
+        if (startedForRef.current === fetchKey) {
+          startedForRef.current = null;
+          controllerRef.current?.abort();
+          controllerRef.current = null;
+        }
+      }, 0);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [userId, today]);
+
+  useEffect(
+    () => () => {
+      if (updatedHintTimerRef.current !== null) window.clearTimeout(updatedHintTimerRef.current);
+    },
+    [],
+  );
 
   function withPending<T>(key: string, fn: () => Promise<T>): Promise<T> {
     setPendingKeys((prev) => new Set(prev).add(key));
@@ -171,15 +297,89 @@ export default function Dashboard() {
     return pendingKeys.has(key);
   }
 
+  // Optimistic mutation helper: applies `optimisticApply` to `data` immediately (before the
+  // network call), then either merges the confirmed server response in on success or rolls
+  // all the way back to the pre-mutation snapshot on failure. Manual edits (this function)
+  // always take priority over whatever the background SWR refresh last wrote — the refresh
+  // only ever replaces `data` wholesale from a fresh wave fetch, never races a single in-
+  // flight mutation's own optimistic/confirmed writes.
+  async function mutate<T>(
+    key: string,
+    optimisticApply: (prev: TodayData) => TodayData,
+    run: () => Promise<T>,
+    confirmedApply: (prev: TodayData, result: T) => TodayData,
+  ): Promise<T | undefined> {
+    if (!data) return undefined;
+    // Captured from this render's closure, not a ref — correct for the common case of one
+    // mutation at a time. A failed mutation whose in-flight window overlapped a background
+    // SWR refresh landing would roll back that refresh's fields too, not just its own; an
+    // accepted edge case rather than a full merge system for a single-user Today screen.
+    const snapshot = data;
+    setData((prev) => (prev ? optimisticApply(prev) : prev));
+    try {
+      const result = await withPending(key, run);
+      setData((prev) => (prev ? confirmedApply(prev, result) : prev));
+      return result;
+    } catch (err) {
+      setData(snapshot);
+      showToast("Something went wrong — that change wasn't saved");
+      throw err;
+    }
+  }
+
+  async function mutateBulk<T>(
+    keys: string[],
+    optimisticApply: (prev: TodayData) => TodayData,
+    run: () => Promise<T[]>,
+    confirmedApply: (prev: TodayData, results: T[]) => TodayData,
+  ): Promise<T[] | undefined> {
+    if (!data) return undefined;
+    // Captured from this render's closure, not a ref — correct for the common case of one
+    // mutation at a time. A failed mutation whose in-flight window overlapped a background
+    // SWR refresh landing would roll back that refresh's fields too, not just its own; an
+    // accepted edge case rather than a full merge system for a single-user Today screen.
+    const snapshot = data;
+    setData((prev) => (prev ? optimisticApply(prev) : prev));
+    setPendingKeys((prev) => {
+      const next = new Set(prev);
+      for (const k of keys) next.add(k);
+      return next;
+    });
+    try {
+      const results = await run();
+      setData((prev) => (prev ? confirmedApply(prev, results) : prev));
+      return results;
+    } catch (err) {
+      setData(snapshot);
+      showToast("Something went wrong — those changes weren't saved");
+      throw err;
+    } finally {
+      setPendingKeys((prev) => {
+        const next = new Set(prev);
+        for (const k of keys) next.delete(k);
+        return next;
+      });
+    }
+  }
+
   // --- Mutations — same endpoints Tasks/Routines/Medications/Wishes/Journal/Habits/Cycle
   // pages already use; nothing here changes an API contract. ---
 
   async function completeTask(taskId: string) {
-    const prevStatus = data?.tasks.find((t) => t.taskId === taskId)?.status ?? "todo";
-    const updated = await withPending(`task:${taskId}`, () =>
-      request<Task>(`/tasks/${taskId}`, { method: "PATCH", body: JSON.stringify({ status: "done" }) }),
-    );
-    setData((prev) => prev && { ...prev, tasks: prev.tasks.map((t) => (t.taskId === taskId ? updated : t)) });
+    if (!data) return;
+    const prevStatus = data.tasks.find((t) => t.taskId === taskId)?.status ?? "todo";
+    let updated: Task | undefined;
+    try {
+      updated = await mutate(
+        `task:${taskId}`,
+        (prev) => ({ ...prev, tasks: prev.tasks.map((t) => (t.taskId === taskId ? { ...t, status: "done" } : t)) }),
+        () => request<Task>(`/tasks/${taskId}`, { method: "PATCH", body: JSON.stringify({ status: "done" }) }),
+        (prev, result) => ({ ...prev, tasks: prev.tasks.map((t) => (t.taskId === taskId ? result : t)) }),
+      );
+    } catch {
+      return;
+    }
+    if (!updated) return;
     showToast(`"${updated.title}" done`, {
       undo: () => {
         request<Task>(`/tasks/${taskId}`, { method: "PATCH", body: JSON.stringify({ status: prevStatus }) })
@@ -189,29 +389,39 @@ export default function Dashboard() {
     });
   }
 
-  // Low-level — PATCHes one step and applies the optimistic update, no toast. Both the
-  // single-row path and the bulk (Mark all done / Skip all remaining) paths build on this;
-  // the bulk paths show one combined toast instead of one per step.
-  async function patchRoutineStep(routineId: string, stepIndex: number, status: RoutineStepLog["status"], note?: string) {
-    const key = `routine:${routineId}:${stepIndex}`;
-    const updated = await withPending(key, () =>
-      request<RoutineStepLog>(`/routine-logs/${today}/${routineId}/${stepIndex}`, {
-        method: "PATCH",
-        body: JSON.stringify({ status, note: note ?? "" }),
-      }),
-    );
-    setData((prev) => prev && { ...prev, routineRangeLogs: [...prev.routineRangeLogs.filter((l) => l.dateRoutineStep !== updated.dateRoutineStep), updated] });
-    return updated;
-  }
-
   function findRoutineLog(routineId: string, stepIndex: number): RoutineStepLog | undefined {
     return data?.routineRangeLogs.find((l) => l.date === today && l.routineId === routineId && l.stepIndex === stepIndex);
+  }
+
+  function optimisticRoutineLog(routineId: string, stepIndex: number, status: RoutineStepLog["status"], note: string | undefined, prev?: RoutineStepLog): RoutineStepLog {
+    return {
+      userId: prev?.userId ?? userId,
+      dateRoutineStep: `${today}#${routineId}#${stepIndex}`,
+      date: today,
+      routineId,
+      stepIndex,
+      status,
+      note: note || undefined,
+      source: "manual",
+      createdAt: prev?.createdAt ?? new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  function replaceRoutineLogs(logs: RoutineStepLog[], updates: RoutineStepLog[]): RoutineStepLog[] {
+    // Matched by (date, routineId, stepIndex), not the opaque dateRoutineStep key — an
+    // optimistic entry's guessed key only needs to be internally consistent with itself,
+    // and this match works whether the entry being replaced is optimistic or confirmed.
+    return [
+      ...logs.filter((l) => !updates.some((u) => u.date === l.date && u.routineId === l.routineId && u.stepIndex === l.stepIndex)),
+      ...updates,
+    ];
   }
 
   function maybeCelebrateRoutine(routine: RoutineTemplate, updatedSteps: RoutineStepLog[]) {
     if (!data) return;
     const wasComplete = isRoutineComplete(routine, data.routineRangeLogs, today);
-    const mergedLogs = [...data.routineRangeLogs.filter((l) => !updatedSteps.some((u) => u.dateRoutineStep === l.dateRoutineStep)), ...updatedSteps];
+    const mergedLogs = replaceRoutineLogs(data.routineRangeLogs, updatedSteps);
     const isComplete = isRoutineComplete(routine, mergedLogs, today);
     if (!wasComplete && isComplete) setCelebration(`${routine.name} — all done!`);
   }
@@ -219,7 +429,18 @@ export default function Dashboard() {
   // Shared by the always-visible per-step Done/Skipped/N-A buttons and the inline note save.
   async function setRoutineStepStatus(routine: RoutineTemplate, stepIndex: number, status: RoutineStepLog["status"], note?: string) {
     const prevLog = findRoutineLog(routine.routineId, stepIndex);
-    const updated = await patchRoutineStep(routine.routineId, stepIndex, status, note);
+    let updated: RoutineStepLog | undefined;
+    try {
+      updated = await mutate(
+        `routine:${routine.routineId}:${stepIndex}`,
+        (prev) => ({ ...prev, routineRangeLogs: replaceRoutineLogs(prev.routineRangeLogs, [optimisticRoutineLog(routine.routineId, stepIndex, status, note, prevLog)]) }),
+        () => request<RoutineStepLog>(`/routine-logs/${today}/${routine.routineId}/${stepIndex}`, { method: "PATCH", body: JSON.stringify({ status, note: note ?? "" }) }),
+        (prev, result) => ({ ...prev, routineRangeLogs: replaceRoutineLogs(prev.routineRangeLogs, [result]) }),
+      );
+    } catch {
+      return;
+    }
+    if (!updated) return;
     if (status === "done") maybeCelebrateRoutine(routine, [updated]);
     showToast(routineStatusLabel(status, note), {
       undo: () => {
@@ -227,9 +448,7 @@ export default function Dashboard() {
           method: "PATCH",
           body: JSON.stringify({ status: prevLog?.status ?? "skipped", note: prevLog?.note ?? "" }),
         })
-          .then((reverted) =>
-            setData((prev) => prev && { ...prev, routineRangeLogs: [...prev.routineRangeLogs.filter((l) => l.dateRoutineStep !== reverted.dateRoutineStep), reverted] }),
-          )
+          .then((reverted) => setData((prev) => prev && { ...prev, routineRangeLogs: replaceRoutineLogs(prev.routineRangeLogs, [reverted]) }))
           .catch(() => {});
       },
     });
@@ -244,20 +463,23 @@ export default function Dashboard() {
   async function markAllDoneSteps(routine: RoutineTemplate) {
     const pendingSteps = pendingStepIndexes(routine);
     if (pendingSteps.length === 0) return;
-    const updated = await Promise.all(pendingSteps.map((i) => patchRoutineStep(routine.routineId, i, "done")));
+    let updated: RoutineStepLog[] | undefined;
+    try {
+      updated = await mutateBulk(
+        pendingSteps.map((i) => `routine:${routine.routineId}:${i}`),
+        (prev) => ({ ...prev, routineRangeLogs: replaceRoutineLogs(prev.routineRangeLogs, pendingSteps.map((i) => optimisticRoutineLog(routine.routineId, i, "done", undefined))) }),
+        () => Promise.all(pendingSteps.map((i) => request<RoutineStepLog>(`/routine-logs/${today}/${routine.routineId}/${i}`, { method: "PATCH", body: JSON.stringify({ status: "done" }) }))),
+        (prev, results) => ({ ...prev, routineRangeLogs: replaceRoutineLogs(prev.routineRangeLogs, results) }),
+      );
+    } catch {
+      return;
+    }
+    if (!updated) return;
     maybeCelebrateRoutine(routine, updated);
     showToast(`${routine.name}: ${pendingSteps.length} step${pendingSteps.length === 1 ? "" : "s"} marked done`, {
       undo: () => {
         Promise.all(pendingSteps.map((i) => request<RoutineStepLog>(`/routine-logs/${today}/${routine.routineId}/${i}`, { method: "PATCH", body: JSON.stringify({ status: "skipped" }) })))
-          .then((reverted) =>
-            setData(
-              (prev) =>
-                prev && {
-                  ...prev,
-                  routineRangeLogs: [...prev.routineRangeLogs.filter((l) => !reverted.some((r) => r.dateRoutineStep === l.dateRoutineStep)), ...reverted],
-                },
-            ),
-          )
+          .then((reverted) => setData((prev) => prev && { ...prev, routineRangeLogs: replaceRoutineLogs(prev.routineRangeLogs, reverted) }))
           .catch(() => {});
       },
     });
@@ -266,39 +488,51 @@ export default function Dashboard() {
   async function skipRemainingSteps(routine: RoutineTemplate) {
     const pendingSteps = pendingStepIndexes(routine);
     if (pendingSteps.length === 0) return;
-    await Promise.all(pendingSteps.map((i) => patchRoutineStep(routine.routineId, i, "skipped")));
+    try {
+      await mutateBulk(
+        pendingSteps.map((i) => `routine:${routine.routineId}:${i}`),
+        (prev) => ({ ...prev, routineRangeLogs: replaceRoutineLogs(prev.routineRangeLogs, pendingSteps.map((i) => optimisticRoutineLog(routine.routineId, i, "skipped", undefined))) }),
+        () => Promise.all(pendingSteps.map((i) => request<RoutineStepLog>(`/routine-logs/${today}/${routine.routineId}/${i}`, { method: "PATCH", body: JSON.stringify({ status: "skipped" }) }))),
+        (prev, results) => ({ ...prev, routineRangeLogs: replaceRoutineLogs(prev.routineRangeLogs, results) }),
+      );
+    } catch {
+      return;
+    }
     showToast(`${routine.name}: ${pendingSteps.length} remaining step${pendingSteps.length === 1 ? "" : "s"} skipped`, {
       undo: () => {
         Promise.all(pendingSteps.map((i) => request<RoutineStepLog>(`/routine-logs/${today}/${routine.routineId}/${i}`, { method: "PATCH", body: JSON.stringify({ status: "done" }) })))
-          .then((reverted) =>
-            setData(
-              (prev) =>
-                prev && {
-                  ...prev,
-                  routineRangeLogs: [...prev.routineRangeLogs.filter((l) => !reverted.some((r) => r.dateRoutineStep === l.dateRoutineStep)), ...reverted],
-                },
-            ),
-          )
+          .then((reverted) => setData((prev) => prev && { ...prev, routineRangeLogs: replaceRoutineLogs(prev.routineRangeLogs, reverted) }))
           .catch(() => {});
       },
     });
   }
 
-  // Low-level — PATCHes one medication log and applies the optimistic update, no toast.
-  async function patchMedicationStatus(medicationId: string, status: MedicationLog["status"], note?: string) {
-    const key = `med:${medicationId}`;
-    const updated = await withPending(key, () =>
-      request<MedicationLog>(`/medication-logs/${today}/${medicationId}`, { method: "PATCH", body: JSON.stringify({ status, note: note ?? "" }) }),
-    );
-    setData((prev) => prev && { ...prev, medicationLogs: [...prev.medicationLogs.filter((l) => l.dateMedicationId !== updated.dateMedicationId), updated] });
-    return updated;
+  function optimisticMedicationLog(medicationId: string, status: MedicationLog["status"], note: string | undefined, prev?: MedicationLog): MedicationLog {
+    return {
+      userId: prev?.userId ?? userId,
+      dateMedicationId: `${today}#${medicationId}`,
+      date: today,
+      medicationId,
+      status,
+      note: note || undefined,
+      source: "manual",
+      createdAt: prev?.createdAt ?? new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  function replaceMedicationLogs(logs: MedicationLog[], updates: MedicationLog[]): MedicationLog[] {
+    return [
+      ...logs.filter((l) => !updates.some((u) => u.date === l.date && u.medicationId === l.medicationId)),
+      ...updates,
+    ];
   }
 
   function maybeCelebrateMeds(updatedLogs: MedicationLog[]) {
     if (!data) return;
     const applicable = data.medications.filter((m) => appliesOnDate(m.daysOfWeek, new Date(`${today}T00:00:00`)));
     const wasAllTaken = applicable.every((m) => data.medicationLogs.find((l) => l.date === today && l.medicationId === m.medicationId)?.status === "taken");
-    const mergedLogs = [...data.medicationLogs.filter((l) => !updatedLogs.some((u) => u.dateMedicationId === l.dateMedicationId)), ...updatedLogs];
+    const mergedLogs = replaceMedicationLogs(data.medicationLogs, updatedLogs);
     const isAllTaken = applicable.length > 0 && applicable.every((m) => mergedLogs.find((l) => l.date === today && l.medicationId === m.medicationId)?.status === "taken");
     if (!wasAllTaken && isAllTaken) setCelebration("All of today's medications taken!");
   }
@@ -306,16 +540,26 @@ export default function Dashboard() {
   // Shared by every medication status change (always-visible Taken/Skipped/Missed buttons,
   // and Mark all taken).
   async function setMedicationStatus(medicationId: string, status: MedicationLog["status"], note?: string) {
-    const prevLog = data?.medicationLogs.find((l) => l.date === today && l.medicationId === medicationId);
-    const medName = data?.medications.find((m) => m.medicationId === medicationId)?.name ?? "Medication";
-    const updated = await patchMedicationStatus(medicationId, status, note);
+    if (!data) return;
+    const prevLog = data.medicationLogs.find((l) => l.date === today && l.medicationId === medicationId);
+    const medName = data.medications.find((m) => m.medicationId === medicationId)?.name ?? "Medication";
+    let updated: MedicationLog | undefined;
+    try {
+      updated = await mutate(
+        `med:${medicationId}`,
+        (prev) => ({ ...prev, medicationLogs: replaceMedicationLogs(prev.medicationLogs, [optimisticMedicationLog(medicationId, status, note, prevLog)]) }),
+        () => request<MedicationLog>(`/medication-logs/${today}/${medicationId}`, { method: "PATCH", body: JSON.stringify({ status, note: note ?? "" }) }),
+        (prev, result) => ({ ...prev, medicationLogs: replaceMedicationLogs(prev.medicationLogs, [result]) }),
+      );
+    } catch {
+      return;
+    }
+    if (!updated) return;
     if (status === "taken") maybeCelebrateMeds([updated]);
     showToast(`${medName}: ${medicationStatusLabel(status, note)}`, {
       undo: () => {
         request<MedicationLog>(`/medication-logs/${today}/${medicationId}`, { method: "PATCH", body: JSON.stringify({ status: prevLog?.status ?? "missed", note: prevLog?.note ?? "" }) })
-          .then((reverted) =>
-            setData((prev) => prev && { ...prev, medicationLogs: [...prev.medicationLogs.filter((l) => l.dateMedicationId !== reverted.dateMedicationId), reverted] }),
-          )
+          .then((reverted) => setData((prev) => prev && { ...prev, medicationLogs: replaceMedicationLogs(prev.medicationLogs, [reverted]) }))
           .catch(() => {});
       },
     });
@@ -323,56 +567,112 @@ export default function Dashboard() {
 
   async function markAllMedicationsTaken(medicationIds: string[]) {
     if (medicationIds.length === 0) return;
-    const updated = await Promise.all(medicationIds.map((id) => patchMedicationStatus(id, "taken")));
+    let updated: MedicationLog[] | undefined;
+    try {
+      updated = await mutateBulk(
+        medicationIds.map((id) => `med:${id}`),
+        (prev) => ({ ...prev, medicationLogs: replaceMedicationLogs(prev.medicationLogs, medicationIds.map((id) => optimisticMedicationLog(id, "taken", undefined))) }),
+        () => Promise.all(medicationIds.map((id) => request<MedicationLog>(`/medication-logs/${today}/${id}`, { method: "PATCH", body: JSON.stringify({ status: "taken" }) }))),
+        (prev, results) => ({ ...prev, medicationLogs: replaceMedicationLogs(prev.medicationLogs, results) }),
+      );
+    } catch {
+      return;
+    }
+    if (!updated) return;
     maybeCelebrateMeds(updated);
     showToast(`${medicationIds.length} medication${medicationIds.length === 1 ? "" : "s"} marked taken`, {
       undo: () => {
         Promise.all(medicationIds.map((id) => request<MedicationLog>(`/medication-logs/${today}/${id}`, { method: "PATCH", body: JSON.stringify({ status: "missed" }) })))
-          .then((reverted) =>
-            setData(
-              (prev) =>
-                prev && {
-                  ...prev,
-                  medicationLogs: [...prev.medicationLogs.filter((l) => !reverted.some((r) => r.dateMedicationId === l.dateMedicationId)), ...reverted],
-                },
-            ),
-          )
+          .then((reverted) => setData((prev) => prev && { ...prev, medicationLogs: replaceMedicationLogs(prev.medicationLogs, reverted) }))
           .catch(() => {});
       },
     });
   }
 
   async function logWater(amountMl: number) {
-    const currentWater = data?.habits.find((h) => h.habitType === "water")?.value ?? 0;
+    if (!data) return;
+    const currentWater = data.habits.find((h) => h.habitType === "water")?.value ?? 0;
     const next = currentWater + amountMl;
-    await withPending("water", () => request(`/habits/${today}/water`, { method: "PATCH", body: JSON.stringify({ value: next }) }));
-    setData(
-      (prev) =>
-        prev && {
+    try {
+      await mutate(
+        "water",
+        (prev) => ({
           ...prev,
           habits: [...prev.habits.filter((h) => h.habitType !== "water"), { ...prev.habits.find((h) => h.habitType === "water"), habitType: "water", value: next } as HabitLog],
-        },
-    );
+        }),
+        () => request(`/habits/${today}/water`, { method: "PATCH", body: JSON.stringify({ value: next }) }),
+        (prev) => prev,
+      );
+    } catch {
+      return;
+    }
     showToast(`+${amountMl}ml water logged`);
   }
 
   async function logMood(rating: number, note?: string) {
-    const current = data?.moodToday[0];
-    const updated = await withPending("mood", () =>
-      current
-        ? request<LogEntry>(`/logs/${current.logId}`, { method: "PATCH", body: JSON.stringify({ data: { rating, note } }) })
-        : request<LogEntry>("/logs", { method: "POST", body: JSON.stringify({ logType: "mood", date: today, data: { rating, note } }) }),
-    );
-    setData((prev) => prev && { ...prev, moodToday: [updated] });
+    if (!data) return;
+    const current = data.moodToday[0];
+    const optimisticEntry: LogEntry = current
+      ? { ...current, data: { rating, note } }
+      : {
+          logId: "optimistic",
+          userId,
+          logType: "mood",
+          date: today,
+          data: { rating, note },
+          source: "manual",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+    try {
+      const updated = await mutate(
+        "mood",
+        (prev) => ({ ...prev, moodToday: [optimisticEntry] }),
+        () =>
+          current
+            ? request<LogEntry>(`/logs/${current.logId}`, { method: "PATCH", body: JSON.stringify({ data: { rating, note } }) })
+            : request<LogEntry>("/logs", { method: "POST", body: JSON.stringify({ logType: "mood", date: today, data: { rating, note } }) }),
+        (prev, result) => ({ ...prev, moodToday: [result] }),
+      );
+      if (!updated) return;
+    } catch {
+      return;
+    }
     showToast(`Mood logged: ${rating}/5`);
   }
 
+  async function logCycleEvent(eventType: "period_start" | "period_end" | "symptom", note?: string): Promise<LogEntry | undefined> {
+    if (!data) return undefined;
+    try {
+      return await mutate(
+        `cycle:${eventType}`,
+        (prev) => ({
+          ...prev,
+          cycleAll: [
+            ...prev.cycleAll,
+            {
+              logId: "optimistic",
+              userId,
+              logType: "cycle",
+              date: today,
+              data: { event: eventType, note },
+              source: "manual",
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            } satisfies LogEntry,
+          ],
+        }),
+        () => request<LogEntry>("/logs", { method: "POST", body: JSON.stringify({ logType: "cycle", date: today, data: { event: eventType, note: note || undefined } }) }),
+        (prev, result) => ({ ...prev, cycleAll: [...prev.cycleAll.filter((e) => e.logId !== "optimistic"), result] }),
+      );
+    } catch {
+      return undefined;
+    }
+  }
+
   async function logPeriodStarted() {
-    const entry = await withPending("cycle", () =>
-      request<LogEntry>("/logs", { method: "POST", body: JSON.stringify({ logType: "cycle", date: today, data: { event: "period_start" } }) }),
-    );
-    setData((prev) => prev && { ...prev, cycleToday: [...prev.cycleToday, entry] });
-    showToast("Period started logged");
+    const entry = await logCycleEvent("period_start");
+    if (entry) showToast("Period started logged");
   }
 
   // --- Derived view model ---
@@ -423,7 +723,7 @@ export default function Dashboard() {
   const moodLoggedToday = (data?.moodToday[0]?.data.rating as number | undefined) ?? null;
 
   const hideCycle = data?.profile?.sex === "male";
-  const cycleLoggedToday = (data?.cycleToday ?? []).some((e) => e.data.event === "period_start");
+  const cycleLoggedToday = (data?.cycleAll ?? []).some((e) => e.date === today && e.data.event === "period_start");
   const journaledToday = (data?.journalToday ?? []).length > 0;
 
   const waterLogged = (data?.habits ?? []).some((h) => h.habitType === "water");
@@ -630,14 +930,16 @@ export default function Dashboard() {
               showCycleChip={!hideCycle}
               cycleLoggedToday={cycleLoggedToday}
               onLogPeriodStarted={() => void logPeriodStarted()}
-              cyclePending={isPending("cycle")}
+              cyclePending={isPending("cycle:period_start")}
             />
           </Card>
         ) : null;
       case "habits":
         return <TodayHabits date={today} />;
       case "cycle":
-        return hideCycle ? null : <TodayCycle date={today} />;
+        return hideCycle ? null : (
+          <TodayCycle date={today} entries={data?.cycleAll ?? null} onLogEvent={logCycleEvent} />
+        );
       case "budget":
         return <BudgetPreview />;
       case "meals":
@@ -687,6 +989,11 @@ export default function Dashboard() {
         <div>
           <h1 className={pageTitle}>{greeting()}</h1>
           <p className={`-mt-4 ${mutedText}`}>{formattedDate()}</p>
+          {syncHint && (
+            <p className={`-mt-3 text-xs ${syncHint === "offline" ? "text-alert" : "text-ink-muted dark:text-mist-muted"}`}>
+              {syncHint === "offline" ? "Offline — showing saved data" : "Updated just now"}
+            </p>
+          )}
         </div>
         <button
           type="button"

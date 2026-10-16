@@ -16,6 +16,7 @@ import {
   getCurrentUser,
   fetchAuthSession,
 } from "aws-amplify/auth";
+import { clearAllCache, ensureCacheOwner } from "../lib/dataCache";
 
 interface AuthUser {
   userId: string;
@@ -54,6 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     loadCurrentUser().then((u) => {
+      if (u) ensureCacheOwner(u.userId);
       setUser(u);
       setLoading(false);
     });
@@ -77,10 +79,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     async signIn(email, password) {
       await amplifySignIn({ username: email, password });
-      setUser(await loadCurrentUser());
+      const u = await loadCurrentUser();
+      if (u) ensureCacheOwner(u.userId);
+      setUser(u);
     },
     async signOut() {
       await amplifySignOut();
+      clearAllCache();
       setUser(null);
     },
     async getIdToken() {
