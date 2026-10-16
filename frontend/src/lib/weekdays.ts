@@ -17,3 +17,14 @@ export function formatSchedule(daysOfWeek: number[] | undefined): string {
 export function appliesOnDate(daysOfWeek: number[] | undefined, date: Date): boolean {
   return !daysOfWeek || daysOfWeek.length === 0 || daysOfWeek.includes(date.getDay());
 }
+
+// Shared by Routines.tsx, Medications.tsx, and the Today screen — items with no time sort
+// to the end, after every timed one in ascending order. "HH:MM" strings already sort
+// correctly lexicographically, no parsing needed. One sort, used everywhere either list
+// appears, so Today's ordering never silently drifts from the dedicated pages'.
+export function byTimeOfDay<T extends { timeOfDay?: string }>(a: T, b: T): number {
+  if (!a.timeOfDay && !b.timeOfDay) return 0;
+  if (!a.timeOfDay) return 1;
+  if (!b.timeOfDay) return -1;
+  return a.timeOfDay.localeCompare(b.timeOfDay);
+}

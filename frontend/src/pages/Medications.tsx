@@ -2,12 +2,13 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Bell, Timer } from "lucide-react";
 import { useApi } from "../api/useApi";
 import { todayLocal, toLocalDateStr } from "../lib/date";
-import { ALL_DAYS, appliesOnDate, formatSchedule } from "../lib/weekdays";
+import { ALL_DAYS, appliesOnDate, byTimeOfDay, formatSchedule } from "../lib/weekdays";
 import { URGENCY_BADGE_CLASS } from "../lib/urgency";
 import { Skeleton } from "../components/Skeleton";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icon";
 import DayOfWeekPicker from "../components/DayOfWeekPicker";
+import { MedicationStatusButtons } from "../components/MedicationStatusButtons";
 import type { Medication, MedicationLog, MedicationLogStatus } from "../types";
 import {
   card,
@@ -20,7 +21,6 @@ import {
   pillButton,
   pillButtonDone,
   pillButtonInactive,
-  pillButtonMissed,
   primaryButton,
   secondaryButton,
   sectionLabel,
@@ -39,42 +39,44 @@ function daysAgo(n: number): string {
 const DURATION_PRESETS = [7, 30];
 const ADHERENCE_WINDOW_DAYS = 14;
 
-// Medications with no reminder time sort to the end, after every timed one in ascending
-// order — "HH:MM" strings already sort correctly lexicographically, no parsing needed. Same
-// pattern as Routines.tsx's byTimeOfDay.
-function byTimeOfDay(a: Medication, b: Medication): number {
-  if (!a.timeOfDay && !b.timeOfDay) return 0;
-  if (!a.timeOfDay) return 1;
-  if (!b.timeOfDay) return -1;
-  return a.timeOfDay.localeCompare(b.timeOfDay);
-}
 
-// Below this many scheduled days of history, a percentage is more misleading than
-// useful (a brand-new medication reads as "0% adherence" in alert-red before its first
-// dose is even due) — those render as "New" instead, in computeAdherence's caller.
+// Below this many scheduled days of history (after excluding Skipped — see below), a
+// percentage is more misleading than useful (a brand-new medication reads as "0%
+// adherence" in alert-red before its first dose is even due) — those render as "New".
 const ADHERENCE_MIN_ACTIVE_DAYS = 3;
 
+export type AdherenceResult =
+  | { status: "ok"; percent: number; skippedDays: number }
+  | { status: "new"; skippedDays: number }
+  // Every scheduled day in the window was explicitly Skipped — there's no "taken vs missed"
+  // data to turn into a percentage at all, so this is reported distinctly rather than as a
+  // misleading 0%.
+  | { status: "allSkipped"; skippedDays: number }
+  | null;
+
 // % of scheduled days (within the last 14 days, clamped to the medication's own start/end
-// date range and its own daysOfWeek) logged as "taken". Days with no log at all count
-// against adherence, same as "missed" — but a day it isn't even scheduled for doesn't count.
+// date range and its own daysOfWeek) logged as "taken", EXCLUDING Skipped days from the
+// denominator entirely — a deliberate skip (sick, travelling, doctor's advice) shouldn't
+// drag adherence down the way an unexplained miss does. Days with no log at all still count
+// against adherence, same as "missed" — only an explicit "skipped" status is excluded.
 function computeAdherence(
   medication: Medication,
   logs: MedicationLog[],
   windowStart: string,
   windowEnd: string,
-): number | "new" | null {
+): AdherenceResult {
   const activeStart = medication.startDate > windowStart ? medication.startDate : windowStart;
   const activeEnd = medication.endDate < windowEnd ? medication.endDate : windowEnd;
   if (activeStart > activeEnd) return null;
 
-  const takenDates = new Set(
-    logs
-      .filter((l) => l.medicationId === medication.medicationId && l.status === "taken")
-      .map((l) => l.date),
-  );
+  const statusByDate = new Map<string, MedicationLogStatus>();
+  for (const l of logs) {
+    if (l.medicationId === medication.medicationId) statusByDate.set(l.date, l.status);
+  }
 
-  let activeDays = 0;
+  let scheduledDays = 0;
   let takenDays = 0;
+  let skippedDays = 0;
   const cursor = new Date(`${activeStart}T00:00:00Z`);
   const end = new Date(`${activeEnd}T00:00:00Z`);
   while (cursor <= end) {
@@ -83,14 +85,20 @@ function computeAdherence(
     // something that was never supposed to be taken that day in the first place.
     if (!medication.daysOfWeek || medication.daysOfWeek.length === 0 || medication.daysOfWeek.includes(cursor.getUTCDay())) {
       const d = cursor.toISOString().slice(0, 10);
-      activeDays += 1;
-      if (takenDates.has(d)) takenDays += 1;
+      const status = statusByDate.get(d);
+      if (status === "skipped") {
+        skippedDays += 1;
+      } else {
+        scheduledDays += 1;
+        if (status === "taken") takenDays += 1;
+      }
     }
     cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
-  if (activeDays === 0) return null;
-  if (activeDays < ADHERENCE_MIN_ACTIVE_DAYS) return "new";
-  return Math.round((takenDays / activeDays) * 100);
+  if (scheduledDays === 0 && skippedDays === 0) return null;
+  if (scheduledDays === 0) return { status: "allSkipped", skippedDays };
+  if (scheduledDays < ADHERENCE_MIN_ACTIVE_DAYS) return { status: "new", skippedDays };
+  return { status: "ok", percent: Math.round((takenDays / scheduledDays) * 100), skippedDays };
 }
 
 function MedicationCard({
@@ -102,7 +110,7 @@ function MedicationCard({
   onSave,
 }: {
   medication: Medication;
-  adherence: number | "new" | null;
+  adherence: AdherenceResult;
   pending: boolean;
   removing: boolean;
   onDelete: (medicationId: string) => void;
@@ -289,19 +297,33 @@ function MedicationCard({
         {medication.notes && (
           <p className="mt-0.5 text-xs italic text-ink-muted dark:text-mist-muted">{medication.notes}</p>
         )}
-        {adherence === "new" && (
-          <span className="mt-1 inline-block rounded-full bg-stone px-2 py-0.5 text-xs font-medium text-ink-muted dark:bg-stone-dark dark:text-mist-muted">
-            New — not enough history yet
-          </span>
-        )}
-        {typeof adherence === "number" && (
-          <span
-            className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${
-              URGENCY_BADGE_CLASS[adherence >= 80 ? "low" : adherence >= 50 ? "medium" : "high"]
-            }`}
-          >
-            {adherence}% adherence (last {ADHERENCE_WINDOW_DAYS}d)
-          </span>
+        {adherence && (
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            {adherence.status === "new" && (
+              <span className="inline-block rounded-full bg-stone px-2 py-0.5 text-xs font-medium text-ink-muted dark:bg-stone-dark dark:text-mist-muted">
+                New — not enough history yet
+              </span>
+            )}
+            {adherence.status === "allSkipped" && (
+              <span className="inline-block rounded-full bg-stone px-2 py-0.5 text-xs font-medium text-ink-muted dark:bg-stone-dark dark:text-mist-muted">
+                All {adherence.skippedDays}d skipped — no adherence data yet
+              </span>
+            )}
+            {adherence.status === "ok" && (
+              <span
+                className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${
+                  URGENCY_BADGE_CLASS[adherence.percent >= 80 ? "low" : adherence.percent >= 50 ? "medium" : "high"]
+                }`}
+              >
+                {adherence.percent}% adherence (last {ADHERENCE_WINDOW_DAYS}d)
+              </span>
+            )}
+            {(adherence.status === "ok" || adherence.status === "new") && adherence.skippedDays > 0 && (
+              <span className="inline-block rounded-full bg-slate-soft px-2 py-0.5 text-xs font-medium text-slate-ink dark:bg-slate-soft-dark dark:text-slate-ink-dark">
+                {adherence.skippedDays} skipped
+              </span>
+            )}
+          </div>
         )}
       </div>
       <div className="flex gap-2">
@@ -329,6 +351,7 @@ export default function Medications() {
   const { request } = useApi();
   const [medications, setMedications] = useState<Medication[]>([]);
   const [logStatuses, setLogStatuses] = useState<Partial<Record<string, MedicationLogStatus>>>({});
+  const [logNotes, setLogNotes] = useState<Partial<Record<string, string>>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -362,8 +385,13 @@ export default function Medications() {
         if (ignore) return;
         setMedications(medsData.medications);
         const next: Partial<Record<string, MedicationLogStatus>> = {};
-        for (const log of logsData.logs) next[log.medicationId] = log.status;
+        const nextNotes: Partial<Record<string, string>> = {};
+        for (const log of logsData.logs) {
+          next[log.medicationId] = log.status;
+          if (log.note) nextNotes[log.medicationId] = log.note;
+        }
         setLogStatuses(next);
+        setLogNotes(nextNotes);
         setRecentLogs(rangeLogsData.logs);
       } catch (err) {
         if (ignore) return;
@@ -463,15 +491,16 @@ export default function Medications() {
     }
   }
 
-  async function setLogStatus(medicationId: string, status: MedicationLogStatus) {
+  async function setLogStatus(medicationId: string, status: MedicationLogStatus, note?: string) {
     setPending(medicationId);
     setError(null);
     try {
       const updated = await request<MedicationLog>(`/medication-logs/${today()}/${medicationId}`, {
         method: "PATCH",
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, note: note ?? "" }),
       });
       setLogStatuses((prev) => ({ ...prev, [medicationId]: updated.status }));
+      setLogNotes((prev) => ({ ...prev, [medicationId]: updated.note ?? "" }));
       // Keep the adherence stat in sync immediately rather than waiting for a reload.
       setRecentLogs((prev) => [...prev.filter((l) => l.dateMedicationId !== updated.dateMedicationId), updated]);
     } catch (err) {
@@ -609,8 +638,9 @@ export default function Medications() {
             <ul className="mb-6 flex flex-col gap-2">
               {activeMedications.map((medication) => {
                 const status = logStatuses[medication.medicationId];
+                const noteValue = logNotes[medication.medicationId];
                 return (
-                  <li key={medication.medicationId} className={`flex flex-wrap items-center justify-between gap-3 ${card}`}>
+                  <li key={medication.medicationId} className={`flex flex-col gap-2 ${card}`}>
                     <span className="text-sm font-medium text-ink dark:text-paper">
                       {medication.name}
                       {medication.dosage && (
@@ -632,28 +662,12 @@ export default function Medications() {
                         </span>
                       )}
                     </span>
-                    <div className="flex gap-1.5">
-                      <button
-                        type="button"
-                        disabled={pending === medication.medicationId}
-                        onClick={() => setLogStatus(medication.medicationId, "taken")}
-                        className={`${pillButton} px-3 py-1 ${
-                          status === "taken" ? pillButtonDone : pillButtonInactive
-                        }`}
-                      >
-                        Taken
-                      </button>
-                      <button
-                        type="button"
-                        disabled={pending === medication.medicationId}
-                        onClick={() => setLogStatus(medication.medicationId, "missed")}
-                        className={`${pillButton} px-3 py-1 ${
-                          status === "missed" ? pillButtonMissed : pillButtonInactive
-                        }`}
-                      >
-                        Missed
-                      </button>
-                    </div>
+                    <MedicationStatusButtons
+                      status={status ?? null}
+                      note={noteValue}
+                      pending={pending === medication.medicationId}
+                      onSetStatus={(next, nextNote) => void setLogStatus(medication.medicationId, next, nextNote)}
+                    />
                   </li>
                 );
               })}

@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Clock, Timer } from "lucide-react";
 import { useApi } from "../api/useApi";
 import { todayLocal } from "../lib/date";
-import { ALL_DAYS, formatSchedule } from "../lib/weekdays";
+import { ALL_DAYS, byTimeOfDay, formatSchedule } from "../lib/weekdays";
 import { computeRoutineStreak, routineStreakWindowStart } from "../lib/routineStreak";
 import { Skeleton } from "../components/Skeleton";
 import { EmptyState } from "../components/EmptyState";
@@ -81,15 +81,6 @@ const ROUTINE_TEMPLATES: {
   },
 ];
 
-// Routines with no time set sort to the end, after every timed one in ascending order —
-// "HH:MM" strings already sort correctly lexicographically, no parsing needed. Same pattern
-// as Medications' time sort.
-function byTimeOfDay(a: RoutineTemplate, b: RoutineTemplate): number {
-  if (!a.timeOfDay && !b.timeOfDay) return 0;
-  if (!a.timeOfDay) return 1;
-  if (!b.timeOfDay) return -1;
-  return a.timeOfDay.localeCompare(b.timeOfDay);
-}
 
 function today(): string {
   return todayLocal();

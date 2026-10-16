@@ -30,3 +30,13 @@ export function computeDueAtUtc(dueDate: string, dueTime: string): string | unde
   const d = new Date(`${dueDate}T${dueTime}`);
   return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
 }
+
+// "23:59" is the quick-add forms' default due time (not a real appointment the user picked),
+// so it reads as "End of day" everywhere a task's due time is shown — any other time
+// displays as-is (the user did pick a specific time).
+export const END_OF_DAY_TIME = "23:59";
+
+export function formatDueTime(dueTime: string | undefined): string | undefined {
+  if (!dueTime) return undefined;
+  return dueTime === END_OF_DAY_TIME ? "End of day" : dueTime;
+}

@@ -1,6 +1,7 @@
 import { Check } from "lucide-react";
 import type { Task } from "../types";
 import { checkAnimationClass } from "../lib/preferences";
+import { formatDueTime } from "../lib/date";
 import { Icon } from "./Icon";
 import { mutedText, sectionLabel } from "./ui";
 
@@ -65,8 +66,10 @@ function TaskRow({ task, overdue, pending, onComplete }: TaskRowAction) {
       <div className="min-w-0 flex-1">
         <p className={`truncate text-sm text-ink dark:text-paper ${completed ? "line-through" : ""}`}>{task.title}</p>
         {(overdue || task.dueTime) && (
-          <p className={`truncate text-xs ${overdue ? "font-medium text-alert" : "text-ink-muted dark:text-mist-muted"}`}>
-            {overdue ? `Overdue — was due ${task.dueDate}` : task.dueTime}
+          <p className={`truncate text-xs tabular-nums ${overdue ? "font-medium text-alert" : "text-ink-muted dark:text-mist-muted"}`}>
+            {overdue
+              ? `Overdue — was due ${task.dueDate}${task.dueTime ? ` ${formatDueTime(task.dueTime)}` : ""}`
+              : formatDueTime(task.dueTime)}
           </p>
         )}
       </div>

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type TouchEvent as ReactTo
 import { useSearchParams } from "react-router-dom";
 import { useApi } from "../api/useApi";
 import { useSpeechToText } from "../hooks/useSpeechToText";
-import { computeDueAtUtc, todayLocal, toLocalDateStr } from "../lib/date";
+import { computeDueAtUtc, formatDueTime, todayLocal, toLocalDateStr } from "../lib/date";
 import { ALL_DAYS, formatSchedule } from "../lib/weekdays";
 import { URGENCY_BORDER_CLASS, URGENCY_DOT_CLASS, URGENCY_STROKE_CLASS, type UrgencyLevel } from "../lib/urgency";
 import { Skeleton } from "../components/Skeleton";
@@ -100,7 +100,7 @@ function TaskTimeline({ task }: { task: Task }) {
   // actually the stored value; otherwise it visibly contradicts the priority badge above it.
   const forced = remaining <= task.estimatedHours;
   const staleForced = forced && task.priority !== "High";
-  const dueLabel = task.dueTime ? `${task.dueDate} ${task.dueTime}` : task.dueDate;
+  const dueLabel = task.dueTime ? `${task.dueDate} ${formatDueTime(task.dueTime)}` : task.dueDate;
 
   // Bar spans now (0%) to due (100%); the trigger marker sits at due - estimate,
   // i.e. where remaining time stops exceeding the estimated effort.
@@ -463,9 +463,9 @@ function TaskCard({
                   {task.description}
                 </p>
               )}
-              <p className="text-xs text-ink-muted dark:text-mist-muted">
+              <p className="text-xs tabular-nums text-ink-muted dark:text-mist-muted">
                 {task.dueDate ?? "No due date"}
-                {task.dueTime ? ` ${task.dueTime}` : ""}
+                {task.dueTime ? ` ${formatDueTime(task.dueTime)}` : ""}
                 {task.estimatedHours !== undefined ? ` · ~${task.estimatedHours}h` : ""}
                 {task.scheduleTime ? ` · scheduled ${task.scheduleTime}` : ""}
                 {formatRecurrence(task.recurrence) ? ` · ${formatRecurrence(task.recurrence)}` : ""}

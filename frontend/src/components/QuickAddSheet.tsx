@@ -16,7 +16,7 @@ import {
 import { useApi } from "../api/useApi";
 import { useToast } from "./Toast";
 import { useSpeechToText } from "../hooks/useSpeechToText";
-import { computeDueAtUtc, todayLocal } from "../lib/date";
+import { computeDueAtUtc, END_OF_DAY_TIME, todayLocal } from "../lib/date";
 import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_EMOJI, EXPENSE_CATEGORY_LABEL } from "../lib/expenseCategories";
 import { nextWishIncrementPatch, wishIsIncrementable, wishRevertPatch } from "../lib/wishProgress";
 import type {
@@ -55,6 +55,17 @@ const TARGETS: { id: QuickAddTarget; label: string; icon: LucideIcon }[] = [
   { id: "medication", label: "Medication", icon: Pill },
   { id: "routine", label: "Routine step", icon: ListChecks },
   { id: "wish", label: "Wish progress", icon: Target },
+];
+
+// Default stays "end of day" (23:59, same as before) — these are just a faster way to pick
+// a different time than typing into the native time input below, which still works for
+// anything more specific.
+const TASK_TIME_PRESETS: { label: string; time: string }[] = [
+  { label: "Morning", time: "09:00" },
+  { label: "Afternoon", time: "14:00" },
+  { label: "Evening", time: "18:00" },
+  { label: "Night", time: "21:00" },
+  { label: "End of day", time: END_OF_DAY_TIME },
 ];
 
 const LAST_EXPENSE_CATEGORY_KEY = "lifeos_quickadd_last_expense_category";
@@ -113,7 +124,7 @@ function TaskQuickAdd({ onDone }: { onDone: () => void }) {
   const { show } = useToast();
   const [title, setTitle] = useState("");
   const [dueDate, setDueDate] = useState(todayLocal());
-  const [dueTime, setDueTime] = useState("23:59");
+  const [dueTime, setDueTime] = useState(END_OF_DAY_TIME);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -154,9 +165,18 @@ function TaskQuickAdd({ onDone }: { onDone: () => void }) {
         autoFocus
         className={input}
       />
-      <div className="flex gap-2">
-        <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={`flex-1 ${input}`} aria-label="Due date" />
-        <input type="time" value={dueTime} onChange={(e) => setDueTime(e.target.value)} className={`flex-1 ${input}`} aria-label="Due time" />
+      <div>
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {TASK_TIME_PRESETS.map((preset) => (
+            <Chip key={preset.label} active={dueTime === preset.time} onClick={() => setDueTime(preset.time)}>
+              {preset.label}
+            </Chip>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={`flex-1 ${input}`} aria-label="Due date" />
+          <input type="time" value={dueTime} onChange={(e) => setDueTime(e.target.value)} className={`flex-1 ${input}`} aria-label="Due time" />
+        </div>
       </div>
       {error && <p className={errorText}>{error}</p>}
       <button type="button" disabled={saving || !title.trim()} onClick={handleSave} className={primaryButton}>

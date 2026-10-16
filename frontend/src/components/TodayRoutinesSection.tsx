@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { Check, ChevronDown, ChevronRight, MinusCircle, SkipForward, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, MinusCircle, SkipForward, Target, X } from "lucide-react";
 import type { RoutineStepStatus, RoutineTemplate } from "../types";
 import { REASON_CHIPS, routineStatusLabel } from "../lib/statusDisplay";
 import { checkAnimationClass } from "../lib/preferences";
 import { Chip } from "./Chip";
 import { Icon } from "./Icon";
-import { input, mutedText } from "./ui";
+import { mutedText, input } from "./ui";
 
 export interface RoutineStepRow {
   index: number;
@@ -19,7 +19,8 @@ export interface RoutineStepRow {
 export interface RoutineGroup {
   routine: RoutineTemplate;
   steps: RoutineStepRow[];
-  initiallyExpanded: boolean;
+  expanded: boolean;
+  onToggleExpand: () => void;
   onSetStatus: (stepIndex: number, status: RoutineStepStatus, note?: string) => Promise<void>;
   onMarkAllDone: () => void;
   onSkipRemaining: () => void;
@@ -36,16 +37,58 @@ const STATUS_BUTTON_CLASS: Record<RoutineStepStatus, string> = {
 const INACTIVE_BUTTON_CLASS =
   "border-stone text-ink-muted hover:bg-stone/40 dark:border-stone-dark dark:text-mist-muted dark:hover:bg-stone-dark/40";
 
+// Counts toward the x/y progress badge and the streak — skipped does not (unchanged).
 function isCounted(status: RoutineStepStatus | null): boolean {
   return status === "done" || status === "not_applicable";
 }
 
-export function TodayRoutinesSection({ groups }: { groups: RoutineGroup[] }) {
+// Nothing left to decide today — done, skipped, AND not_applicable all "resolve" a step for
+// collapse purposes, even though only done/not_applicable count toward progress. A routine
+// with a skipped step still collapses (nothing pending), just not with the "all done" line.
+export function isRoutineResolved(steps: RoutineStepRow[]): boolean {
+  return steps.length > 0 && steps.every((s) => s.status !== null);
+}
+
+export function TodayRoutinesSection({
+  groups,
+  onExpandAll,
+  onCollapseCompleted,
+  onJumpToNext,
+  hasNextRoutine,
+}: {
+  groups: RoutineGroup[];
+  onExpandAll: () => void;
+  onCollapseCompleted: () => void;
+  onJumpToNext: () => void;
+  hasNextRoutine: boolean;
+}) {
   if (groups.length === 0) {
     return <p className={mutedText}>No routines scheduled today.</p>;
   }
+
+  const allExpanded = groups.every((g) => g.expanded);
+
   return (
     <div className="flex flex-col gap-2">
+      <div className="mb-1 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={allExpanded ? onCollapseCompleted : onExpandAll}
+          className="inline-flex min-h-9 items-center rounded-control border border-stone px-2.5 text-xs font-medium text-ink-muted hover:bg-stone/40 dark:border-stone-dark dark:text-mist-muted dark:hover:bg-stone-dark/40"
+        >
+          {allExpanded ? "Collapse completed" : "Expand all"}
+        </button>
+        {hasNextRoutine && (
+          <button
+            type="button"
+            onClick={onJumpToNext}
+            className="inline-flex min-h-9 items-center gap-1 rounded-control border border-stone px-2.5 text-xs font-medium text-ink-muted hover:bg-stone/40 dark:border-stone-dark dark:text-mist-muted dark:hover:bg-stone-dark/40"
+          >
+            <Icon icon={Target} size={12} />
+            Jump to now
+          </button>
+        )}
+      </div>
       {groups.map((g) => (
         <RoutineRow key={g.routine.routineId} group={g} />
       ))}
@@ -54,34 +97,44 @@ export function TodayRoutinesSection({ groups }: { groups: RoutineGroup[] }) {
 }
 
 function RoutineRow({ group }: { group: RoutineGroup }) {
-  const { routine, steps, initiallyExpanded, onSetStatus, onMarkAllDone, onSkipRemaining } = group;
+  const { routine, steps, expanded, onToggleExpand, onSetStatus, onMarkAllDone, onSkipRemaining } = group;
   const doneCount = steps.filter((s) => isCounted(s.status)).length;
   const allDone = doneCount === steps.length && steps.length > 0;
-  const [expanded, setExpanded] = useState(initiallyExpanded && !allDone);
+  const resolved = isRoutineResolved(steps);
 
-  if (allDone) {
+  if (resolved && !expanded) {
+    const skippedCount = steps.filter((s) => s.status === "skipped").length;
     return (
-      <div className="rounded-control border border-success bg-success-soft dark:bg-success-soft-dark">
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="flex min-h-12 w-full items-center gap-2 px-3 py-2.5 text-left"
-        >
-          <Icon icon={Check} size={16} strokeWidth={2.4} className="shrink-0 text-success-ink dark:text-success-ink-dark" />
-          <span className="flex-1 text-sm font-medium text-success-ink dark:text-success-ink-dark">{routine.name} — all done</span>
-          <Icon icon={expanded ? ChevronDown : ChevronRight} size={14} className="text-success-ink dark:text-success-ink-dark" />
-        </button>
-        {expanded && <ExpandedSteps steps={steps} onSetStatus={onSetStatus} className="px-3 pb-3" />}
-      </div>
+      <button
+        type="button"
+        id={`routine-${routine.routineId}`}
+        onClick={onToggleExpand}
+        className={`flex min-h-12 w-full items-center gap-2 rounded-control border px-3 py-2.5 text-left ${
+          allDone
+            ? "border-success bg-success-soft dark:bg-success-soft-dark"
+            : "border-stone bg-stone/20 dark:border-stone-dark dark:bg-stone-dark/20"
+        }`}
+      >
+        <Icon
+          icon={Check}
+          size={16}
+          strokeWidth={2.4}
+          className={allDone ? "text-success-ink dark:text-success-ink-dark" : "text-ink-muted dark:text-mist-muted"}
+        />
+        <span className={`flex-1 text-sm font-medium ${allDone ? "text-success-ink dark:text-success-ink-dark" : "text-ink dark:text-paper"}`}>
+          {routine.name} — {allDone ? "all done" : `${doneCount}/${steps.length} done${skippedCount > 0 ? `, ${skippedCount} skipped` : ""}`}
+        </span>
+        <Icon icon={ChevronRight} size={14} className={allDone ? "text-success-ink dark:text-success-ink-dark" : "text-ink-muted dark:text-mist-muted"} />
+      </button>
     );
   }
 
   return (
-    <div className="rounded-control border border-stone dark:border-stone-dark">
+    <div id={`routine-${routine.routineId}`} className="scroll-mt-24 rounded-control border border-stone dark:border-stone-dark">
       <button
         type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="flex min-h-12 w-full items-center gap-2 px-3 py-2.5 text-left"
+        onClick={onToggleExpand}
+        className="sticky top-14 z-10 flex min-h-12 w-full items-center gap-2 rounded-t-control bg-paper-card px-3 py-2.5 text-left dark:bg-ink-bg-card"
       >
         <Icon icon={expanded ? ChevronDown : ChevronRight} size={16} className="shrink-0 text-ink-muted dark:text-mist-muted" />
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink dark:text-paper">{routine.name}</span>

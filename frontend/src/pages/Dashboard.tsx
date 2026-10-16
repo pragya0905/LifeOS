@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { SlidersHorizontal } from "lucide-react";
 import { useApi } from "../api/useApi";
 import { todayLocal } from "../lib/date";
-import { appliesOnDate } from "../lib/weekdays";
+import { appliesOnDate, byTimeOfDay } from "../lib/weekdays";
 import { computeRoutineStreak, routineStreakWindowStart } from "../lib/routineStreak";
 import { medicationStatusLabel, routineStatusLabel } from "../lib/statusDisplay";
-import { loadEveningHour } from "../lib/preferences";
+import { loadEveningHour, motionAllowed } from "../lib/preferences";
 import {
   defaultModuleConfig,
   loadModuleConfig,
@@ -93,6 +93,7 @@ export default function Dashboard() {
   const [modules, setModules] = useState<TodayModuleConfig[]>(defaultModuleConfig);
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [celebration, setCelebration] = useState<string | null>(null);
+  const [expandedRoutines, setExpandedRoutines] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     setModules(loadModuleConfig());
@@ -284,10 +285,10 @@ export default function Dashboard() {
   }
 
   // Low-level — PATCHes one medication log and applies the optimistic update, no toast.
-  async function patchMedicationStatus(medicationId: string, status: MedicationLog["status"]) {
+  async function patchMedicationStatus(medicationId: string, status: MedicationLog["status"], note?: string) {
     const key = `med:${medicationId}`;
     const updated = await withPending(key, () =>
-      request<MedicationLog>(`/medication-logs/${today}/${medicationId}`, { method: "PATCH", body: JSON.stringify({ status }) }),
+      request<MedicationLog>(`/medication-logs/${today}/${medicationId}`, { method: "PATCH", body: JSON.stringify({ status, note: note ?? "" }) }),
     );
     setData((prev) => prev && { ...prev, medicationLogs: [...prev.medicationLogs.filter((l) => l.dateMedicationId !== updated.dateMedicationId), updated] });
     return updated;
@@ -302,15 +303,16 @@ export default function Dashboard() {
     if (!wasAllTaken && isAllTaken) setCelebration("All of today's medications taken!");
   }
 
-  // Shared by every medication status change (one-tap, and Mark all taken).
-  async function setMedicationStatus(medicationId: string, status: MedicationLog["status"]) {
-    const prevStatus = data?.medicationLogs.find((l) => l.date === today && l.medicationId === medicationId)?.status;
+  // Shared by every medication status change (always-visible Taken/Skipped/Missed buttons,
+  // and Mark all taken).
+  async function setMedicationStatus(medicationId: string, status: MedicationLog["status"], note?: string) {
+    const prevLog = data?.medicationLogs.find((l) => l.date === today && l.medicationId === medicationId);
     const medName = data?.medications.find((m) => m.medicationId === medicationId)?.name ?? "Medication";
-    const updated = await patchMedicationStatus(medicationId, status);
+    const updated = await patchMedicationStatus(medicationId, status, note);
     if (status === "taken") maybeCelebrateMeds([updated]);
-    showToast(`${medName}: ${medicationStatusLabel(status)}`, {
+    showToast(`${medName}: ${medicationStatusLabel(status, note)}`, {
       undo: () => {
-        request<MedicationLog>(`/medication-logs/${today}/${medicationId}`, { method: "PATCH", body: JSON.stringify({ status: prevStatus ?? "missed" }) })
+        request<MedicationLog>(`/medication-logs/${today}/${medicationId}`, { method: "PATCH", body: JSON.stringify({ status: prevLog?.status ?? "missed", note: prevLog?.note ?? "" }) })
           .then((reverted) =>
             setData((prev) => prev && { ...prev, medicationLogs: [...prev.medicationLogs.filter((l) => l.dateMedicationId !== reverted.dateMedicationId), reverted] }),
           )
@@ -386,7 +388,12 @@ export default function Dashboard() {
   const tasksDueToday = useMemo(() => (data ? data.tasks.filter((t) => t.dueDate === today) : []), [data, today]);
   const tasksDoneToday = tasksDueToday.filter((t) => t.status === "done").length;
 
-  const applicableRoutines = useMemo(() => (data ? data.routines.filter((r) => appliesOnDate(r.daysOfWeek, now)) : []), [data, now]);
+  // Sorted once here (same comparator Routines.tsx/Medications.tsx use) so every downstream
+  // use — the list itself, "next routine" selection, etc. — stays in one consistent order.
+  const applicableRoutines = useMemo(
+    () => (data ? data.routines.filter((r) => appliesOnDate(r.daysOfWeek, now)).sort(byTimeOfDay) : []),
+    [data, now],
+  );
   const routinesTotal = applicableRoutines.reduce((sum, r) => sum + r.steps.length, 0);
   const routineLogsByDateStep = useMemo(() => {
     const map = new Map<string, RoutineStepLog["status"]>();
@@ -406,12 +413,12 @@ export default function Dashboard() {
   );
 
   const applicableMeds = useMemo(() => (data ? data.medications.filter((m) => appliesOnDate(m.daysOfWeek, now)) : []), [data, now]);
-  const medStatusByMedId = useMemo(() => {
-    const map = new Map<string, MedicationLog["status"]>();
-    for (const log of data?.medicationLogs ?? []) map.set(log.medicationId, log.status);
+  const medLogByMedId = useMemo(() => {
+    const map = new Map<string, MedicationLog>();
+    for (const log of data?.medicationLogs ?? []) map.set(log.medicationId, log);
     return map;
   }, [data]);
-  const medsDone = applicableMeds.filter((m) => medStatusByMedId.get(m.medicationId) === "taken").length;
+  const medsDone = applicableMeds.filter((m) => medLogByMedId.get(m.medicationId)?.status === "taken").length;
 
   const moodLoggedToday = (data?.moodToday[0]?.data.rating as number | undefined) ?? null;
 
@@ -437,21 +444,80 @@ export default function Dashboard() {
     [todaysTasks, today, pendingKeys],
   );
 
-  // The one routine whose timeOfDay is nearest the current time and isn't already fully
-  // done gets auto-expanded; every other routine starts visible but collapsed.
+  // Routines with at least one step that has no log at all today (resolved —
+  // done/skipped/not_applicable alike — doesn't count as "pending" here, only a genuinely
+  // untouched step does). These stay expanded by default; "nextRoutineId" below is a separate
+  // concept (which one is due right now) used only for Jump-to-now, not for default-expand.
+  const unresolvedRoutines = useMemo(
+    () =>
+      applicableRoutines.filter((r) =>
+        r.steps.some((_, i) => routineLogsByDateStep.get(`${today}#${r.routineId}#${i}`) === undefined),
+      ),
+    [applicableRoutines, routineLogsByDateStep, today],
+  );
+
+  // The unresolved routine whose timeOfDay is nearest the actual current wall-clock time —
+  // real `now`, not the `now` above (which is pinned to midnight of `today` for date-only
+  // comparisons like appliesOnDate, and would always read as "00:00" here).
   const nextRoutineId = useMemo(() => {
-    const nowStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-    const incomplete = applicableRoutines.filter((r) =>
-      r.steps.some((_, i) => {
-        const status = routineLogsByDateStep.get(`${today}#${r.routineId}#${i}`);
-        return status !== "done" && status !== "not_applicable";
-      }),
-    );
-    if (incomplete.length === 0) return null;
-    const upcoming = incomplete.filter((r) => (r.timeOfDay ?? "00:00") >= nowStr).sort((a, b) => (a.timeOfDay ?? "").localeCompare(b.timeOfDay ?? ""));
-    return (upcoming[0] ?? incomplete[0]).routineId;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [applicableRoutines, routineLogsByDateStep, today]);
+    if (unresolvedRoutines.length === 0) return null;
+    const wallNow = new Date();
+    const nowStr = `${String(wallNow.getHours()).padStart(2, "0")}:${String(wallNow.getMinutes()).padStart(2, "0")}`;
+    const upcoming = unresolvedRoutines
+      .filter((r) => r.timeOfDay !== undefined && r.timeOfDay >= nowStr)
+      .sort((a, b) => (a.timeOfDay ?? "").localeCompare(b.timeOfDay ?? ""));
+    return (upcoming[0] ?? unresolvedRoutines[0]).routineId;
+  }, [unresolvedRoutines]);
+
+  // Lifted out of each row so the top-level Expand-all/Collapse-completed toggle and the
+  // Jump-to-now control can act on every routine at once, not just whichever row a user
+  // happens to be looking at. Every routine with a pending step defaults to expanded (per
+  // spec); nextRoutineId only decides where Jump-to-now scrolls, not which rows start open.
+  useEffect(() => {
+    setExpandedRoutines((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      const unresolvedIds = new Set(unresolvedRoutines.map((r) => r.routineId));
+      for (const r of applicableRoutines) {
+        if (!(r.routineId in next)) {
+          next[r.routineId] = unresolvedIds.has(r.routineId);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [applicableRoutines, unresolvedRoutines]);
+
+  function toggleRoutineExpanded(routineId: string) {
+    setExpandedRoutines((prev) => ({ ...prev, [routineId]: !prev[routineId] }));
+  }
+
+  function expandAllRoutines() {
+    setExpandedRoutines((prev) => {
+      const next = { ...prev };
+      for (const r of applicableRoutines) next[r.routineId] = true;
+      return next;
+    });
+  }
+
+  function collapseCompletedRoutines() {
+    setExpandedRoutines((prev) => {
+      const next = { ...prev };
+      for (const r of applicableRoutines) {
+        const steps = r.steps.map((_, i) => routineLogsByDateStep.get(`${today}#${r.routineId}#${i}`));
+        if (steps.every((s) => s !== undefined)) next[r.routineId] = false;
+      }
+      return next;
+    });
+  }
+
+  function jumpToNextRoutine() {
+    if (!nextRoutineId) return;
+    setExpandedRoutines((prev) => ({ ...prev, [nextRoutineId]: true }));
+    requestAnimationFrame(() => {
+      document.getElementById(`routine-${nextRoutineId}`)?.scrollIntoView({ behavior: motionAllowed() ? "smooth" : "auto", block: "start" });
+    });
+  }
 
   const routineGroups: RoutineGroup[] = useMemo(
     () =>
@@ -469,25 +535,27 @@ export default function Dashboard() {
         return {
           routine,
           steps,
-          initiallyExpanded: routine.routineId === nextRoutineId,
+          expanded: expandedRoutines[routine.routineId] ?? false,
+          onToggleExpand: () => toggleRoutineExpanded(routine.routineId),
           onSetStatus: (stepIndex, status, note) => setRoutineStepStatus(routine, stepIndex, status, note),
           onMarkAllDone: () => void markAllDoneSteps(routine),
           onSkipRemaining: () => void skipRemainingSteps(routine),
         };
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [applicableRoutines, data, today, nextRoutineId, pendingKeys],
+    [applicableRoutines, data, today, expandedRoutines, pendingKeys],
   );
 
   const medicationRows: MedicationRow[] = useMemo(
     () =>
       applicableMeds.map((medication) => ({
         medication,
-        status: medStatusByMedId.get(medication.medicationId) ?? null,
+        status: medLogByMedId.get(medication.medicationId)?.status ?? null,
+        note: medLogByMedId.get(medication.medicationId)?.note,
         pending: isPending(`med:${medication.medicationId}`),
       })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [applicableMeds, medStatusByMedId, pendingKeys],
+    [applicableMeds, medLogByMedId, pendingKeys],
   );
 
   // --- Module customization ---
@@ -533,7 +601,13 @@ export default function Dashboard() {
         return routineGroups.length > 0 ? (
           <Card>
             <h2 className={`mb-3 ${sectionLabel}`}>Routines</h2>
-            <TodayRoutinesSection groups={routineGroups} />
+            <TodayRoutinesSection
+              groups={routineGroups}
+              onExpandAll={expandAllRoutines}
+              onCollapseCompleted={collapseCompletedRoutines}
+              onJumpToNext={jumpToNextRoutine}
+              hasNextRoutine={nextRoutineId !== null}
+            />
           </Card>
         ) : null;
       case "medications":

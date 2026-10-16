@@ -14,6 +14,8 @@ export function routineStatusLabel(status: RoutineStepStatus, note?: string): st
   return note ? `Skipped — ${note}` : "Skipped — rest day";
 }
 
-export function medicationStatusLabel(status: MedicationLogStatus): string {
-  return status === "taken" ? "Taken" : "Missed";
+export function medicationStatusLabel(status: MedicationLogStatus, note?: string): string {
+  if (status === "taken") return "Taken";
+  if (status === "missed") return "Missed";
+  return note ? `Skipped — ${note}` : "Skipped — rest day";
 }

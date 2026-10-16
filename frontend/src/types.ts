@@ -112,7 +112,10 @@ export interface Medication {
   createdAt: string;
 }
 
-export type MedicationLogStatus = "taken" | "missed";
+// "skipped" is excluded from the adherence denominator (see computeAdherence in
+// Medications.tsx) and reported as its own count — deliberately unlike routine steps'
+// "skipped", which does count against a day's streak.
+export type MedicationLogStatus = "taken" | "missed" | "skipped";
 
 export interface MedicationLog {
   userId: string;
@@ -120,6 +123,8 @@ export interface MedicationLog {
   date: string;
   medicationId: string;
   status: MedicationLogStatus;
+  // Only meaningful alongside "skipped" — mirrors RoutineStepLog.note (same 200-char cap).
+  note?: string;
   source: "manual" | "ai-journal";
   createdAt: string;
   updatedAt: string;

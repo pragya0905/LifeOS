@@ -1,12 +1,13 @@
-import { Check, X } from "lucide-react";
+import { Check } from "lucide-react";
 import type { Medication, MedicationLogStatus } from "../types";
-import { checkAnimationClass } from "../lib/preferences";
 import { Icon } from "./Icon";
+import { MedicationStatusButtons } from "./MedicationStatusButtons";
 import { mutedText, sectionLabel } from "./ui";
 
 export interface MedicationRow {
   medication: Medication;
   status: MedicationLogStatus | null; // null = no log yet today
+  note?: string;
   pending: boolean;
 }
 
@@ -23,20 +24,13 @@ function bucketFor(timeOfDay: string | undefined): Bucket {
 
 const BUCKET_ORDER: Bucket[] = ["Morning", "Afternoon", "Night", "Anytime"];
 
-const ACTIVE_CLASS: Record<MedicationLogStatus, string> = {
-  taken: "border-success bg-success text-paper-card",
-  missed: "border-alert bg-alert text-paper-card",
-};
-const INACTIVE_CLASS =
-  "border-stone text-ink-muted hover:bg-stone/40 dark:border-stone-dark dark:text-mist-muted dark:hover:bg-stone-dark/40";
-
 export function TodayMedicationsSection({
   rows,
   onSetStatus,
   onMarkAllTaken,
 }: {
   rows: MedicationRow[];
-  onSetStatus: (medicationId: string, status: MedicationLogStatus) => Promise<void>;
+  onSetStatus: (medicationId: string, status: MedicationLogStatus, note?: string) => Promise<void>;
   onMarkAllTaken: (bucketMedicationIds: string[]) => void;
 }) {
   if (rows.length === 0) {
@@ -53,6 +47,8 @@ export function TodayMedicationsSection({
   return (
     <div className="flex flex-col gap-4">
       {buckets.map(({ bucket, rows: bucketRows }) => {
+        // Only "taken" is a resolved, collapsible state — same rule as routines' done/N-A
+        // vs skipped: a skipped medication stays visible so its reason stays reachable.
         const allTaken = bucketRows.every((r) => r.status === "taken");
         const pendingIds = bucketRows.filter((r) => r.status === null).map((r) => r.medication.medicationId);
         return (
@@ -94,9 +90,9 @@ function MedicationRowItem({
   onSetStatus,
 }: {
   row: MedicationRow;
-  onSetStatus: (medicationId: string, status: MedicationLogStatus) => Promise<void>;
+  onSetStatus: (medicationId: string, status: MedicationLogStatus, note?: string) => Promise<void>;
 }) {
-  const { medication, status, pending } = row;
+  const { medication, status, note, pending } = row;
   const instructions = [medication.dosage, medication.notes].filter(Boolean).join(" · ");
 
   return (
@@ -106,32 +102,12 @@ function MedicationRowItem({
         {medication.timeOfDay && <span className="shrink-0 text-xs tabular-nums text-ink-muted dark:text-mist-muted">{medication.timeOfDay}</span>}
       </div>
       {instructions && <p className="mb-2 text-xs text-ink-muted dark:text-mist-muted">{instructions}</p>}
-      <div className="flex gap-1.5">
-        <button
-          type="button"
-          disabled={pending}
-          onClick={() => void onSetStatus(medication.medicationId, "taken")}
-          aria-pressed={status === "taken"}
-          className={`flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-control border text-xs font-medium transition-colors disabled:opacity-70 ${
-            status === "taken" ? `${ACTIVE_CLASS.taken} ${checkAnimationClass()}` : INACTIVE_CLASS
-          }`}
-        >
-          <Icon icon={Check} size={13} strokeWidth={2.4} />
-          Taken
-        </button>
-        <button
-          type="button"
-          disabled={pending}
-          onClick={() => void onSetStatus(medication.medicationId, "missed")}
-          aria-pressed={status === "missed"}
-          className={`flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-control border text-xs font-medium transition-colors disabled:opacity-70 ${
-            status === "missed" ? ACTIVE_CLASS.missed : INACTIVE_CLASS
-          }`}
-        >
-          <Icon icon={X} size={13} strokeWidth={2.4} />
-          Missed
-        </button>
-      </div>
+      <MedicationStatusButtons
+        status={status}
+        note={note}
+        pending={pending}
+        onSetStatus={(next, nextNote) => void onSetStatus(medication.medicationId, next, nextNote)}
+      />
     </li>
   );
 }
