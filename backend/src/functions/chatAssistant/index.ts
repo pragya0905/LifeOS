@@ -2,7 +2,7 @@ import type { APIGatewayProxyEventV2 } from "aws-lambda";
 import Anthropic from "@anthropic-ai/sdk";
 import { PutCommand, QueryCommand, UpdateCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
 import { SSMClient, GetParameterCommand } from "@aws-sdk/client-ssm";
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { randomUUID } from "node:crypto";
 import { ddb } from "../../common/dynamo";
 import { verifyIdToken } from "../../common/jwtVerify";
@@ -11,6 +11,7 @@ import { computeProgressSummary, progressFractionForWish, type WishWithProgress 
 import { isMedicationActiveOnDate } from "../../common/medications";
 import { geocodeLocation, fetchWeather } from "../../common/weather";
 import { summarizeToolResult } from "../../common/toolResultSummary";
+import { checkAttachmentTotalSize, MAX_IMAGE_BYTES } from "../../common/attachmentLimits";
 import type {
   AssistantConversationTurn,
   AssistantTone,
@@ -156,6 +157,14 @@ async function buildAttachmentBlock(
   const bytes = await obj.Body!.transformToByteArray();
   if (bytes.length > MAX_ATTACHMENT_BYTES) {
     throw new Error("Attachment is too large (max 15MB)");
+  }
+  // Anthropic rejects an image over 10 MB base64-encoded (~7.5 MB raw) with a generic
+  // invalid_request error that would surface as "Something went wrong" — say what's wrong instead.
+  if (attachment.contentType !== "application/pdf" && bytes.length > MAX_IMAGE_BYTES) {
+    throw new Error(
+      `${attachment.fileName} is too large for the assistant to read (${(bytes.length / (1024 * 1024)).toFixed(1)} MB). ` +
+        `Images must be under ${MAX_IMAGE_BYTES / (1024 * 1024)} MB — try a smaller or compressed copy.`,
+    );
   }
   const data = Buffer.from(bytes).toString("base64");
   if (attachment.contentType === "application/pdf") {
@@ -1579,6 +1588,26 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
     return;
   }
   const attachments = attachmentValidation.attachments;
+
+  // Combined-size cap, checked from S3 metadata (HeadObject — no file bodies downloaded) so it
+  // can still be a real 400 before the stream's 200 is committed. Only the plural `attachments`
+  // field: the legacy singular field is one file, already capped at 15 MB, so it can't exceed it.
+  if (Array.isArray(body.attachments) && attachments.length > 0) {
+    const sizeCheck = await checkAttachmentTotalSize(
+      s3,
+      (key) => new HeadObjectCommand({ Bucket: process.env.ASSISTANT_ATTACHMENTS_BUCKET_NAME, Key: key }),
+      attachments.map((a) => a.key),
+    );
+    if (!sizeCheck.ok) {
+      const rejectStream = awslambda.HttpResponseStream.from(rawStream, {
+        statusCode: sizeCheck.status,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+      rejectStream.write(JSON.stringify({ error: sizeCheck.error }));
+      rejectStream.end();
+      return;
+    }
+  }
 
   const responseStream = awslambda.HttpResponseStream.from(rawStream, {
     statusCode: 200,
