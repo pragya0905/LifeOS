@@ -63,6 +63,7 @@ const HISTORY_TURN_LIMIT = 40; // ~20 exchanges of conversational context
 const s3 = new S3Client({});
 const ATTACHMENT_CONTENT_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"];
 const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
+const MAX_ATTACHMENTS_PER_MESSAGE = 10;
 
 interface AssistantAttachment {
   key: string;
@@ -79,6 +80,64 @@ function parseAttachment(body: Record<string, unknown>): AssistantAttachment | u
   }
   if (!ATTACHMENT_CONTENT_TYPES.includes(contentType)) return undefined;
   return { key, contentType, fileName };
+}
+
+// Synchronous validation of the new plural attachments field, run pre-stream. Rejects on:
+// - Count > 10
+// - Invalid structure (not an array, missing fields, bad content-type)
+// - Key doesn't start with userId/ (path traversal defense)
+// - Key contains ".." or "\" (path traversal defense)
+// Returns { ok: true, attachments: [...] } or { ok: false, error: "..." }
+function validateAttachments(
+  body: Record<string, unknown>,
+  userId: string,
+): { ok: true; attachments: AssistantAttachment[] } | { ok: false; error: string } {
+  const raw = body.attachments;
+
+  // No plural field → fall back to legacy singular behavior (no error)
+  if (raw === undefined) {
+    const single = parseAttachment(body);
+    return { ok: true, attachments: single ? [single] : [] };
+  }
+
+  // Must be an array if present
+  if (!Array.isArray(raw)) {
+    return { ok: false, error: "attachments must be an array" };
+  }
+
+  // Must not exceed cap
+  if (raw.length > MAX_ATTACHMENTS_PER_MESSAGE) {
+    return { ok: false, error: `Max ${MAX_ATTACHMENTS_PER_MESSAGE} files per message` };
+  }
+
+  const attachments: AssistantAttachment[] = [];
+  for (const item of raw) {
+    // Parse one entry
+    if (!item || typeof item !== "object") {
+      return { ok: false, error: "Invalid attachment in array" };
+    }
+    const { key, contentType, fileName } = item as Record<string, unknown>;
+    if (typeof key !== "string" || typeof contentType !== "string" || typeof fileName !== "string") {
+      return { ok: false, error: "Invalid attachment in array" };
+    }
+    if (!ATTACHMENT_CONTENT_TYPES.includes(contentType)) {
+      return { ok: false, error: "Invalid attachment in array" };
+    }
+
+    // Key must belong to this user (path traversal defense)
+    if (!key.startsWith(`${userId}/`)) {
+      return { ok: false, error: "Attachment key does not belong to this user" };
+    }
+
+    // Key must not contain ".." or "\" (path traversal defense)
+    if (key.includes("..") || key.includes("\\")) {
+      return { ok: false, error: "Invalid attachment key" };
+    }
+
+    attachments.push({ key, contentType, fileName });
+  }
+
+  return { ok: true, attachments };
 }
 
 // Fetches the just-uploaded file from AssistantAttachmentsBucket and turns it into the
@@ -1470,6 +1529,12 @@ function memoryText(memories: UserMemory[]): string {
 
 export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxyEventV2, rawStream) => {
   const authHeader = event.headers?.authorization ?? event.headers?.Authorization;
+  const origin = event.headers?.origin ?? event.headers?.Origin ?? "";
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": origin || "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  };
 
   // Verified before committing to any HTTP status — once HttpResponseStream.from() is called
   // below, the status code is locked in, so an invalid/missing token must be rejected with a
@@ -1480,39 +1545,57 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
   } catch {
     const unauthedStream = awslambda.HttpResponseStream.from(rawStream, {
       statusCode: 401,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...corsHeaders },
     });
     unauthedStream.write(JSON.stringify({ error: "Unauthorized" }));
     unauthedStream.end();
     return;
   }
 
+  // Parse and validate JSON + attachments BEFORE creating the 200 response stream.
+  // If validation fails, return 400 with proper CORS headers, not 200+error.
+  let body: Record<string, unknown>;
+  try {
+    body = JSON.parse(event.body ?? "{}");
+  } catch {
+    const badJsonStream = awslambda.HttpResponseStream.from(rawStream, {
+      statusCode: 400,
+      headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
+    badJsonStream.write(JSON.stringify({ error: "Invalid JSON body" }));
+    badJsonStream.end();
+    return;
+  }
+
+  // Validate attachments (new plural array field) — done synchronously before 200 response.
+  const attachmentValidation = validateAttachments(body, userId);
+  if (!attachmentValidation.ok) {
+    const badAttachStream = awslambda.HttpResponseStream.from(rawStream, {
+      statusCode: 400,
+      headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
+    badAttachStream.write(JSON.stringify({ error: attachmentValidation.error }));
+    badAttachStream.end();
+    return;
+  }
+  const attachments = attachmentValidation.attachments;
+
   const responseStream = awslambda.HttpResponseStream.from(rawStream, {
     statusCode: 200,
-    headers: { "Content-Type": "application/x-ndjson" },
+    headers: { "Content-Type": "application/x-ndjson", ...corsHeaders },
   });
 
   try {
-    let body: Record<string, unknown>;
-    try {
-      body = JSON.parse(event.body ?? "{}");
-    } catch {
-      writeEvent(responseStream, { type: "error", message: "Invalid JSON body" });
-      responseStream.end();
-      return;
-    }
-
     const userMessage = typeof body.message === "string" ? body.message.trim() : "";
     const isOnboarding = body.mode === "onboarding";
     // Any other value (including an unrecognized string) just leaves this false — same
     // permissive, non-erroring pattern as isOnboarding above.
     const isVoiceMode = body.mode === "voice";
-    const attachment = parseAttachment(body);
     // Only ever sourced from the client's own clock (JS Date#getTimezoneOffset() convention),
     // never from the model — see create_medication/update_medication's tool descriptions.
     const timezoneOffsetMinutes =
       typeof body.timezoneOffsetMinutes === "number" ? body.timezoneOffsetMinutes : undefined;
-    if (!userMessage && !attachment) {
+    if (!userMessage && attachments.length === 0) {
       writeEvent(responseStream, { type: "error", message: "message is required" });
       responseStream.end();
       return;
@@ -1551,18 +1634,22 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
     // this request; later turns just see the placeholder text below.
     let userContent: Anthropic.MessageParam["content"] = userMessage;
     let persistedUserText = userMessage;
-    if (attachment) {
+    if (attachments.length > 0) {
       try {
-        const attachmentBlock = await buildAttachmentBlock(userId, attachment);
+        // Fetch all attachments in parallel
+        const attachmentBlocks = await Promise.all(
+          attachments.map((att) => buildAttachmentBlock(userId, att)),
+        );
         userContent = [
-          attachmentBlock,
+          ...attachmentBlocks,
           { type: "text", text: userMessage || "Here's a file I wanted to share." },
         ];
-        persistedUserText = `${userMessage ? `${userMessage}\n\n` : ""}[Attached ${attachment.fileName}]`;
+        const fileNames = attachments.map((a) => a.fileName).join(", ");
+        persistedUserText = `${userMessage ? `${userMessage}\n\n` : ""}[Attached ${fileNames}]`;
       } catch (err) {
         writeEvent(responseStream, {
           type: "error",
-          message: err instanceof Error ? err.message : "Failed to read the attached file",
+          message: err instanceof Error ? err.message : "Failed to read an attached file",
         });
         responseStream.end();
         return;

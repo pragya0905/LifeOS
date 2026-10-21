@@ -3013,6 +3013,7 @@ Resources:
       CodeUri: src/functions/chatAssistant/
       Handler: index.handler
       Timeout: 60
+      MemorySize: 512
       # Runs behind a Lambda Function URL, not the shared HttpApi — response streaming (for
       # token-by-token replies) requires bypassing API Gateway's buffered proxy integration.
       # Function URLs don't support Cognito JWT authorizers, so this function verifies the
