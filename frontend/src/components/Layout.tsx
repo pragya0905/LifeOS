@@ -88,6 +88,13 @@ const MORE_GROUPS: NavGroup[] = [
 
 const MORE_ROUTES = MORE_GROUPS.flatMap((g) => g.links.map((l) => l.to));
 
+// What Layout hands its routed pages via <Outlet context>. Currently just the Assistant
+// composer's focus signal (see isAssistantRoute/composerFocused above); grows here if a
+// later page needs something similar rather than each inventing its own channel.
+export interface LayoutOutletContext {
+  setComposerFocused: (focused: boolean) => void;
+}
+
 const SIDEBAR_COLLAPSED_KEY = "lifeos_sidebar_collapsed";
 
 function loadSidebarCollapsed(): boolean {
@@ -110,6 +117,14 @@ export default function Layout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(loadSidebarCollapsed);
   const [fabVisible, setFabVisible] = useState(true);
   const moreActive = MORE_ROUTES.some((r) => location.pathname.startsWith(r));
+  // The Assistant page is a dedicated chat shell with its own slim header, and the global FAB
+  // would otherwise float on top of its composer — both are hidden on this one route rather
+  // than through the usual scroll-driven FAB visibility, which doesn't apply here.
+  const isAssistantRoute = location.pathname === "/assistant";
+  // Set by Assistant.tsx's composer on focus/blur (via Outlet context) so the bottom tab bar
+  // gets out of the way while the on-screen keyboard is up, instead of competing with it for
+  // the same strip of screen.
+  const [composerFocused, setComposerFocused] = useState(false);
 
   // The FAB never covers a row the user is trying to tap: hide it while scrolling down
   // (reading/acting further down the page), show it again on scroll-up or near the top.
@@ -191,20 +206,23 @@ export default function Layout() {
         Skip to main content
       </a>
 
-      {/* Mobile header — hidden at md+, where the sidebar carries branding instead */}
-      <header className="sticky top-0 z-30 border-b border-stone bg-paper/90 backdrop-blur dark:border-stone-dark dark:bg-ink-bg/90 md:hidden">
-        <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3.5">
-          <span className="font-display text-lg font-semibold tracking-tight text-ink dark:text-paper">
-            LifeOs
-          </span>
-          <div className="flex items-center gap-2.5">
-            <OnlineStatusBadge />
-            <span className="hidden text-xs text-ink-muted dark:text-mist-muted sm:inline">
-              {user?.email}
+      {/* Mobile header — hidden at md+, where the sidebar carries branding instead; also
+          hidden on /assistant, which renders its own slim header in place of this one. */}
+      {!isAssistantRoute && (
+        <header className="sticky top-0 z-30 border-b border-stone bg-paper/90 backdrop-blur dark:border-stone-dark dark:bg-ink-bg/90 md:hidden">
+          <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3.5">
+            <span className="font-display text-lg font-semibold tracking-tight text-ink dark:text-paper">
+              LifeOs
             </span>
+            <div className="flex items-center gap-2.5">
+              <OnlineStatusBadge />
+              <span className="hidden text-xs text-ink-muted dark:text-mist-muted sm:inline">
+                {user?.email}
+              </span>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       {/* Desktop sidebar */}
       <aside
@@ -278,65 +296,72 @@ export default function Layout() {
         id="main-content"
         className={`pb-24 md:pb-8 ${sidebarCollapsed ? "md:pl-[4.5rem]" : "md:pl-56"}`}
       >
-        <Outlet />
+        <Outlet context={{ setComposerFocused } satisfies LayoutOutletContext} />
       </main>
 
-      {/* Mobile bottom tab bar — hidden at md+, where the sidebar is the primary nav */}
-      <nav
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-stone bg-paper-card/95 backdrop-blur md:hidden dark:border-stone-dark dark:bg-ink-bg-card/95"
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-        aria-label="Primary"
-      >
-        <div className="mx-auto flex max-w-2xl items-stretch justify-around px-1">
-          {TABS.map(({ to, label, icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              className={({ isActive }) =>
-                `flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 text-xs font-medium transition-colors ${
-                  isActive ? "text-bloom" : "text-ink-muted dark:text-mist-muted"
-                }`
-              }
+      {/* Mobile bottom tab bar — hidden at md+, where the sidebar is the primary nav, and
+          hidden while the Assistant composer has focus (the on-screen keyboard is up) so it
+          doesn't compete with the keyboard for the same strip of screen. */}
+      {!composerFocused && (
+        <nav
+          className="fixed inset-x-0 bottom-0 z-40 border-t border-stone bg-paper-card/95 backdrop-blur md:hidden dark:border-stone-dark dark:bg-ink-bg-card/95"
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+          aria-label="Primary"
+        >
+          <div className="mx-auto flex max-w-2xl items-stretch justify-around px-1">
+            {TABS.map(({ to, label, icon }) => (
+              <NavLink
+                key={to}
+                to={to}
+                className={({ isActive }) =>
+                  `flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 text-xs font-medium transition-colors ${
+                    isActive ? "text-bloom" : "text-ink-muted dark:text-mist-muted"
+                  }`
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <Icon icon={icon} size={21} strokeWidth={isActive ? 2.2 : 1.7} />
+                    {label}
+                  </>
+                )}
+              </NavLink>
+            ))}
+            <button
+              type="button"
+              onClick={() => setMoreOpen(true)}
+              className={`flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 text-xs font-medium transition-colors ${
+                moreActive || moreOpen ? "text-bloom" : "text-ink-muted dark:text-mist-muted"
+              }`}
+              aria-haspopup="dialog"
+              aria-expanded={moreOpen}
             >
-              {({ isActive }) => (
-                <>
-                  <Icon icon={icon} size={21} strokeWidth={isActive ? 2.2 : 1.7} />
-                  {label}
-                </>
-              )}
-            </NavLink>
-          ))}
-          <button
-            type="button"
-            onClick={() => setMoreOpen(true)}
-            className={`flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 text-xs font-medium transition-colors ${
-              moreActive || moreOpen ? "text-bloom" : "text-ink-muted dark:text-mist-muted"
-            }`}
-            aria-haspopup="dialog"
-            aria-expanded={moreOpen}
-          >
-            <Icon icon={LayoutGrid} size={21} strokeWidth={moreActive || moreOpen ? 2.2 : 1.7} />
-            More
-          </button>
-        </div>
-      </nav>
+              <Icon icon={LayoutGrid} size={21} strokeWidth={moreActive || moreOpen ? 2.2 : 1.7} />
+              More
+            </button>
+          </div>
+        </nav>
+      )}
 
       {/* Global quick-add FAB — every authenticated mobile screen, floating above the tab
           bar, bottom-right, clear of the tab bar's own hit area and safe-area aware. Hidden
-          at md+, where the sidebar's "Quick add" row and Cmd+K cover the same actions. */}
-      <button
-        type="button"
-        onClick={() => openQuickAdd()}
-        aria-label="Quick add"
-        aria-hidden={!fabVisible}
-        tabIndex={fabVisible ? 0 : -1}
-        className={`fixed right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-bloom text-paper-card shadow-raised transition-[opacity,transform,background-color] hover:bg-bloom-light md:hidden dark:shadow-raised-dark motion-reduce:transition-none ${
-          fabVisible ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-20 opacity-0"
-        }`}
-        style={{ bottom: "calc(env(safe-area-inset-bottom) + 4.75rem)", transitionDuration: "var(--duration-base)" }}
-      >
-        <Icon icon={Plus} size={26} />
-      </button>
+          at md+, where the sidebar's "Quick add" row and Cmd+K cover the same actions, and
+          hidden outright on /assistant, whose own composer fills that same corner. */}
+      {!isAssistantRoute && (
+        <button
+          type="button"
+          onClick={() => openQuickAdd()}
+          aria-label="Quick add"
+          aria-hidden={!fabVisible}
+          tabIndex={fabVisible ? 0 : -1}
+          className={`fixed right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-bloom text-paper-card shadow-raised transition-[opacity,transform,background-color] hover:bg-bloom-light md:hidden dark:shadow-raised-dark motion-reduce:transition-none ${
+            fabVisible ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-20 opacity-0"
+          }`}
+          style={{ bottom: "calc(env(safe-area-inset-bottom) + 4.75rem)", transitionDuration: "var(--duration-base)" }}
+        >
+          <Icon icon={Plus} size={26} />
+        </button>
+      )}
 
       {/* More sheet */}
       <BottomSheet open={moreOpen} onClose={() => setMoreOpen(false)}>

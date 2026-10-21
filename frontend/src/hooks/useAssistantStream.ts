@@ -38,6 +38,11 @@ export function useAssistantStream() {
       onEvent: (event: AssistantStreamEvent) => void,
       mode?: "onboarding",
       attachment?: { key: string; contentType: string; fileName: string },
+      // Lets a caller cancel mid-stream (a Stop button, or unmounting while a reply is still
+      // streaming in) — the fetch and the read loop below both honor it. A caller-initiated
+      // abort surfaces as a real DOMException named "AbortError", not a generic failure, so
+      // callers can skip showing an error toast for a stop the user asked for themselves.
+      signal?: AbortSignal,
     ): Promise<void> => {
       const token = await getIdToken();
       const res = await fetch(STREAM_URL, {
@@ -52,6 +57,7 @@ export function useAssistantStream() {
           // guessing the user's timezone itself — see create_medication/update_medication.
           timezoneOffsetMinutes: new Date().getTimezoneOffset(),
         }),
+        signal,
       });
 
       if (!res.ok) {
