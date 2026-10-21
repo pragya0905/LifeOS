@@ -150,7 +150,7 @@ function RoutineCard({
 }: {
   routine: RoutineTemplate;
   stepLogs: Record<string, { status: RoutineStepLog["status"]; note?: string }>;
-  streak: number;
+  streak: { current: number; pausedToday: boolean };
   pending: string | null;
   removing: boolean;
   editable: boolean;
@@ -281,7 +281,7 @@ function RoutineCard({
             <Icon icon={Timer} size={12} />~{routine.estimatedMinutes} min
           </span>
         )}
-        {streak > 0 && <StreakBadge days={streak} />}
+        {streak.current > 0 && <StreakBadge days={streak.current} paused={streak.pausedToday} />}
       </div>
       <ul className="flex flex-col gap-3">
         {routine.steps.map((step, index) => {

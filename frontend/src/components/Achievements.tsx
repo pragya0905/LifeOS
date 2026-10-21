@@ -43,7 +43,10 @@ export default function Achievements() {
 
   useEffect(() => {
     let ignore = false;
-    request<{ badges: Badge[] }>("/achievements")
+    // Lets the backend know the real local "today" (JS getTimezoneOffset() convention, same
+    // as Medication reminders and the Assistant) instead of the Lambda's UTC date, for the
+    // routine/medication streak calc's "today never breaks" rule.
+    request<{ badges: Badge[] }>(`/achievements?timezoneOffsetMinutes=${new Date().getTimezoneOffset()}`)
       .then((data) => {
         if (ignore) return;
         setBadges(data.badges);

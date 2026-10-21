@@ -4,6 +4,7 @@ import { Bell, ChevronLeft, ChevronRight, Timer } from "lucide-react";
 import { useApi } from "../api/useApi";
 import { addDays, isValidDateStr, todayLocal, toLocalDateStr } from "../lib/date";
 import { ALL_DAYS, appliesOnDate, byTimeOfDay, formatSchedule } from "../lib/weekdays";
+import { computeMedicationStreak } from "../lib/medicationStreak";
 import { STREAK_WINDOW_DAYS } from "../lib/routineStreak";
 import { URGENCY_BADGE_CLASS } from "../lib/urgency";
 import { Skeleton } from "../components/Skeleton";
@@ -77,37 +78,6 @@ function computeAdherence(medication: Medication, logs: MedicationLog[], windowS
   return { status: "ok", percent: Math.round((takenDays / scheduledDays) * 100), skippedDays };
 }
 
-// Consecutive days (walking back from the real today) logged "taken" — breaks on a missed OR
-// skipped day, same rigor the backend's medication achievement streak already uses (a
-// deliberate skip is forgiving for adherence but not for this streak — see the backend
-// comment on computeMedicationBestStreak for the reasoning). Today never breaks the streak
-// just because it isn't logged yet.
-function computeMedicationStreak(medication: Medication, logs: MedicationLog[], realToday: string): number {
-  const statusByDate = new Map<string, MedicationLogStatus>();
-  for (const l of logs) {
-    if (l.medicationId === medication.medicationId) statusByDate.set(l.date, l.status);
-  }
-  let streak = 0;
-  const cursor = new Date(`${realToday}T00:00:00Z`);
-  for (let i = 0; i < STREAK_WINDOW_DAYS; i++) {
-    const dateStr = cursor.toISOString().slice(0, 10);
-    const applies = !medication.daysOfWeek || medication.daysOfWeek.length === 0 || medication.daysOfWeek.includes(cursor.getUTCDay());
-    const inRange = dateStr >= medication.startDate && dateStr <= medication.endDate;
-    if (applies && inRange) {
-      const status = statusByDate.get(dateStr);
-      if (status === "taken") {
-        streak++;
-      } else if (i === 0) {
-        // today not finished yet — doesn't break the streak
-      } else {
-        break;
-      }
-    }
-    cursor.setUTCDate(cursor.getUTCDate() - 1);
-  }
-  return streak;
-}
-
 function compactDateLabel(dateStr: string): string {
   return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
@@ -123,7 +93,7 @@ function MedicationCard({
 }: {
   medication: Medication;
   adherence: AdherenceResult;
-  streak: number;
+  streak: { current: number; pausedToday: boolean };
   pending: boolean;
   removing: boolean;
   onDelete: (medicationId: string) => void;
@@ -241,7 +211,7 @@ function MedicationCard({
           {medication.daysOfWeek && medication.daysOfWeek.length > 0 && medication.daysOfWeek.length < 7 ? ` · ${formatSchedule(medication.daysOfWeek)}` : ""}
         </p>
         {medication.notes && <p className="mt-0.5 text-xs italic text-ink-muted dark:text-mist-muted">{medication.notes}</p>}
-        {(adherence || streak > 0) && (
+        {(adherence || streak.current > 0) && (
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             {adherence?.status === "new" && (
               <span className="inline-block rounded-full bg-stone px-2 py-0.5 text-xs font-medium text-ink-muted dark:bg-stone-dark dark:text-mist-muted">New — not enough history yet</span>
@@ -257,7 +227,7 @@ function MedicationCard({
             {adherence && (adherence.status === "ok" || adherence.status === "new") && adherence.skippedDays > 0 && (
               <span className="inline-block rounded-full bg-slate-soft px-2 py-0.5 text-xs font-medium tabular-nums text-slate-ink dark:bg-slate-soft-dark dark:text-slate-ink-dark">{adherence.skippedDays} skipped</span>
             )}
-            {streak > 0 && <StreakBadge days={streak} />}
+            {streak.current > 0 && <StreakBadge days={streak.current} paused={streak.pausedToday} />}
           </div>
         )}
       </div>

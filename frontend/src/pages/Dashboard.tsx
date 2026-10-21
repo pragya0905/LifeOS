@@ -849,10 +849,16 @@ export default function Dashboard() {
     for (const log of data?.routineStreakLogs ?? []) map.set(`${log.date}#${log.routineId}#${log.stepIndex}`, log.status);
     return map;
   }, [data]);
-  const routineStreakDays = applicableRoutines.reduce(
-    (max, r) => Math.max(max, computeRoutineStreak(r, streakLogsByDateStep)),
-    0,
+  // Track both the max current streak AND that specific routine's paused state — pausedToday
+  // only makes sense attached to whichever routine is actually holding the displayed number.
+  const routineStreak = applicableRoutines.reduce(
+    (best, r) => {
+      const result = computeRoutineStreak(r, streakLogsByDateStep);
+      return result.current > best.current ? result : best;
+    },
+    { current: 0, pausedToday: false },
   );
+  const routineStreakDays = routineStreak.current;
 
   const applicableMeds = useMemo(() => (data ? data.medications.filter((m) => appliesOnDate(m.daysOfWeek, selectedDateObj)) : []), [data, selectedDateObj]);
   const medLogByMedId = useMemo(() => {
@@ -1042,6 +1048,7 @@ export default function Dashboard() {
         return (
           <TodayHeader
             streakDays={routineStreakDays}
+            streakPaused={routineStreak.pausedToday}
             done={tasksDoneToday + routinesDone + medsDone}
             total={tasksDueToday.length + routinesTotal + applicableMeds.length}
             isToday={isToday}
