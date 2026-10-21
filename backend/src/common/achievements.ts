@@ -1,4 +1,7 @@
-import { isMedicationActiveOnDate } from "./medications";
+import { computeEndDate, isMedicationActiveOnDate } from "./medications";
+import { routineAppliesOnDate } from "./journal";
+import { today as localToday } from "./localTime";
+import { classifyDay, streakFromOutcomes, type DayOutcome, type ItemState } from "./streaks";
 import type {
   HabitLog,
   JournalEntry,
@@ -71,53 +74,102 @@ function bestStreak(sortedDates: string[]): number {
   return best;
 }
 
-// A day counts toward the routine streak if ANY of the user's routines had every one of its
-// (current) steps logged done OR not_applicable that day — same all-or-nothing rule
-// Routines.tsx's own streak display uses, just rolled up across every routine instead of per-
-// routine. not_applicable is exempted rather than counted as a miss, same as "done".
-function computeRoutineBestStreak(routineLogs: RoutineStepLog[], routines: RoutineTemplate[]): number {
-  const routineById = new Map(routines.map((r) => [r.routineId, r]));
-  const logsByDateRoutine = new Map<string, RoutineStepLog[]>();
+// One routine's own day-by-day outcome sequence, from the day it was created through today —
+// not just the days it happens to have logs for, so a step nobody ever logged still correctly
+// counts as an unresolved/break day rather than being silently skipped. Days the routine isn't
+// scheduled on (routineAppliesOnDate false) are excluded entirely, same as a medication's
+// off-days — they can't advance, pause, or break anything.
+function buildRoutineOutcomes(routine: RoutineTemplate, routineLogs: RoutineStepLog[], todayStr: string): DayOutcome[] {
+  if (routine.steps.length === 0) return [];
+  const logsByDate = new Map<string, RoutineStepLog[]>();
   for (const log of routineLogs) {
-    const key = `${log.date}#${log.routineId}`;
-    const list = logsByDateRoutine.get(key) ?? [];
-    list.push(log);
-    logsByDateRoutine.set(key, list);
-  }
-
-  const fullyCompletedDays = new Set<string>();
-  for (const [key, logs] of logsByDateRoutine) {
-    const [date, routineId] = key.split("#");
-    const routine = routineById.get(routineId);
-    if (!routine || routine.steps.length === 0) continue;
-    const allDone = routine.steps.every((_, index) =>
-      logs.some((l) => l.stepIndex === index && (l.status === "done" || l.status === "not_applicable")),
-    );
-    if (allDone) fullyCompletedDays.add(date);
-  }
-
-  return bestStreak([...fullyCompletedDays].sort());
-}
-
-// A day counts toward the medication streak if every medication that was active on that
-// specific date (by its own startDate/durationDays/daysOfWeek, not today's date) was logged taken.
-function computeMedicationBestStreak(medicationLogs: MedicationLog[], medications: Medication[]): number {
-  const logsByDate = new Map<string, MedicationLog[]>();
-  for (const log of medicationLogs) {
+    if (log.routineId !== routine.routineId) continue;
     const list = logsByDate.get(log.date) ?? [];
     list.push(log);
     logsByDate.set(log.date, list);
   }
 
-  const perfectDays = new Set<string>();
-  for (const [date, logs] of logsByDate) {
-    const activeThatDay = medications.filter((m) => isMedicationActiveOnDate(m, date));
-    if (activeThatDay.length === 0) continue;
-    const allTaken = activeThatDay.every((m) => logs.some((l) => l.medicationId === m.medicationId && l.status === "taken"));
-    if (allTaken) perfectDays.add(date);
+  const startDate = routine.createdAt.slice(0, 10);
+  if (startDate > todayStr) return [];
+
+  const outcomes: DayOutcome[] = [];
+  const cursor = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${todayStr}T00:00:00Z`);
+  while (cursor <= end) {
+    const dateStr = cursor.toISOString().slice(0, 10);
+    if (routineAppliesOnDate(routine.daysOfWeek, dateStr)) {
+      const dayLogs = logsByDate.get(dateStr) ?? [];
+      const items: ItemState[] = routine.steps.map((_, index) => {
+        const log = dayLogs.find((l) => l.stepIndex === index);
+        if (!log) return "unresolved";
+        return log.status === "done" ? "done" : log.status === "not_applicable" ? "not_applicable" : "skipped";
+      });
+      outcomes.push(classifyDay(items, dateStr === todayStr));
+    }
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return outcomes;
+}
+
+// One medication's own day-by-day outcome sequence, bounded to its own startDate..endDate range
+// (computeEndDate(startDate, durationDays)) — days before it started or after it ended are
+// excluded entirely, same as an off-day under daysOfWeek, never advancing/pausing/breaking
+// anything. Exactly one item per day: the MedicationLogs table's own key schema
+// (userId + "date#medicationId") enforces a single log row per day, so there is no multi-dose
+// concept to account for.
+function buildMedicationOutcomes(medication: Medication, medicationLogs: MedicationLog[], todayStr: string): DayOutcome[] {
+  const logsByDate = new Map<string, MedicationLog>();
+  for (const log of medicationLogs) {
+    if (log.medicationId === medication.medicationId) logsByDate.set(log.date, log);
   }
 
-  return bestStreak([...perfectDays].sort());
+  const endDate = computeEndDate(medication.startDate, medication.durationDays);
+  const scanEnd = endDate < todayStr ? endDate : todayStr;
+  if (medication.startDate > scanEnd) return [];
+
+  const outcomes: DayOutcome[] = [];
+  const cursor = new Date(`${medication.startDate}T00:00:00Z`);
+  const end = new Date(`${scanEnd}T00:00:00Z`);
+  while (cursor <= end) {
+    const dateStr = cursor.toISOString().slice(0, 10);
+    if (isMedicationActiveOnDate(medication, dateStr)) {
+      const log = logsByDate.get(dateStr);
+      const item: ItemState = !log ? "unresolved" : log.status === "taken" ? "done" : log.status === "skipped" ? "skipped" : "missed";
+      outcomes.push(classifyDay([item], dateStr === todayStr));
+    }
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return outcomes;
+}
+
+// Per-routine and per-medication current/best streaks, keyed by id — replaces the old single
+// user-wide "best streak" number (a day used to count if ANY routine was fully done that day,
+// unioned across all of them). Each routine/medication now sustains its own streak; see the
+// achievements.test.ts comment on computeEligibleBadgeKeys for how the badge threshold changed.
+export function computeRoutineStreaks(
+  routineLogs: RoutineStepLog[],
+  routines: RoutineTemplate[],
+  timezoneOffsetMinutes?: number,
+): Map<string, { current: number; best: number }> {
+  const todayStr = localToday(timezoneOffsetMinutes);
+  const result = new Map<string, { current: number; best: number }>();
+  for (const routine of routines) {
+    result.set(routine.routineId, streakFromOutcomes(buildRoutineOutcomes(routine, routineLogs, todayStr)));
+  }
+  return result;
+}
+
+export function computeMedicationStreaks(
+  medicationLogs: MedicationLog[],
+  medications: Medication[],
+  timezoneOffsetMinutes?: number,
+): Map<string, { current: number; best: number }> {
+  const todayStr = localToday(timezoneOffsetMinutes);
+  const result = new Map<string, { current: number; best: number }>();
+  for (const medication of medications) {
+    result.set(medication.medicationId, streakFromOutcomes(buildMedicationOutcomes(medication, medicationLogs, todayStr)));
+  }
+  return result;
 }
 
 export interface AchievementInputs {
@@ -131,6 +183,10 @@ export interface AchievementInputs {
   medicationLogs: MedicationLog[];
   medications: Medication[];
   wishes: Wish[];
+  // Optional — JS Date#getTimezoneOffset() convention, same as chatAssistant/Medication's own
+  // existing usage. Lets the routine/medication streak calc know the caller's real "today"
+  // instead of the Lambda's UTC date; absent (old/un-updated client) falls back to UTC.
+  timezoneOffsetMinutes?: number;
 }
 
 // Pure eligibility check — given everything needed, returns which badge keys currently qualify
@@ -153,10 +209,14 @@ export function computeEligibleBadgeKeys(inputs: AchievementInputs): Set<string>
   if (longestHabitStreak >= 30) earned.add("streak-30");
 
   if (inputs.routineLogsDone >= 1) earned.add("routine-starter");
-  if (computeRoutineBestStreak(inputs.routineLogs, inputs.routines) >= 7) earned.add("routine-consistent");
+  // Per-routine, not a day-union across all routines (see computeRoutineStreaks' comment) —
+  // the badge asks whether any ONE routine has sustained a 7-day streak of its own.
+  const routineBestStreaks = [...computeRoutineStreaks(inputs.routineLogs, inputs.routines, inputs.timezoneOffsetMinutes).values()].map((s) => s.best);
+  if (routineBestStreaks.some((best) => best >= 7)) earned.add("routine-consistent");
 
   if (inputs.medicationLogsTaken >= 1) earned.add("medication-starter");
-  if (computeMedicationBestStreak(inputs.medicationLogs, inputs.medications) >= 7) earned.add("medication-consistent");
+  const medicationBestStreaks = [...computeMedicationStreaks(inputs.medicationLogs, inputs.medications, inputs.timezoneOffsetMinutes).values()].map((s) => s.best);
+  if (medicationBestStreaks.some((best) => best >= 7)) earned.add("medication-consistent");
 
   if (inputs.wishes.length >= 1) earned.add("first-wish");
   if (inputs.wishes.some((w) => w.status === "completed")) earned.add("wish-achiever");

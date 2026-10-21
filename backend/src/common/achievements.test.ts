@@ -31,8 +31,21 @@ function habitLog(date: string, value = 1000): HabitLog {
   };
 }
 
-function routine(routineId: string, steps: string[]): RoutineTemplate {
-  return { userId: "u1", routineId, category: "custom", name: "Test routine", steps, createdAt: "2026-01-01" };
+// Real, relative to whenever the suite actually runs — not a fixed 2026 date. The streak
+// engine now scans from a routine/medication's createdAt/startDate through the real "today",
+// so a hardcoded historical date range would accumulate an ever-growing run of genuinely-
+// unresolved (break) days after the fixture's last log as calendar time passes, which doesn't
+// affect `best` (it's already recorded before the gap) but does make `current` meaningless and
+// bloats iteration counts pointlessly. Dynamic dates keep every test both correct and fast
+// regardless of when it's run.
+function daysAgo(n: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
+function routine(routineId: string, steps: string[], createdAt = daysAgo(90)): RoutineTemplate {
+  return { userId: "u1", routineId, category: "custom", name: "Test routine", steps, createdAt };
 }
 
 function routineLog(
@@ -58,7 +71,7 @@ function medication(medicationId: string, startDate: string, durationDays: numbe
   return { userId: "u1", medicationId, name: "Test Med", startDate, durationDays, createdAt: "2026-01-01" };
 }
 
-function medicationLog(date: string, medicationId: string, status: "taken" | "missed" = "taken"): MedicationLog {
+function medicationLog(date: string, medicationId: string, status: "taken" | "missed" | "skipped" = "taken"): MedicationLog {
   return {
     userId: "u1",
     dateMedicationId: `${date}#${medicationId}`,
@@ -149,49 +162,107 @@ describe("computeEligibleBadgeKeys — habit streaks", () => {
   });
 });
 
-describe("computeEligibleBadgeKeys — routine streaks", () => {
-  it("6 consecutive fully-completed days does not earn routine-consistent", () => {
+describe("computeEligibleBadgeKeys — routine streaks (forgiving: skipped/N-A pause, don't break)", () => {
+  it("6 consecutive fully-done days does not earn routine-consistent", () => {
     const r = routine("r1", ["Step A", "Step B"]);
     const logs: RoutineStepLog[] = [];
-    for (let i = 1; i <= 6; i++) {
-      const d = `2026-10-0${i}`;
+    for (let i = 5; i >= 0; i--) {
+      const d = daysAgo(i);
       logs.push(routineLog(d, "r1", 0), routineLog(d, "r1", 1));
     }
     const result = computeEligibleBadgeKeys({ ...BASE_INPUTS, routines: [r], routineLogs: logs });
     expect(result.has("routine-consistent")).toBe(false);
   });
 
-  it("7 consecutive fully-completed days earns routine-consistent", () => {
+  it("7 consecutive fully-done days earns routine-consistent", () => {
     const r = routine("r1", ["Step A", "Step B"]);
     const logs: RoutineStepLog[] = [];
-    for (let i = 1; i <= 7; i++) {
-      const d = `2026-10-0${i}`;
+    for (let i = 6; i >= 0; i--) {
+      const d = daysAgo(i);
       logs.push(routineLog(d, "r1", 0), routineLog(d, "r1", 1));
     }
     const result = computeEligibleBadgeKeys({ ...BASE_INPUTS, routines: [r], routineLogs: logs });
     expect(result.has("routine-consistent")).toBe(true);
   });
 
-  it("a day with only some steps done does not count, even across 7 days", () => {
+  it("a day with only some steps logged breaks the day (unresolved step), even across 7 days", () => {
     const r = routine("r1", ["Step A", "Step B"]);
     const logs: RoutineStepLog[] = [];
-    for (let i = 1; i <= 7; i++) {
-      const d = `2026-10-0${i}`;
-      logs.push(routineLog(d, "r1", 0)); // only step 0, never step 1
+    for (let i = 6; i >= 0; i--) {
+      logs.push(routineLog(daysAgo(i), "r1", 0)); // only step 0, never step 1
     }
     const result = computeEligibleBadgeKeys({ ...BASE_INPUTS, routines: [r], routineLogs: logs });
     expect(result.has("routine-consistent")).toBe(false);
   });
 
-  it("not_applicable steps count toward a fully-completed day, unlike skipped", () => {
+  it("not_applicable steps count toward a fully-done day, same as done", () => {
     const r = routine("r1", ["Step A", "Step B"]);
     const logs: RoutineStepLog[] = [];
-    for (let i = 1; i <= 7; i++) {
-      const d = `2026-10-0${i}`;
+    for (let i = 6; i >= 0; i--) {
+      const d = daysAgo(i);
       logs.push(routineLog(d, "r1", 0, "done"), routineLog(d, "r1", 1, "not_applicable"));
     }
     const result = computeEligibleBadgeKeys({ ...BASE_INPUTS, routines: [r], routineLogs: logs });
     expect(result.has("routine-consistent")).toBe(true);
+  });
+
+  it("a day where every step is skipped PAUSES the streak instead of breaking it — the forgiving rule", () => {
+    const r = routine("r1", ["Step A"]);
+    const logs: RoutineStepLog[] = [];
+    // 3 done days, 1 fully-skipped day (should pause, not break), 4 more done days = 7 advancing days total.
+    for (let i = 7; i >= 4; i--) logs.push(routineLog(daysAgo(i), "r1", 0, "done"));
+    logs.push(routineLog(daysAgo(3), "r1", 0, "skipped"));
+    for (let i = 2; i >= 0; i--) logs.push(routineLog(daysAgo(i), "r1", 0, "done"));
+    const result = computeEligibleBadgeKeys({ ...BASE_INPUTS, routines: [r], routineLogs: logs });
+    expect(result.has("routine-consistent")).toBe(true);
+  });
+
+  it("a mixed Done+Skipped day with nothing unresolved still advances (every step accounted for, at least one done)", () => {
+    const r = routine("r1", ["Step A", "Step B", "Step C"]);
+    const logs: RoutineStepLog[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = daysAgo(i);
+      logs.push(routineLog(d, "r1", 0, "done"), routineLog(d, "r1", 1, "skipped"), routineLog(d, "r1", 2, "not_applicable"));
+    }
+    const result = computeEligibleBadgeKeys({ ...BASE_INPUTS, routines: [r], routineLogs: logs });
+    expect(result.has("routine-consistent")).toBe(true);
+  });
+
+  it("a genuinely missing (never logged) day still breaks the streak — forgiveness is for skipped/N-A, not silence", () => {
+    const r = routine("r1", ["Step A"]);
+    const logs: RoutineStepLog[] = [];
+    for (let i = 7; i >= 4; i--) logs.push(routineLog(daysAgo(i), "r1", 0, "done"));
+    // daysAgo(3) has no log at all — a real gap, not an explicit skip.
+    for (let i = 2; i >= 0; i--) logs.push(routineLog(daysAgo(i), "r1", 0, "done"));
+    const result = computeEligibleBadgeKeys({ ...BASE_INPUTS, routines: [r], routineLogs: logs });
+    expect(result.has("routine-consistent")).toBe(false);
+  });
+
+  it("8 consecutive fully-skipped days breaks the streak (pause cap) even though each individual day is forgiven, but best stays recorded", () => {
+    const r = routine("r1", ["Step A"]);
+    const logs: RoutineStepLog[] = [];
+    // 7 done days first (establishes best=7), then 8 consecutive skip days — day 8 of the skip
+    // run exceeds MAX_CONSECUTIVE_PAUSE_DAYS (7) and converts to a break.
+    for (let i = 14; i >= 8; i--) logs.push(routineLog(daysAgo(i), "r1", 0, "done"));
+    for (let i = 7; i >= 0; i--) logs.push(routineLog(daysAgo(i), "r1", 0, "skipped"));
+    const result = computeEligibleBadgeKeys({ ...BASE_INPUTS, routines: [r], routineLogs: logs });
+    // routine-consistent is a `best >= 7` check, and best (7, from the earlier done run) was
+    // already recorded before the later pause-cap break — still earns it.
+    expect(result.has("routine-consistent")).toBe(true);
+  });
+
+  it("per-item, not unioned: a user alternating between two different routines day-to-day does NOT earn routine-consistent, even though a day is 'complete' every day", () => {
+    const rA = routine("rA", ["Step A"]);
+    const rB = routine("rB", ["Step A"]);
+    const logs: RoutineStepLog[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = daysAgo(i);
+      // Alternate which routine gets done each day — under the OLD union rule this would count
+      // every day; under the new per-item rule, neither routine individually has a 7-day run.
+      logs.push(routineLog(d, i % 2 === 0 ? "rA" : "rB", 0, "done"));
+    }
+    const result = computeEligibleBadgeKeys({ ...BASE_INPUTS, routines: [rA, rB], routineLogs: logs });
+    expect(result.has("routine-consistent")).toBe(false);
   });
 
   it("routine-starter earns on a single done step, regardless of streak", () => {
@@ -201,45 +272,71 @@ describe("computeEligibleBadgeKeys — routine streaks", () => {
   });
 });
 
-describe("computeEligibleBadgeKeys — medication streaks", () => {
-  it("6 consecutive perfect days does not earn medication-consistent", () => {
-    const m = medication("m1", "2026-09-25", 30);
-    const logs = Array.from({ length: 6 }, (_, i) => medicationLog(`2026-10-0${i + 1}`, "m1"));
+describe("computeEligibleBadgeKeys — medication streaks (forgiving: skipped pauses, missed still breaks)", () => {
+  it("6 consecutive taken days does not earn medication-consistent", () => {
+    const m = medication("m1", daysAgo(90), 180);
+    const logs = Array.from({ length: 6 }, (_, i) => medicationLog(daysAgo(5 - i), "m1"));
     const result = computeEligibleBadgeKeys({ ...BASE_INPUTS, medications: [m], medicationLogs: logs });
     expect(result.has("medication-consistent")).toBe(false);
   });
 
-  it("7 consecutive perfect days earns medication-consistent", () => {
-    const m = medication("m1", "2026-09-25", 30);
-    const logs = Array.from({ length: 7 }, (_, i) => medicationLog(`2026-10-0${i + 1}`, "m1"));
+  it("7 consecutive taken days earns medication-consistent", () => {
+    const m = medication("m1", daysAgo(90), 180);
+    const logs = Array.from({ length: 7 }, (_, i) => medicationLog(daysAgo(6 - i), "m1"));
     const result = computeEligibleBadgeKeys({ ...BASE_INPUTS, medications: [m], medicationLogs: logs });
     expect(result.has("medication-consistent")).toBe(true);
   });
 
-  it("a day only counts if every medication active THAT DAY was taken, not just any medication ever", () => {
-    // m2 only becomes active on 2026-10-05 — days before that shouldn't require it to be logged.
-    const m1 = medication("m1", "2026-09-25", 30);
-    const m2 = medication("m2", "2026-10-05", 30);
+  it("a day only requires medications active THAT DAY (own per-item streak, not a union across medications)", () => {
+    const m1 = medication("m1", daysAgo(90), 180);
+    const m2 = medication("m2", daysAgo(2), 30); // only becomes active 2 days ago
     const logs: MedicationLog[] = [];
-    for (let i = 1; i <= 7; i++) {
-      const d = `2026-10-0${i}`;
-      logs.push(medicationLog(d, "m1"));
-      if (i >= 5) logs.push(medicationLog(d, "m2"));
-    }
+    for (let i = 6; i >= 0; i--) logs.push(medicationLog(daysAgo(i), "m1"));
+    for (let i = 2; i >= 0; i--) logs.push(medicationLog(daysAgo(i), "m2"));
     const result = computeEligibleBadgeKeys({ ...BASE_INPUTS, medications: [m1, m2], medicationLogs: logs });
+    // m1 alone has a real 7-day streak; it doesn't matter that m2 only has 3 days of history.
     expect(result.has("medication-consistent")).toBe(true);
   });
 
-  it("missing a dose on a day that medication was active breaks the streak", () => {
-    const m1 = medication("m1", "2026-09-25", 30);
-    const m2 = medication("m2", "2026-10-05", 30);
+  it("a missing dose (never logged) on an active day breaks the streak", () => {
+    const m1 = medication("m1", daysAgo(90), 180);
     const logs: MedicationLog[] = [];
-    for (let i = 1; i <= 7; i++) {
-      const d = `2026-10-0${i}`;
-      logs.push(medicationLog(d, "m1"));
-      // m2 becomes active on day 5 but is never logged — those days should NOT count as perfect.
-    }
-    const result = computeEligibleBadgeKeys({ ...BASE_INPUTS, medications: [m1, m2], medicationLogs: logs });
+    for (let i = 6; i >= 4; i--) logs.push(medicationLog(daysAgo(i), "m1"));
+    // daysAgo(3) never logged — a real gap.
+    for (let i = 2; i >= 0; i--) logs.push(medicationLog(daysAgo(i), "m1"));
+    const result = computeEligibleBadgeKeys({ ...BASE_INPUTS, medications: [m1], medicationLogs: logs });
+    expect(result.has("medication-consistent")).toBe(false);
+  });
+
+  it("an explicit Missed log breaks the streak, same as a never-logged gap", () => {
+    const m1 = medication("m1", daysAgo(90), 180);
+    const logs: MedicationLog[] = [];
+    for (let i = 6; i >= 4; i--) logs.push(medicationLog(daysAgo(i), "m1", "taken"));
+    logs.push(medicationLog(daysAgo(3), "m1", "missed"));
+    for (let i = 2; i >= 0; i--) logs.push(medicationLog(daysAgo(i), "m1", "taken"));
+    const result = computeEligibleBadgeKeys({ ...BASE_INPUTS, medications: [m1], medicationLogs: logs });
+    expect(result.has("medication-consistent")).toBe(false);
+  });
+
+  it("a Skipped day pauses instead of breaking — the forgiving rule (a pause doesn't itself add to the count, so this needs 7 TAKEN days bridged by one skip, not 7 calendar days including the skip)", () => {
+    const m1 = medication("m1", daysAgo(90), 180);
+    const logs: MedicationLog[] = [];
+    for (let i = 7; i >= 4; i--) logs.push(medicationLog(daysAgo(i), "m1", "taken")); // 4 taken
+    logs.push(medicationLog(daysAgo(3), "m1", "skipped")); // pause, bridges without adding
+    for (let i = 2; i >= 0; i--) logs.push(medicationLog(daysAgo(i), "m1", "taken")); // 3 more taken = 7 total
+    const result = computeEligibleBadgeKeys({ ...BASE_INPUTS, medications: [m1], medicationLogs: logs });
+    expect(result.has("medication-consistent")).toBe(true);
+  });
+
+  it("days before a medication's startDate or after its endDate are excluded, not treated as breaks", () => {
+    // A 5-day course starting 3 days ago (ends in 1 day) — only its own narrow window should
+    // ever be scanned; nothing before startDate or after endDate should count against it.
+    const start = daysAgo(3);
+    const m1 = medication("m1", start, 5);
+    const logs = [medicationLog(daysAgo(3), "m1"), medicationLog(daysAgo(2), "m1"), medicationLog(daysAgo(1), "m1"), medicationLog(daysAgo(0), "m1")];
+    const result = computeEligibleBadgeKeys({ ...BASE_INPUTS, medications: [m1], medicationLogs: logs });
+    // Only 4 days of real history exist (course started 3 days ago) — not enough for 7, but
+    // critically this must not throw or wrongly scan days before `start`.
     expect(result.has("medication-consistent")).toBe(false);
   });
 });

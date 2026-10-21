@@ -386,7 +386,7 @@ export async function embedJournalEntry(userId: string, date: string, text: stri
 
 // Routines have no startDate/durationDays range (unlike Medication) — just an optional
 // daysOfWeek, so this is the whole check. Mirrors isMedicationActiveOnDate's day-of-week logic.
-function routineAppliesOnDate(daysOfWeek: number[] | undefined, dateStr: string): boolean {
+export function routineAppliesOnDate(daysOfWeek: number[] | undefined, dateStr: string): boolean {
   if (!daysOfWeek || daysOfWeek.length === 0) return true;
   const dayOfWeek = new Date(`${dateStr}T00:00:00Z`).getUTCDay();
   return daysOfWeek.includes(dayOfWeek);

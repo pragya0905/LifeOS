@@ -11,6 +11,7 @@ import {
   countMedicationLogsTaken,
   countRoutineLogsDone,
 } from "../../common/achievements";
+import { parseTimezoneOffsetMinutes } from "../../common/localTime";
 import type {
   Achievement,
   HabitLog,
@@ -42,6 +43,9 @@ async function queryAll<T>(tableName: string | undefined, userId: string): Promi
 // at personal-app usage scale, since this runs every time the Achievements view loads.
 export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) => {
   const userId = getUserId(event);
+  // Untrusted input — parseTimezoneOffsetMinutes validates range/type and falls back to
+  // undefined (UTC) on anything malformed, so a bad query param never 500s this endpoint.
+  const timezoneOffsetMinutes = parseTimezoneOffsetMinutes(event.queryStringParameters?.timezoneOffsetMinutes);
 
   const [tasks, journalEntries, habitLogs, routineLogs, routines, medicationLogs, medications, wishes, existing] =
     await Promise.all([
@@ -67,6 +71,7 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     medicationLogs,
     medications,
     wishes,
+    timezoneOffsetMinutes,
   });
 
   const existingByKey = new Map(existing.map((a) => [a.badgeKey, a]));
