@@ -1,7 +1,18 @@
 import { useEffect, useRef, useState, type UIEvent } from "react";
 import { useLocation, useOutletContext } from "react-router-dom";
 import { useApi } from "../api/useApi";
-import { useAssistantStream, type AssistantStreamEvent } from "../hooks/useAssistantStream";
+import {
+  AssistantRequestError,
+  useAssistantStream,
+  type AssistantAttachmentRef,
+  type AssistantStreamEvent,
+} from "../hooks/useAssistantStream";
+import {
+  ALLOWED_ATTACHMENT_TYPES,
+  MAX_TOTAL_ATTACHMENT_BYTES,
+  formatMegabytes,
+  usePendingAttachments,
+} from "../hooks/usePendingAttachments";
 import { useSpeechToText } from "../hooks/useSpeechToText";
 import { useViewportHeight } from "../hooks/useViewportHeight";
 import { describeToolUse } from "../lib/toolLabels";
@@ -11,21 +22,14 @@ import type { LayoutOutletContext } from "../components/Layout";
 import { AssistantHeader } from "../components/assistant/AssistantHeader";
 import { AssistantMessageList } from "../components/assistant/AssistantMessageList";
 import { AssistantComposer } from "../components/assistant/AssistantComposer";
+import { AssistantAttachmentTray } from "../components/assistant/AssistantAttachmentTray";
 import { AssistantHistorySheet, type ConversationSummary } from "../components/assistant/AssistantHistorySheet";
 import type { ChatMessage } from "../components/assistant/types";
 import { errorText, primaryButton } from "../components/ui";
 
 const CONVERSATION_ID_KEY = "lifeos_assistant_conversation_id";
 const MUTED_KEY = "lifeos_assistant_muted";
-const ALLOWED_ATTACHMENT_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"];
-const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
 const SCROLL_NEAR_BOTTOM_PX = 80;
-
-interface PendingAttachment {
-  key: string;
-  contentType: string;
-  fileName: string;
-}
 
 function loadConversationId(): string | undefined {
   try {
@@ -42,6 +46,21 @@ function persistConversationId(id: string | undefined) {
   } catch {
     // Best-effort — just won't persist across reloads.
   }
+}
+
+// The server stores a turn's files as a trailing "[Attached a.png, b.pdf]" line (see chatAssistant's
+// persistedUserText). This turns that back into names on the bubble, so reloaded history shows
+// every attachment, not just the first.
+const STORED_ATTACHMENTS = /(?:^|\n\n)\[Attached ([^\]]+)\]$/;
+
+function toChatMessages(turns: { role: "user" | "assistant"; content: string }[]): ChatMessage[] {
+  return turns.map((t) => {
+    const match = t.role === "user" ? t.content.match(STORED_ATTACHMENTS) : null;
+    if (match && match.index !== undefined) {
+      return { role: "user", content: t.content.slice(0, match.index), attachmentNames: match[1].split(", ") };
+    }
+    return { role: t.role, content: t.content };
+  });
 }
 
 // The header has no toggle for this anymore (the approved Part 2 header is title + New +
@@ -86,8 +105,12 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
   const [voiceModeOpen, setVoiceModeOpen] = useState(false);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
-  const [attaching, setAttaching] = useState(false);
+  const attachments = usePendingAttachments();
+  const readyCount = attachments.items.filter((i) => i.status === "ready").length;
+  const hasText = text.trim().length > 0;
+  const hasContent = hasText || attachments.items.length > 0;
+  // Text or at least one finished file, with no upload still in flight and the total under the cap.
+  const canSend = !sending && !attachments.anyUploading && !attachments.overLimit && (hasText || readyCount > 0);
   const [revealedTimestamp, setRevealedTimestamp] = useState<number | null>(null);
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
   // Mirrors what's reported up via outletContext.setComposerFocused — needed locally too,
@@ -171,7 +194,7 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
       );
       conversationIdRef.current = conversationId;
       persistConversationId(conversationId);
-      setMessages(data.turns.map((t) => ({ role: t.role, content: t.content })));
+      setMessages(toChatMessages(data.turns));
       setHistoryOpen(false);
       setError(null);
       setRevealedTimestamp(null);
@@ -185,46 +208,40 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
     if (conversationIdRef.current === conversationId) startNewConversation();
   }
 
-  async function handleFileSelected(file: File) {
-    if (!ALLOWED_ATTACHMENT_TYPES.includes(file.type)) {
-      setError("Only JPEG, PNG, WEBP, GIF images or PDFs are supported");
-      return;
-    }
-    if (file.size > MAX_ATTACHMENT_BYTES) {
-      setError("That file is too large (max 15MB)");
-      return;
-    }
-    setAttaching(true);
-    setError(null);
-    try {
-      const { uploadUrl, key } = await request<{ uploadUrl: string; key: string }>(
-        "/assistant/attachments/presign",
-        { method: "POST", body: JSON.stringify({ contentType: file.type }) },
-      );
-      const putResponse = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": file.type },
-        body: file,
-      });
-      if (!putResponse.ok) throw new Error("Upload to storage failed");
-      setPendingAttachment({ key, contentType: file.type, fileName: file.name });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to attach file");
-    } finally {
-      setAttaching(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
+  function handleFilesSelected(files: File[]) {
+    const notices = attachments.addFiles(files);
+    setError(notices.length > 0 ? notices.join(". ") : null);
   }
 
-  async function sendMessage(message: string, options?: { skipUserBubble?: boolean }) {
+  async function sendMessage(
+    message: string,
+    options?: { skipUserBubble?: boolean; fromComposer?: boolean; retryAttachments?: AssistantAttachmentRef[] },
+  ) {
     if (listening) stopListening();
-    const attachment = pendingAttachment;
-    setPendingAttachment(null);
+    const retrying = options?.retryAttachments !== undefined;
+    if (!retrying && (attachments.anyUploading || attachments.overLimit)) {
+      setError(
+        attachments.anyUploading
+          ? "Wait for your files to finish uploading, then send"
+          : `These files total more than ${formatMegabytes(MAX_TOTAL_ATTACHMENT_BYTES)} — remove one to send`,
+      );
+      return;
+    }
+    // Ready files leave the tray for this send. They go back in if the send fails before any reply.
+    const taken = retrying ? [] : attachments.takeReady();
+    const refs: AssistantAttachmentRef[] = retrying ? (options?.retryAttachments ?? []) : taken.map((t) => t.ref!);
+    const notSent = retrying ? 0 : attachments.items.filter((i) => i.status === "error").length;
+    if (notSent > 0) showToast(`${notSent} file${notSent === 1 ? "" : "s"} didn't upload and wasn't sent`);
+
+    const userMessage: ChatMessage = {
+      role: "user",
+      content: message,
+      attachments: refs.length > 0 ? refs : undefined,
+      attachmentNames: refs.length > 0 ? refs.map((r) => r.fileName) : undefined,
+      createdAt: new Date().toISOString(),
+    };
     if (!options?.skipUserBubble) {
-      setMessages((prev) => [
-        ...prev,
-        { role: "user", content: message, attachmentLabel: attachment?.fileName, createdAt: new Date().toISOString() },
-      ]);
+      setMessages((prev) => [...prev, userMessage]);
     }
     setSending(true);
     setStatusLabel(null);
@@ -233,6 +250,17 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
+
+    // Until the first text or tool event arrives, a failure rolls the send back: the bubble comes
+    // off, the files go back in the tray, and the text returns to the composer — nothing typed or
+    // attached is lost. Once the reply has started, a failure is just shown.
+    let replyStarted = false;
+    function rollBack(reason: string) {
+      if (!options?.skipUserBubble) setMessages((prev) => prev.filter((m) => m !== userMessage));
+      if (taken.length > 0) attachments.restore(taken);
+      if (options?.fromComposer) setText((prev) => (prev.trim() ? `${message}\n${prev}` : message));
+      setError(reason);
+    }
 
     // No placeholder assistant bubble is pushed up front — the typing indicator covers that
     // gap instead, and the real bubble only appears once the first token (or the first
@@ -283,24 +311,34 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
         conversationIdRef.current,
         (event: AssistantStreamEvent) => {
           if (event.type === "text") {
+            replyStarted = true;
             appendToLastAssistantMessage(event.delta);
           } else if (event.type === "tool_use") {
+            replyStarted = true;
             setStatusLabel(describeToolUse(event.name));
             if (event.result) appendToolResult(event.result);
           } else if (event.type === "done") {
+            replyStarted = true;
             conversationIdRef.current = event.conversationId;
             persistConversationId(event.conversationId);
           } else if (event.type === "error") {
-            setError(event.message);
+            if (replyStarted) setError(event.message);
+            else rollBack(event.message);
           }
         },
         onboarding ? "onboarding" : undefined,
-        attachment ?? undefined,
+        refs,
         controller.signal,
       );
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
         // A user-initiated Stop — not a failure, nothing to show.
+      } else if (!replyStarted) {
+        rollBack(
+          err instanceof AssistantRequestError
+            ? err.message
+            : "Couldn't reach the assistant — your message and files are still here",
+        );
       } else {
         setError(err instanceof Error ? err.message : "Failed to reach the assistant");
       }
@@ -316,10 +354,10 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
   }
 
   async function triggerSend() {
+    if (!canSend) return;
     const trimmed = text.trim();
-    if ((!trimmed && !pendingAttachment) || sending) return;
     setText("");
-    await sendMessage(trimmed);
+    await sendMessage(trimmed, { fromComposer: true });
   }
 
   function handleToggleVoice() {
@@ -344,9 +382,14 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
     if (sending) return;
     const lastUserIndex = messages.map((m) => m.role).lastIndexOf("user");
     if (lastUserIndex === -1) return;
-    const lastUserContent = messages[lastUserIndex].content;
+    const last = messages[lastUserIndex];
+    // A turn reloaded from history has file names but no upload references, so its files can't be resent.
+    if (last.attachmentNames && last.attachmentNames.length > 0 && !last.attachments) {
+      setError("These files were sent in an earlier session — attach them again to resend");
+      return;
+    }
     setMessages((prev) => prev.slice(0, lastUserIndex + 1));
-    sendMessage(lastUserContent, { skipUserBubble: true });
+    sendMessage(last.content, { skipUserBubble: true, retryAttachments: last.attachments ?? [] });
   }
 
   async function handleExitVoiceMode() {
@@ -356,7 +399,7 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
         const data = await request<{ turns: { role: "user" | "assistant"; content: string }[] }>(
           `/assistant/conversations/${conversationIdRef.current}`,
         );
-        setMessages(data.turns.map((t) => ({ role: t.role, content: t.content })));
+        setMessages(toChatMessages(data.turns));
       } catch {
         // Best-effort resync — the existing text-mode messages just stay as they were.
       }
@@ -423,10 +466,13 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
       <input
         ref={fileInputRef}
         type="file"
+        multiple
         accept={ALLOWED_ATTACHMENT_TYPES.join(",")}
         onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) handleFileSelected(file);
+          // Read every picked file, then clear the input so picking the same file again still fires onChange.
+          const files = Array.from(e.target.files ?? []);
+          e.target.value = "";
+          if (files.length > 0) handleFilesSelected(files);
         }}
         className="hidden"
         id="assistant-attachment-input"
@@ -440,10 +486,18 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
         listening={listening}
         voiceSupported={voiceSupported}
         onToggleVoice={handleToggleVoice}
-        attaching={attaching}
-        pendingAttachment={pendingAttachment}
+        attachmentTray={
+          <AssistantAttachmentTray
+            items={attachments.items}
+            totalBytes={attachments.totalBytes}
+            overLimit={attachments.overLimit}
+            onRetry={attachments.retry}
+            onRemove={attachments.remove}
+          />
+        }
+        hasContent={hasContent}
+        canSend={canSend}
         onAttachClick={() => fileInputRef.current?.click()}
-        onRemoveAttachment={() => setPendingAttachment(null)}
         onFocus={() => {
           setComposerFocusedState(true);
           outletContext?.setComposerFocused(true);

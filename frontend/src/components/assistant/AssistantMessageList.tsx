@@ -125,9 +125,14 @@ export function AssistantMessageList({
                     onClick={() => m.createdAt && onToggleTimestamp(i)}
                     className="max-w-[85%] rounded-2xl rounded-br-md bg-bloom px-3.5 py-2 text-left text-sm text-paper-card"
                   >
-                    {m.attachmentLabel && (
-                      <span className="mb-1 inline-flex items-center gap-1 text-xs opacity-80">
-                        <Icon icon={Paperclip} size={12} /> {m.attachmentLabel}
+                    {m.attachmentNames && m.attachmentNames.length > 0 && (
+                      <span className="mb-1 flex flex-col gap-0.5 text-xs opacity-90">
+                        {m.attachmentNames.map((name, j) => (
+                          <span key={j} className="inline-flex items-start gap-1 break-all">
+                            <Icon icon={Paperclip} size={12} className="mt-0.5 shrink-0" />
+                            {name}
+                          </span>
+                        ))}
                       </span>
                     )}
                     <span className="block whitespace-pre-wrap">{m.content}</span>

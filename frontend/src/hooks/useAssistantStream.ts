@@ -3,6 +3,23 @@ import { useAuth } from "../auth/AuthContext";
 
 const STREAM_URL = import.meta.env.VITE_ASSISTANT_STREAM_URL as string;
 
+export interface AssistantAttachmentRef {
+  key: string;
+  contentType: string;
+  fileName: string;
+}
+
+// A non-2xx answer from the stream endpoint. `message` is the server's own readable `error`
+// text (e.g. "Max 10 files per message"), not the raw body, so callers can show it as-is.
+export class AssistantRequestError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "AssistantRequestError";
+    this.status = status;
+  }
+}
+
 // Mirrors backend/src/common/toolResultSummary.ts's ToolResultSummary — no shared types
 // module between the two packages (same pattern as Task/UserProfile/etc. elsewhere), so this
 // is kept in sync by hand.
@@ -37,7 +54,7 @@ export function useAssistantStream() {
       conversationId: string | undefined,
       onEvent: (event: AssistantStreamEvent) => void,
       mode?: "onboarding",
-      attachment?: { key: string; contentType: string; fileName: string },
+      attachments?: AssistantAttachmentRef[],
       // Lets a caller cancel mid-stream (a Stop button, or unmounting while a reply is still
       // streaming in) — the fetch and the read loop below both honor it. A caller-initiated
       // abort surfaces as a real DOMException named "AbortError", not a generic failure, so
@@ -52,7 +69,7 @@ export function useAssistantStream() {
           message,
           conversationId,
           mode,
-          attachment,
+          attachments,
           // Always sent so the model can set a medication reminder time without ever
           // guessing the user's timezone itself — see create_medication/update_medication.
           timezoneOffsetMinutes: new Date().getTimezoneOffset(),
@@ -61,8 +78,14 @@ export function useAssistantStream() {
       });
 
       if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(`${res.status} ${res.statusText}${text ? `: ${text}` : ""}`);
+        const body = await res.text().catch(() => "");
+        let readable = "";
+        try {
+          readable = (JSON.parse(body) as { error?: string }).error ?? "";
+        } catch {
+          // Not JSON — fall through to the generic message.
+        }
+        throw new AssistantRequestError(res.status, readable || `Request failed (${res.status})`);
       }
       if (!res.body) throw new Error("No response body");
 

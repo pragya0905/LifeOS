@@ -1,5 +1,5 @@
-import { useEffect, type RefObject } from "react";
-import { Mic, Paperclip, Send, Square, X } from "lucide-react";
+import { useEffect, type ReactNode, type RefObject } from "react";
+import { Mic, Paperclip, Send, Square } from "lucide-react";
 import { Icon } from "../Icon";
 
 const MAX_TEXTAREA_HEIGHT = 128; // ~5 lines at text-sm before the composer scrolls internally
@@ -12,12 +12,6 @@ function entersSend(): boolean {
   return window.matchMedia("(min-width: 768px)").matches;
 }
 
-interface PendingAttachment {
-  key: string;
-  contentType: string;
-  fileName: string;
-}
-
 export function AssistantComposer({
   value,
   onChange,
@@ -27,10 +21,10 @@ export function AssistantComposer({
   listening,
   voiceSupported,
   onToggleVoice,
-  attaching,
-  pendingAttachment,
+  attachmentTray,
+  hasContent,
+  canSend,
   onAttachClick,
-  onRemoveAttachment,
   onFocus,
   onBlur,
   textareaRef,
@@ -43,10 +37,12 @@ export function AssistantComposer({
   listening: boolean;
   voiceSupported: boolean;
   onToggleVoice: () => void;
-  attaching: boolean;
-  pendingAttachment: PendingAttachment | null;
+  attachmentTray: ReactNode;
+  // Text or any attachment in the tray — decides whether the send slot shows at all.
+  hasContent: boolean;
+  // Whether a send can go right now (no upload in flight, under the size cap, something to send).
+  canSend: boolean;
   onAttachClick: () => void;
-  onRemoveAttachment: () => void;
   onFocus: () => void;
   onBlur: () => void;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
@@ -58,44 +54,31 @@ export function AssistantComposer({
     el.style.height = `${Math.min(el.scrollHeight, MAX_TEXTAREA_HEIGHT)}px`;
   }, [value, textareaRef]);
 
-  const canSend = value.trim().length > 0 || pendingAttachment !== null;
-
   return (
-    <div className="shrink-0 px-3 pb-2 pt-1.5">
+    // The focus scope covers the whole composer, tray included. Tapping a chip's Retry or ×
+    // is a tap inside the composer, not the composer losing focus — treating it as a blur
+    // brings the tab bar back and shifts this block up under the finger.
+    <div
+      className="shrink-0 px-3 pb-2 pt-1.5"
+      onFocus={onFocus}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onBlur();
+      }}
+      onMouseDown={(e) => {
+        // A tap on any button here keeps focus in the textarea, so the keyboard stays put and
+        // no blur (and so no layout shift) happens mid-tap. The button's click still fires.
+        if ((e.target as Element).closest("button")) e.preventDefault();
+      }}
+    >
       <div className="mx-auto max-w-[720px]">
-      {pendingAttachment && (
-        <div className="mb-1.5 flex items-center gap-2 px-1 text-xs text-ink-muted dark:text-mist-muted">
-          <Icon icon={Paperclip} size={12} />
-          <span className="min-w-0 flex-1 truncate">{pendingAttachment.fileName}</span>
-          <button
-            type="button"
-            onClick={onRemoveAttachment}
-            aria-label="Remove attachment"
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-ink-muted hover:bg-stone/40 dark:text-mist-muted dark:hover:bg-stone-dark/40"
-          >
-            <Icon icon={X} size={12} />
-          </button>
-        </div>
-      )}
+      {attachmentTray}
 
-      <div
-        className="flex items-end gap-1 rounded-sheet border border-stone bg-paper-card p-1.5 dark:border-stone-dark dark:bg-ink-bg-card"
-        onFocus={onFocus}
-        onBlur={(e) => {
-          // Tapping Send/Stop/Mic/Attach moves focus from the textarea to one of this same
-          // row's own buttons — that's not a real "composer lost focus" event, and treating it
-          // as one restored the tab bar / reserved padding mid-tap, shifting this row's layout
-          // out from under the tap before the click could land. Only a focus move to something
-          // outside this row counts.
-          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onBlur();
-        }}
-      >
+      <div className="flex items-end gap-1 rounded-sheet border border-stone bg-paper-card p-1.5 dark:border-stone-dark dark:bg-ink-bg-card">
         <button
           type="button"
           onClick={onAttachClick}
-          disabled={attaching}
-          aria-label="Attach a photo or document"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-stone/40 disabled:opacity-50 dark:text-mist-muted dark:hover:bg-stone-dark/40"
+          aria-label="Attach photos or documents"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-stone/40 dark:text-mist-muted dark:hover:bg-stone-dark/40"
         >
           <Icon icon={Paperclip} size={18} />
         </button>
@@ -124,12 +107,13 @@ export function AssistantComposer({
           >
             <Icon icon={Square} size={15} strokeWidth={2.2} className="fill-current" />
           </button>
-        ) : canSend ? (
+        ) : hasContent ? (
           <button
             type="button"
             onClick={onSubmit}
+            disabled={!canSend}
             aria-label="Send"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-bloom text-paper-card transition-colors hover:bg-bloom-light"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-bloom text-paper-card transition-colors hover:bg-bloom-light disabled:opacity-40 disabled:hover:bg-bloom"
           >
             <Icon icon={Send} size={16} strokeWidth={2} />
           </button>
