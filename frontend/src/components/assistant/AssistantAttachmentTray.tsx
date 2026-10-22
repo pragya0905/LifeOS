@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from "react";
 import { AlertCircle, Check, FileText, X } from "lucide-react";
 import { Icon } from "../Icon";
 import {
@@ -13,18 +14,42 @@ export function AssistantAttachmentTray({
   totalBytes,
   overLimit,
   onRetry,
+  onRetryFailed,
   onRemove,
 }: {
   items: PendingAttachment[];
   totalBytes: number;
   overLimit: boolean;
   onRetry: (id: string) => void;
+  onRetryFailed: () => void;
   onRemove: (id: string) => void;
 }) {
+  const listRef = useRef<HTMLUListElement>(null);
+  // The row always opens at its first chip. A failed chip can sit off to the right, which is
+  // why the summary line below exists; this keeps the row from opening already scrolled.
+  useLayoutEffect(() => {
+    if (listRef.current) listRef.current.scrollLeft = 0;
+  }, [items.length]);
+
   if (items.length === 0) return null;
+  const failedCount = items.filter((i) => i.status === "error").length;
   return (
     <div className="mb-1.5 flex flex-col gap-1.5">
-      <ul className="flex gap-2 overflow-x-auto pb-1" aria-label="Attached files">
+      {failedCount > 0 && (
+        <div className="flex items-center justify-between gap-2 px-1 text-xs text-alert">
+          <span>
+            {failedCount === 1 ? "1 file didn't upload" : `${failedCount} files didn't upload`}
+          </span>
+          <button
+            type="button"
+            onClick={onRetryFailed}
+            className="flex h-11 items-center rounded-full px-3 text-sm font-medium text-bloom hover:underline"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+      <ul ref={listRef} className="flex gap-2 overflow-x-auto pb-1" aria-label="Attached files">
         {items.map((item) => (
           <AttachmentChip key={item.id} item={item} onRetry={onRetry} onRemove={onRemove} />
         ))}

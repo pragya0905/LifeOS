@@ -157,6 +157,10 @@ export function usePendingAttachments() {
     [runUpload],
   );
 
+  const retryFailed = useCallback(() => {
+    for (const item of itemsRef.current) if (item.status === "error") void runUpload(item.id, item.file);
+  }, [runUpload]);
+
   const remove = useCallback(
     (id: string) => {
       xhrsRef.current.get(id)?.abort();
@@ -197,5 +201,5 @@ export function usePendingAttachments() {
   const totalBytes = items.reduce((sum, i) => sum + i.file.size, 0);
   const overLimit = totalBytes > MAX_TOTAL_ATTACHMENT_BYTES;
 
-  return { items, addFiles, retry, remove, takeReady, restore, anyUploading, totalBytes, overLimit };
+  return { items, addFiles, retry, retryFailed, remove, takeReady, restore, anyUploading, totalBytes, overLimit };
 }

@@ -492,6 +492,7 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
             totalBytes={attachments.totalBytes}
             overLimit={attachments.overLimit}
             onRetry={attachments.retry}
+            onRetryFailed={attachments.retryFailed}
             onRemove={attachments.remove}
           />
         }
