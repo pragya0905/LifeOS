@@ -92,7 +92,7 @@ function GoalTarget({
         onBlur={onBlur}
         disabled={disabled}
         aria-label={`${habitLabel} daily goal`}
-        className={`w-14 py-0.5 text-xs sm:w-20 ${input}`}
+        className={`w-20 py-0.5 text-xs sm:w-24 ${input}`}
       />
     </span>
   );
@@ -469,7 +469,7 @@ export default function TodayHabits({ date: selectedDate }: { date: string }) {
                           value={waterDraft}
                           onChange={(e) => setWaterDraft(e.target.value)}
                           aria-label="Water intake in milliliters"
-                          className={`w-14 py-1 sm:w-24 ${input}`}
+                          className={`w-20 py-1 sm:w-24 ${input}`}
                         />
                         <span className={mutedText}>ml</span>
                         {habitSource.water === "ai-journal" && (
@@ -544,7 +544,7 @@ export default function TodayHabits({ date: selectedDate }: { date: string }) {
                           value={callPerson}
                           onChange={(e) => setCallPerson(e.target.value)}
                           aria-label="Call: person's name"
-                          className={`w-16 py-1 sm:w-28 ${input}`}
+                          className={`w-20 py-1 sm:w-28 ${input}`}
                         />
                         <input
                           type="number"
@@ -553,7 +553,7 @@ export default function TodayHabits({ date: selectedDate }: { date: string }) {
                           value={callDuration}
                           onChange={(e) => setCallDuration(e.target.value)}
                           aria-label="Call duration in minutes"
-                          className={`w-12 py-1 sm:w-20 ${input}`}
+                          className={`w-16 py-1 sm:w-20 ${input}`}
                         />
                         <span className={mutedText}>min</span>
                       </div>
@@ -578,7 +578,7 @@ export default function TodayHabits({ date: selectedDate }: { date: string }) {
                           value={exerciseDraft}
                           onChange={(e) => setExerciseDraft(e.target.value)}
                           aria-label="Exercise duration in minutes"
-                          className={`w-14 py-1 sm:w-24 ${input}`}
+                          className={`w-20 py-1 sm:w-24 ${input}`}
                         />
                         <span className={mutedText}>minutes</span>
                         {habitSource.exercise === "ai-journal" && (
@@ -613,7 +613,7 @@ export default function TodayHabits({ date: selectedDate }: { date: string }) {
                           value={stepsDraft}
                           onChange={(e) => setStepsDraft(e.target.value)}
                           aria-label="Step count"
-                          className={`w-14 py-1 sm:w-24 ${input}`}
+                          className={`w-20 py-1 sm:w-24 ${input}`}
                         />
                         <span className={mutedText}>steps</span>
                         {habitSource.steps === "ai-journal" && (
@@ -651,7 +651,7 @@ export default function TodayHabits({ date: selectedDate }: { date: string }) {
                           value={weightDraft}
                           onChange={(e) => setWeightDraft(e.target.value)}
                           aria-label="Weight in kilograms"
-                          className={`w-14 py-1 sm:w-24 ${input}`}
+                          className={`w-20 py-1 sm:w-24 ${input}`}
                         />
                         <span className={mutedText}>kg</span>
                       </div>
@@ -676,7 +676,7 @@ export default function TodayHabits({ date: selectedDate }: { date: string }) {
                           value={bodyFatDraft}
                           onChange={(e) => setBodyFatDraft(e.target.value)}
                           aria-label="Body fat percentage"
-                          className={`w-14 py-1 sm:w-24 ${input}`}
+                          className={`w-20 py-1 sm:w-24 ${input}`}
                         />
                         <span className={mutedText}>%</span>
                       </div>

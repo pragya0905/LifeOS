@@ -16,8 +16,12 @@ export const card =
 
 export const label = "mb-1 block text-xs font-medium text-ink-muted dark:text-mist-muted";
 
+// The [&::-webkit-...] pair hides the native up/down spinner on type="number" fields —
+// it doesn't match this app's own pill/chip controls, and on the several narrow inline
+// number inputs (e.g. TodayHabits' table) it was eating enough width to clip the digits
+// typed into the field it sits on top of. Arrow-key increment/decrement still works.
 export const input =
-  "rounded-xl border border-stone bg-paper-card px-3 py-2 text-sm text-ink focus:border-bloom focus:outline-none focus-visible:ring-2 focus-visible:ring-bloom/40 focus-visible:ring-offset-1 focus-visible:ring-offset-paper-card dark:border-stone-dark dark:bg-ink-bg-card dark:text-paper dark:focus-visible:ring-offset-ink-bg-card";
+  "rounded-xl border border-stone bg-paper-card px-3 py-2 text-sm text-ink focus:border-bloom focus:outline-none focus-visible:ring-2 focus-visible:ring-bloom/40 focus-visible:ring-offset-1 focus-visible:ring-offset-paper-card dark:border-stone-dark dark:bg-ink-bg-card dark:text-paper dark:focus-visible:ring-offset-ink-bg-card [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
 export const primaryButton =
   "rounded-full bg-bloom px-5 py-2 text-sm font-medium text-paper-card transition-colors hover:bg-bloom-light disabled:opacity-50";
