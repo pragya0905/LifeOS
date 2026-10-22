@@ -1538,13 +1538,6 @@ function memoryText(memories: UserMemory[]): string {
 
 export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxyEventV2, rawStream) => {
   const authHeader = event.headers?.authorization ?? event.headers?.Authorization;
-  const origin = event.headers?.origin ?? event.headers?.Origin ?? "";
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": origin || "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  };
-
   // Verified before committing to any HTTP status — once HttpResponseStream.from() is called
   // below, the status code is locked in, so an invalid/missing token must be rejected with a
   // real 401 here rather than as a chunk inside an already-200'd stream.
@@ -1554,7 +1547,7 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
   } catch {
     const unauthedStream = awslambda.HttpResponseStream.from(rawStream, {
       statusCode: 401,
-      headers: { "Content-Type": "application/json", ...corsHeaders },
+      headers: { "Content-Type": "application/json" },
     });
     unauthedStream.write(JSON.stringify({ error: "Unauthorized" }));
     unauthedStream.end();
@@ -1569,7 +1562,7 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
   } catch {
     const badJsonStream = awslambda.HttpResponseStream.from(rawStream, {
       statusCode: 400,
-      headers: { "Content-Type": "application/json", ...corsHeaders },
+      headers: { "Content-Type": "application/json" },
     });
     badJsonStream.write(JSON.stringify({ error: "Invalid JSON body" }));
     badJsonStream.end();
@@ -1581,7 +1574,7 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
   if (!attachmentValidation.ok) {
     const badAttachStream = awslambda.HttpResponseStream.from(rawStream, {
       statusCode: 400,
-      headers: { "Content-Type": "application/json", ...corsHeaders },
+      headers: { "Content-Type": "application/json" },
     });
     badAttachStream.write(JSON.stringify({ error: attachmentValidation.error }));
     badAttachStream.end();
@@ -1601,7 +1594,7 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
     if (!sizeCheck.ok) {
       const rejectStream = awslambda.HttpResponseStream.from(rawStream, {
         statusCode: sizeCheck.status,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
+        headers: { "Content-Type": "application/json" },
       });
       rejectStream.write(JSON.stringify({ error: sizeCheck.error }));
       rejectStream.end();
@@ -1611,7 +1604,7 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
 
   const responseStream = awslambda.HttpResponseStream.from(rawStream, {
     statusCode: 200,
-    headers: { "Content-Type": "application/x-ndjson", ...corsHeaders },
+    headers: { "Content-Type": "application/x-ndjson" },
   });
 
   try {
