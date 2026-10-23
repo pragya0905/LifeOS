@@ -5,6 +5,7 @@ import {
   bestFitGap,
   buildTimeline,
   cycleHintFor,
+  findClashes,
   findFreeGaps,
   findOverlaps,
   formatDuration,
@@ -21,7 +22,7 @@ const FRIDAY = new Date("2026-10-23T00:00:00");
 const DATE = "2026-10-23";
 
 function source(partial: Partial<TimelineSource> = {}): TimelineSource {
-  return { routines: [], medications: [], tasks: [], sleep: [], meals: [], ...partial };
+  return { routines: [], medications: [], tasks: [], sleep: [], meals: [], calls: [], ...partial };
 }
 
 function block(id: string, startMin: number, endMin: number): TimelineBlock {
@@ -189,7 +190,7 @@ describe("totalsByKind and formatDuration", () => {
       { ...block("r", 390, 430), kind: "routine" },
       { ...block("t", 600, 720), kind: "task" },
     ]);
-    expect(totals).toEqual({ sleep: 390, routine: 40, med: 0, meal: 0, task: 120 });
+    expect(totals).toEqual({ sleep: 390, routine: 40, med: 0, meal: 0, task: 120, workout: 0, call: 0 });
   });
 
   it("formats minutes into compact hour and minute text", () => {
@@ -277,5 +278,65 @@ describe("cycleHintFor", () => {
   it("returns a hint once two cycles are logged", () => {
     const entries = [cycleEntry("2026-08-01", "period_start"), cycleEntry("2026-08-05", "period_end"), cycleEntry("2026-09-01", "period_start"), cycleEntry("2026-09-05", "period_end")];
     expect(cycleHintFor(entries, DATE)).toEqual(expect.any(String));
+  });
+});
+
+describe("findClashes", () => {
+  const med = { id: "med:1", name: "Glutone", timeOfDay: "06:00", estimatedMinutes: 10 };
+
+  it("flags an overlapping item on a shared day", () => {
+    const candidate = { id: "routine:new", name: "Morning", timeOfDay: "06:05", estimatedMinutes: 20 };
+    expect(findClashes(candidate, [med])).toEqual([med]);
+  });
+
+  it("ignores items whose windows only touch", () => {
+    const candidate = { id: "routine:new", name: "Morning", timeOfDay: "06:10", estimatedMinutes: 20 };
+    expect(findClashes(candidate, [med])).toEqual([]);
+  });
+
+  it("ignores overlaps on days the other item does not run", () => {
+    const weekendOnly = { ...med, daysOfWeek: [0, 6] };
+    const candidate = { id: "routine:new", name: "Morning", timeOfDay: "06:05", estimatedMinutes: 20, daysOfWeek: [1, 2, 3] };
+    expect(findClashes(candidate, [weekendOnly])).toEqual([]);
+  });
+
+  it("does nothing without both a time and a duration", () => {
+    expect(findClashes({ id: "x", name: "No time", estimatedMinutes: 20 }, [med])).toEqual([]);
+    expect(findClashes({ id: "x", name: "No length", timeOfDay: "06:05" }, [med])).toEqual([]);
+  });
+});
+
+describe("workouts, calls, and protected tasks", () => {
+  it("places a workout with a start time and minutes", () => {
+    const { blocks } = buildTimeline(source({ workout: { startTime: "07:00", minutes: 45 } }), FRIDAY, DATE);
+    expect(blocks).toEqual([{ id: "workout", kind: "workout", title: "Workout", startMin: 420, endMin: 465, lane: 0 }]);
+  });
+
+  it("sends a workout with no start time to Unscheduled", () => {
+    const { unscheduled } = buildTimeline(source({ workout: { minutes: 45 } }), FRIDAY, DATE);
+    expect(unscheduled).toEqual([{ id: "workout", kind: "workout", title: "Workout", reason: "no time set" }]);
+  });
+
+  it("places a call with a start time and duration", () => {
+    const { blocks } = buildTimeline(source({ calls: [{ logId: "c1", personName: "Mom", startTime: "18:00", durationMinutes: 20 }] }), FRIDAY, DATE);
+    expect(blocks[0]).toMatchObject({ id: "call:c1", kind: "call", title: "Call with Mom", startMin: 1080, endMin: 1100 });
+  });
+
+  it("marks a task with blockType protected on its block", () => {
+    const { blocks } = buildTimeline(
+      source({ tasks: [{ taskId: "p1", title: "Deep work", dueDate: DATE, dueTime: "10:00", estimatedHours: 2, status: "todo", blockType: "protected" }] }),
+      FRIDAY,
+      DATE,
+    );
+    expect(blocks[0]).toMatchObject({ id: "task:p1", protected: true });
+  });
+
+  it("leaves a normal task's protected flag unset", () => {
+    const { blocks } = buildTimeline(
+      source({ tasks: [{ taskId: "t1", title: "Normal", dueDate: DATE, dueTime: "10:00", estimatedHours: 1, status: "todo" }] }),
+      FRIDAY,
+      DATE,
+    );
+    expect(blocks[0].protected).toBeUndefined();
   });
 });

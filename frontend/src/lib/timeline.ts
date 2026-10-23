@@ -1,4 +1,4 @@
-import { appliesOnDate } from "./weekdays";
+import { ALL_DAYS, appliesOnDate } from "./weekdays";
 import { addDays } from "./date";
 import { computeAvgPeriodDays, estimatePhase, predictNextCycle } from "./cyclePhase";
 import type { LogEntry } from "../types";
@@ -8,7 +8,7 @@ import type { LogEntry } from "../types";
 
 export const DAY_MINUTES = 24 * 60;
 
-export type TimelineKind = "sleep" | "routine" | "med" | "meal" | "task";
+export type TimelineKind = "sleep" | "routine" | "med" | "meal" | "task" | "workout" | "call";
 
 // Meals have no clock time in the meal plan, so each slot sits at a fixed nominal time.
 // These are display placement only; nothing is stored, and the real plan is unchanged.
@@ -28,6 +28,8 @@ export interface TimelineBlock {
   // Whether this block's end wraps past midnight (sleep only). The page draws the
   // continuation on the same day as a separate segment with `continuesFromPrevious`.
   continuesFromPrevious?: boolean;
+  // Task-only: time set aside (deep work, commute) rather than a to-do to tick off.
+  protected?: boolean;
 }
 
 export interface UnscheduledItem {
@@ -40,11 +42,15 @@ export interface UnscheduledItem {
 export interface TimelineSource {
   routines: { routineId: string; name: string; timeOfDay?: string; estimatedMinutes?: number; daysOfWeek?: number[] }[];
   medications: { medicationId: string; name: string; timeOfDay?: string; estimatedMinutes?: number; daysOfWeek?: number[] }[];
-  tasks: { taskId: string; title: string; dueDate?: string; dueTime?: string; scheduleTime?: string; estimatedHours?: number; status: string }[];
+  tasks: { taskId: string; title: string; dueDate?: string; dueTime?: string; scheduleTime?: string; estimatedHours?: number; status: string; blockType?: "task" | "protected" }[];
   // Sleep logs for the date, as stored: bedTime/wakeTime are "HH:MM" and either may be missing.
   sleep: { logId: string; bedTime?: string; wakeTime?: string }[];
   // Meal plan slots for the date. Only the text and slot name matter here.
   meals: { mealType: string; text: string }[];
+  // Exercise habit log for the date, if it has a start time — one row per day, so at most one.
+  workout?: { startTime?: string; minutes?: number };
+  // Call log entries for the date that have a start time.
+  calls: { logId: string; personName: string; startTime?: string; durationMinutes?: number }[];
 }
 
 // "HH:MM" -> minutes from midnight. Returns undefined for anything malformed rather than
@@ -82,7 +88,17 @@ export function buildTimeline(
     if (t.status === "done" || t.dueDate !== dateStr) continue;
     const start = t.dueTime ?? t.scheduleTime;
     const duration = t.estimatedHours != null ? Math.round(t.estimatedHours * 60) : undefined;
+    const before = blocks.length;
     pushTimed(blocks, unscheduled, { id: `task:${t.taskId}`, kind: "task", title: t.title, start, duration });
+    if (t.blockType === "protected" && blocks.length > before) blocks[blocks.length - 1].protected = true;
+  }
+
+  if (source.workout) {
+    pushTimed(blocks, unscheduled, { id: "workout", kind: "workout", title: "Workout", start: source.workout.startTime, duration: source.workout.minutes });
+  }
+
+  for (const c of source.calls) {
+    pushTimed(blocks, unscheduled, { id: `call:${c.logId}`, kind: "call", title: `Call with ${c.personName}`, start: c.startTime, duration: c.durationMinutes });
   }
 
   for (const m of source.meals) {
@@ -178,7 +194,7 @@ export function findOverlaps(blocks: TimelineBlock[]): [TimelineBlock, TimelineB
 // Total minutes per kind, for the plain-text totals line. Sleep counts both segments of an
 // overnight block once, because the two segments together are one night.
 export function totalsByKind(blocks: TimelineBlock[]): Record<TimelineKind, number> {
-  const totals: Record<TimelineKind, number> = { sleep: 0, routine: 0, med: 0, meal: 0, task: 0 };
+  const totals: Record<TimelineKind, number> = { sleep: 0, routine: 0, med: 0, meal: 0, task: 0, workout: 0, call: 0 };
   for (const b of blocks) totals[b.kind] += b.endMin - b.startMin;
   return totals;
 }
@@ -243,4 +259,33 @@ export function cycleHintFor(entries: LogEntry[], dateStr: string): string | nul
   if (!lastStart) return null;
   const { phase } = estimatePhase(dateStr, lastStart, avgCycleDays, avgPeriodDays);
   return CYCLE_HINT[phase] ?? null;
+}
+
+export interface ScheduledItem {
+  id: string;
+  name: string;
+  timeOfDay?: string;
+  estimatedMinutes?: number;
+  daysOfWeek?: number[];
+}
+
+// An item with no days set runs every day, same convention as appliesOnDate.
+function sharesWeekday(a: number[] | undefined, b: number[] | undefined): boolean {
+  const aDays = a && a.length > 0 ? a : ALL_DAYS;
+  const bDays = b && b.length > 0 ? b : ALL_DAYS;
+  return aDays.some((d) => bDays.includes(d));
+}
+
+// Other timed items whose time window overlaps the candidate's on a shared weekday. Items
+// missing a time or duration are skipped, since there's no window to clash with.
+export function findClashes(candidate: ScheduledItem, others: ScheduledItem[]): ScheduledItem[] {
+  const start = parseHm(candidate.timeOfDay);
+  if (start === undefined || !candidate.estimatedMinutes) return [];
+  const end = start + candidate.estimatedMinutes;
+  return others.filter((o) => {
+    const otherStart = parseHm(o.timeOfDay);
+    if (otherStart === undefined || !o.estimatedMinutes) return false;
+    const otherEnd = otherStart + o.estimatedMinutes;
+    return start < otherEnd && otherStart < end && sharesWeekday(candidate.daysOfWeek, o.daysOfWeek);
+  });
 }
