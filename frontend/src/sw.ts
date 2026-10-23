@@ -62,10 +62,9 @@ self.addEventListener("activate", () => {
   self.clients.claim();
 });
 
-// Push notification groundwork: no backend push infrastructure exists yet
-// (no VAPID keys, no subscription storage, nothing sends a real push). This
-// listener proves the display pipeline end to end so a later phase only has
-// to wire up the sending side.
+// Push notifications: the backend stores each device's subscription and the reminder schedulers
+// send real pushes through it (task, medication, wish, cycle and weekly summary). This listener
+// shows whatever payload arrives; the sender sets the title and body.
 self.addEventListener("push", (event: PushEvent) => {
   let title = "LifeOs";
   let body = "You have a new notification.";
