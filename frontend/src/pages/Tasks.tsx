@@ -337,6 +337,9 @@ function QuickTimeEditor({ initial, onSave, onCancel }: { initial: string; onSav
   );
 }
 
+
+const TASK_REMINDER_LEAD_OPTIONS = [0, 5, 10, 15, 30];
+
 // Module-level (not nested in Tasks) so React doesn't remount it on every parent re-render.
 function TaskCard({
   task,
@@ -353,6 +356,8 @@ function TaskCard({
   setEditDueDate,
   editDueTime,
   setEditDueTime,
+  editReminderLead,
+  setEditReminderLead,
   editEstimatedHours,
   setEditEstimatedHours,
   editCategory,
@@ -379,6 +384,8 @@ function TaskCard({
   setEditDueDate: (v: string) => void;
   editDueTime: string;
   setEditDueTime: (v: string) => void;
+  editReminderLead: number;
+  setEditReminderLead: (v: number) => void;
   editEstimatedHours: string;
   setEditEstimatedHours: (v: string) => void;
   editCategory: string;
@@ -514,6 +521,18 @@ function TaskCard({
               ))}
             </div>
           </div>
+          {editDueTime && (
+            <div>
+              <label className={label}>Remind me</label>
+              <select value={editReminderLead} onChange={(e) => setEditReminderLead(Number(e.target.value))} className={selectClass}>
+                {TASK_REMINDER_LEAD_OPTIONS.map((m) => (
+                  <option key={m} value={m}>
+                    {m === 0 ? "At due time" : `${m} min before`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <label className={label}>Est. hours</label>
             <input type="number" min={0} step="0.5" value={editEstimatedHours} onChange={(e) => setEditEstimatedHours(e.target.value)} className={`w-20 ${input}`} />
@@ -568,6 +587,7 @@ export default function Tasks() {
   const [dueDate, setDueDate] = useState(() => searchParams.get("date") ?? "");
   const [dueTime, setDueTime] = useState("");
   const [estimatedHours, setEstimatedHours] = useState("");
+  const [reminderLead, setReminderLead] = useState(0);
   const [category, setCategory] = useState("");
   const [priority, setPriority] = useState<TaskPriority>("Medium");
   const [scheduleTime, setScheduleTime] = useState("");
@@ -583,6 +603,7 @@ export default function Tasks() {
   const [editDueDate, setEditDueDate] = useState("");
   const [editDueTime, setEditDueTime] = useState("");
   const [editEstimatedHours, setEditEstimatedHours] = useState("");
+  const [editReminderLead, setEditReminderLead] = useState(0);
   const [editCategory, setEditCategory] = useState("");
   const [editSuggestPriority, setEditSuggestPriority] = useState(false);
   const [editRecurrence, setEditRecurrence] = useState<TaskRecurrence | undefined>(undefined);
@@ -674,6 +695,7 @@ export default function Tasks() {
           dueTime: dueTime || undefined,
           dueAtUtc: computeDueAtUtc(dueDate, dueTime),
           estimatedHours: estimatedHours ? Number(estimatedHours) : undefined,
+          ...(dueTime ? { reminderLeadMinutes: reminderLead } : {}),
           category: category.trim() || undefined,
           voiceInput: usedVoice,
           priority,
@@ -688,6 +710,7 @@ export default function Tasks() {
       setDueDate("");
       setDueTime("");
       setEstimatedHours("");
+      setReminderLead(0);
       setCategory("");
       setScheduleTime("");
       setPriority("Medium");
@@ -773,6 +796,7 @@ export default function Tasks() {
     setEditDueDate(task.dueDate ?? "");
     setEditDueTime(task.dueTime ?? "");
     setEditEstimatedHours(task.estimatedHours !== undefined ? String(task.estimatedHours) : "");
+    setEditReminderLead(task.reminderLeadMinutes ?? 0);
     setEditCategory(task.category ?? "");
     setEditSuggestPriority(false);
     setEditRecurrence(task.recurrence);
@@ -786,6 +810,7 @@ export default function Tasks() {
       dueTime: editDueTime || undefined,
       dueAtUtc: computeDueAtUtc(editDueDate, editDueTime),
       estimatedHours: editEstimatedHours ? Number(editEstimatedHours) : undefined,
+      ...(editDueTime ? { reminderLeadMinutes: editReminderLead } : {}),
       category: editCategory.trim(),
       recurrence: editRecurrence,
       suggestPriority: editSuggestPriority || undefined,
@@ -881,6 +906,18 @@ export default function Tasks() {
             ))}
           </div>
         </div>
+        {dueTime && (
+          <div>
+            <label className={label}>Remind me</label>
+            <select value={reminderLead} onChange={(e) => setReminderLead(Number(e.target.value))} className={selectClass}>
+              {TASK_REMINDER_LEAD_OPTIONS.map((m) => (
+                <option key={m} value={m}>
+                  {m === 0 ? "At due time" : `${m} min before`}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div>
           <label className={label}>Est. hours</label>
           <input type="number" min={0} step="0.5" value={estimatedHours} onChange={(e) => setEstimatedHours(e.target.value)} className={`w-20 ${input}`} />
@@ -996,6 +1033,8 @@ export default function Tasks() {
                     setEditDueDate={setEditDueDate}
                     editDueTime={editDueTime}
                     setEditDueTime={setEditDueTime}
+                    editReminderLead={editReminderLead}
+                    setEditReminderLead={setEditReminderLead}
                     editEstimatedHours={editEstimatedHours}
                     setEditEstimatedHours={setEditEstimatedHours}
                     editCategory={editCategory}
