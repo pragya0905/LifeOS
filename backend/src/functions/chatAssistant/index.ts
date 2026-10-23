@@ -12,6 +12,7 @@ import { isMedicationActiveOnDate } from "../../common/medications";
 import { geocodeLocation, fetchWeather } from "../../common/weather";
 import { conversationTurnsQuery } from "../../common/assistantHistory";
 import { toolEvents } from "./toolEvents";
+import { createTaskBody } from "./taskBody";
 import { checkAttachmentTotalSize, MAX_IMAGE_BYTES } from "../../common/attachmentLimits";
 import type {
   AssistantConversationTurn,
@@ -518,6 +519,13 @@ const TOOLS: Anthropic.Tool[] = [
         description: { type: "string" },
         dueDate: { type: "string", description: "YYYY-MM-DD" },
         dueTime: { type: "string", description: "HH:MM 24-hour" },
+        priority: {
+          type: "string",
+          enum: ["Low", "Medium", "High"],
+          description: "Only when the user states a priority (e.g. 'high priority'). Otherwise leave it out and the app suggests one.",
+        },
+        estimatedHours: { type: "number", description: "How long the task takes, in hours, if the user says so (e.g. 'two hours' = 2)." },
+        category: { type: "string", description: "A short category, up to 40 characters, if the user names one (e.g. 'work', 'errands')." },
         recurrence: {
           type: "object",
           description: "Only set this if the user says the task repeats (e.g. 'every day', 'every Monday and Wednesday', 'every 3 days', 'monthly on the 1st'). Completing a recurring task rolls it forward to its next occurrence instead of finishing it for good.",
@@ -1049,14 +1057,7 @@ async function executeTool(
         break;
       }
       case "create_task": {
-        result = await callApi(apiUrl, authHeader, "/tasks", "POST", {
-          title: input.title,
-          description: input.description,
-          dueDate: input.dueDate,
-          dueTime: input.dueTime,
-          recurrence: input.recurrence,
-          suggestPriority: true,
-        });
+        result = await callApi(apiUrl, authHeader, "/tasks", "POST", createTaskBody(input));
         break;
       }
       case "get_schedule": {
