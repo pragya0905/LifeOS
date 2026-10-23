@@ -58,6 +58,9 @@ export function useApi() {
   async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const method = (options.method ?? "GET").toUpperCase();
     if (method !== "GET") return doFetch<T>(path, options, method);
+    // A caller that asks for a fresh read (cache: "no-store", as a user's Retry does) must hit the
+    // network. Otherwise a recent answer, even an empty or failed-looking one, would be replayed.
+    if (options.cache === "no-store") return doFetch<T>(path, options, method);
 
     const cached = recentGetResponses.get(path);
     if (cached && Date.now() - cached.timestamp < GET_CACHE_TTL_MS) {

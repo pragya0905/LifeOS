@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { toChatMessages } from "./chatHistory";
 import {
   DELETE_NOTE,
   SUMMARISED_TOOLS,
@@ -13,7 +14,6 @@ import {
   undoPath,
   type ToolResultEntry,
 } from "./toolCards";
-import { toChatMessages } from "./chatHistory";
 import type { AssistantStreamEvent } from "../hooks/useAssistantStream";
 
 const UUID = "99cac2aa-04db-47dc-9f0a-97a8469bdaf8";

@@ -32,6 +32,9 @@ export function AssistantHistorySheet({
   conversations,
   loading,
   onReopen,
+  opening,
+  openError,
+  onRetryOpen,
   onDeleted,
 }: {
   open: boolean;
@@ -39,6 +42,9 @@ export function AssistantHistorySheet({
   conversations: ConversationSummary[];
   loading: boolean;
   onReopen: (conversationId: string) => void;
+  opening: boolean;
+  openError: string | null;
+  onRetryOpen: () => void;
   /** Called once a delete is actually committed (the undo window passed) — not on tap. */
   onDeleted: (conversationId: string) => void;
 }) {
@@ -116,6 +122,23 @@ export function AssistantHistorySheet({
           className="min-h-11 flex-1 border-0 bg-transparent px-0 py-0 text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:ring-0 dark:text-paper dark:placeholder:text-mist-muted"
         />
       </div>
+
+      {openError && (
+        <div
+          role="alert"
+          className="mb-3 flex items-center justify-between gap-2 rounded-control border border-alert/40 bg-alert-soft px-3 py-1 dark:border-alert-light/30 dark:bg-alert-soft-dark"
+        >
+          <span className="text-sm text-alert dark:text-alert-light">{openError}</span>
+          <button
+            type="button"
+            onClick={onRetryOpen}
+            disabled={opening}
+            className="flex h-11 min-w-11 shrink-0 items-center rounded-control px-3 text-sm font-semibold text-[#c93a29] transition-colors hover:bg-stone/40 disabled:opacity-60 dark:text-bloom-light dark:hover:bg-stone-dark/40"
+          >
+            {opening ? "Retrying…" : "Retry"}
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <p className={mutedText}>Loading…</p>

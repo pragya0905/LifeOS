@@ -25,7 +25,7 @@ import { AssistantComposer } from "../components/assistant/AssistantComposer";
 import { AssistantAttachmentTray } from "../components/assistant/AssistantAttachmentTray";
 import { AssistantHistorySheet, type ConversationSummary } from "../components/assistant/AssistantHistorySheet";
 import type { ChatMessage } from "../components/assistant/types";
-import { toChatMessages } from "../lib/chatHistory";
+import { openConversation, toChatMessages } from "../lib/chatHistory";
 import { ToolCallTracker, type ToolResultEntry, type StreamOutcome } from "../lib/toolCards";
 import { errorText, primaryButton } from "../components/ui";
 
@@ -92,6 +92,10 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
   const [voiceModeOpen, setVoiceModeOpen] = useState(false);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  // Opening a conversation from the sheet: the sheet stays open and shows the failure, with Retry.
+  const [opening, setOpening] = useState(false);
+  const [openError, setOpenError] = useState<string | null>(null);
+  const [openTargetId, setOpenTargetId] = useState<string | null>(null);
   const attachments = usePendingAttachments();
   const readyCount = attachments.items.filter((i) => i.status === "ready").length;
   const hasText = text.trim().length > 0;
@@ -162,6 +166,7 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
   }
 
   async function openHistory() {
+    setOpenError(null);
     setHistoryOpen(true);
     setHistoryLoading(true);
     try {
@@ -175,19 +180,28 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
   }
 
   async function reopenConversation(conversationId: string) {
-    try {
-      const data = await request<{ turns: { role: "user" | "assistant"; content: string }[] }>(
-        `/assistant/conversations/${conversationId}`,
-      );
-      conversationIdRef.current = conversationId;
-      persistConversationId(conversationId);
-      setMessages(toChatMessages(data.turns));
-      setHistoryOpen(false);
-      setError(null);
-      setRevealedTimestamp(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to reopen conversation");
+    setOpenTargetId(conversationId);
+    setOpenError(null);
+    setOpening(true);
+    // cache: "no-store" so a Retry always asks the server, rather than replaying an answer
+    // from a few seconds ago.
+    const result = await openConversation(() =>
+      request<{ turns: { role: "user" | "assistant"; content: string }[] }>(`/assistant/conversations/${conversationId}`, {
+        cache: "no-store",
+      }),
+    );
+    setOpening(false);
+    if (!result.ok) {
+      // Stays open: the sheet says what happened and offers Retry, rather than closing silently.
+      setOpenError(result.reason);
+      return;
     }
+    conversationIdRef.current = conversationId;
+    persistConversationId(conversationId);
+    setMessages(result.messages);
+    setHistoryOpen(false);
+    setError(null);
+    setRevealedTimestamp(null);
   }
 
   function handleConversationDeleted(conversationId: string) {
@@ -551,6 +565,11 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
           conversations={conversations}
           loading={historyLoading}
           onReopen={reopenConversation}
+          opening={opening}
+          openError={openError}
+          onRetryOpen={() => {
+            if (openTargetId) reopenConversation(openTargetId);
+          }}
           onDeleted={handleConversationDeleted}
         />
       )}
