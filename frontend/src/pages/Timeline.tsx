@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Check, ChevronLeft, ChevronRight, Clock, Minus, Plus } from "lucide-react";
 import { useApi } from "../api/useApi";
+import { Card } from "../components/Card";
 import { Icon } from "../components/Icon";
 import { MedicationStatusButtons } from "../components/MedicationStatusButtons";
 import { useToast } from "../components/Toast";
@@ -31,19 +32,24 @@ import type { HabitLog, LogEntry, Medication, MealPlanSlot, MedicationLog, Medic
 // Shared horizontal line (see mockups/b5/timeline-B.html): every visible block sits on one line
 // and only takes a second row when it overlaps another in time. Colour codes the kind.
 
-const LANES: { kind: TimelineKind; label: string; color: string }[] = [
-  { kind: "sleep", label: "Sleep", color: "bg-[#7a6fb0]" },
-  { kind: "routine", label: "Routines", color: "bg-routine" },
-  { kind: "med", label: "Meds", color: "bg-medication" },
-  { kind: "meal", label: "Meals", color: "bg-[#c26a8f]" },
-  { kind: "task", label: "Tasks", color: "bg-amber" },
-  { kind: "workout", label: "Workouts", color: "bg-success" },
-  { kind: "call", label: "Calls", color: "bg-slate" },
+// `dot` fills a small legend swatch (no text sits on it, so a saturated fill reads fine).
+// `border` is a left-rule accent on an otherwise neutral block — the same left-rule-on-card
+// pattern as TodayNextUp, not a solid fill — because white text on amber/bloom/sleep's
+// mid-lightness colors falls well under WCAG's 4.5:1 minimum for small text; ink-coloured
+// text on a neutral card never has that problem, in either theme.
+const LANES: { kind: TimelineKind; label: string; dot: string; border: string }[] = [
+  { kind: "sleep", label: "Sleep", dot: "bg-[#7a6fb0]", border: "border-l-[#7a6fb0]" },
+  { kind: "routine", label: "Routines", dot: "bg-routine", border: "border-l-routine" },
+  { kind: "med", label: "Meds", dot: "bg-medication", border: "border-l-medication" },
+  { kind: "meal", label: "Meals", dot: "bg-[#c26a8f]", border: "border-l-[#c26a8f]" },
+  { kind: "task", label: "Tasks", dot: "bg-amber", border: "border-l-amber" },
+  { kind: "workout", label: "Workouts", dot: "bg-success", border: "border-l-success" },
+  { kind: "call", label: "Calls", dot: "bg-slate", border: "border-l-slate" },
 ];
 
-// A protected task (deep work, commute — time set aside, not a to-do) gets its own colour so
+// A protected task (deep work, commute — time set aside, not a to-do) gets its own accent so
 // it reads differently from an ordinary task even though both are Task records underneath.
-const PROTECTED_COLOR = "bg-ink-muted dark:bg-mist-muted";
+const PROTECTED_BORDER = "border-l-ink-muted dark:border-l-mist-muted";
 
 // Static background bands so morning, afternoon, evening and night read at a glance.
 const ZONES: { fromHour: number; toHour: number; color: string }[] = [
@@ -64,8 +70,8 @@ const WEEKDAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const CYCLE_HINT_KEY = "lifeos.timeline.cycleHints";
 
 function colorFor(block: TimelineBlock): string {
-  if (block.protected) return PROTECTED_COLOR;
-  return LANES.find((l) => l.kind === block.kind)?.color ?? "bg-stone";
+  if (block.protected) return PROTECTED_BORDER;
+  return LANES.find((l) => l.kind === block.kind)?.border ?? "border-l-stone";
 }
 
 // Every horizontal position is a percentage of the full-day width, so a zoomed chart is just
@@ -631,7 +637,7 @@ export default function Timeline() {
       )}
 
       <div className="mt-3 flex flex-wrap gap-2">
-        {LANES.map(({ kind, label, color }) => (
+        {LANES.map(({ kind, label, dot }) => (
           <button
             key={kind}
             type="button"
@@ -639,7 +645,7 @@ export default function Timeline() {
             onClick={() => toggleFilter(kind)}
             className={`inline-flex min-h-10 items-center gap-1.5 rounded-full border px-3 text-xs font-medium ${filters[kind] ? "border-bloom bg-bloom text-paper-card" : "border-stone text-ink-muted dark:border-stone-dark dark:text-mist-muted"}`}
           >
-            <span aria-hidden="true" className={`inline-block h-2.5 w-2.5 rounded-full ${color}`} />
+            <span aria-hidden="true" className={`inline-block h-2.5 w-2.5 rounded-full ${dot}`} />
             {label}
           </button>
         ))}
@@ -664,9 +670,9 @@ export default function Timeline() {
             </button>
           </div>
           {cycleHint && (
-            <p className="mt-2 rounded-control border-l-[3px] border-bloom bg-paper-card px-3 py-2 text-sm text-ink dark:bg-ink-bg-card dark:text-paper">
+            <Card className="mt-2 border-l-4 border-l-bloom p-3 text-sm text-ink dark:text-paper">
               {cycleHint} <span className="text-xs text-ink-muted dark:text-mist-muted">(estimate)</span>
-            </p>
+            </Card>
           )}
 
           <div className="mt-3 flex items-center gap-2">
@@ -761,17 +767,17 @@ export default function Timeline() {
           {zoom !== 24 && <p className="mt-1 text-[11px] text-ink-muted dark:text-mist-muted">Swipe sideways to see the rest of the day.</p>}
 
           {overlaps.length > 0 && (
-            <div className="mt-3 space-y-1">
+            <Card className="mt-3 space-y-1 border-l-4 border-l-amber p-3">
               {overlaps.map(([a, b]) => (
                 <p key={`${a.id}-${b.id}`} className="text-xs text-amber-ink dark:text-amber-ink-dark">
                   ⚠ {a.title} ({hhmm(a.startMin)}) overlaps {b.title} ({hhmm(b.startMin)})
                 </p>
               ))}
-            </div>
+            </Card>
           )}
 
           <div className={`mt-6 ${sectionLabel}`}>Suggestions</div>
-          <div className="rounded-control border border-stone p-3 dark:border-stone-dark">
+          <Card className="border-l-4 border-l-bloom p-3">
             {suggestions === null && (
               <button type="button" disabled={suggesting} onClick={requestSuggestions} className="min-h-10 w-full rounded-control border border-stone text-sm font-medium disabled:opacity-60 dark:border-stone-dark">
                 {suggesting ? "Thinking..." : "Suggest placements for unscheduled tasks"}
@@ -804,7 +810,7 @@ export default function Timeline() {
                 })}
               </ul>
             )}
-          </div>
+          </Card>
 
           <div className={`mt-6 ${sectionLabel}`}>Unscheduled</div>
           <UnscheduledList
@@ -820,7 +826,7 @@ export default function Timeline() {
           )}
 
           <div className={`mt-6 ${sectionLabel}`}>Reflection</div>
-          <div className="rounded-control border border-stone p-3 dark:border-stone-dark">
+          <Card className="border-l-4 border-l-bloom p-3">
             {reflection === null && (
               <button type="button" disabled={reflecting} onClick={requestReflection} className="min-h-10 w-full rounded-control border border-stone text-sm font-medium disabled:opacity-60 dark:border-stone-dark">
                 {reflecting ? "Thinking..." : "How did today go?"}
@@ -828,7 +834,7 @@ export default function Timeline() {
             )}
             {reflectError && <p className="mt-2 text-xs text-alert">{reflectError}</p>}
             {reflection && <p className="text-sm text-ink dark:text-paper">{reflection}</p>}
-          </div>
+          </Card>
         </>
       )}
     </div>
@@ -851,17 +857,17 @@ function BlockButton({
       type="button"
       onClick={onSelect}
       aria-pressed={selected}
-      className={`absolute z-10 overflow-hidden rounded-control border px-1.5 py-1 text-left leading-tight text-paper-card ${color} ${selected ? "border-ink ring-2 ring-bloom dark:border-paper" : "border-transparent"}`}
+      className={`absolute z-10 overflow-hidden rounded-control border border-l-4 border-stone bg-paper-card px-1.5 py-1 text-left leading-tight shadow-sm dark:border-stone-dark dark:bg-ink-bg-card ${color} ${selected ? "ring-2 ring-bloom" : ""}`}
       style={{ left: `${pctOfDay(block.startMin)}%`, width: `${pctOfDay(block.endMin - block.startMin)}%`, top: block.lane * SUB_ROW_PX + 22, height: SUB_ROW_PX - 6, minWidth: 44 }}
     >
-      <span className="block truncate text-xs font-medium">{block.title}</span>
-      <span className="block text-[11px] tabular-nums opacity-90">
+      <span className="block truncate text-xs font-medium text-ink dark:text-paper">{block.title}</span>
+      <span className="block text-[11px] tabular-nums text-ink-muted dark:text-mist-muted">
         {hhmm(block.startMin)}–{hhmm(block.endMin)}
       </span>
       {block.protected ? (
-        <span className="block truncate text-[11px] opacity-90">Protected</span>
+        <span className="block truncate text-[11px] text-ink-muted dark:text-mist-muted">Protected</span>
       ) : (
-        block.status && <span className="block truncate text-[11px] opacity-90">{block.status}</span>
+        block.status && <span className="block truncate text-[11px] text-ink-muted dark:text-mist-muted">{block.status}</span>
       )}
     </button>
   );
@@ -871,11 +877,11 @@ function BlockButton({
 function SleepBlock({ block }: { block: TimelineBlock }) {
   return (
     <div
-      className="absolute z-10 overflow-hidden rounded-control px-1.5 py-1 leading-tight text-paper-card bg-[#7a6fb0]"
+      className="absolute z-10 overflow-hidden rounded-control border border-l-4 border-stone border-l-[#7a6fb0] bg-paper-card px-1.5 py-1 leading-tight shadow-sm dark:border-stone-dark dark:border-l-[#7a6fb0] dark:bg-ink-bg-card"
       style={{ left: `${pctOfDay(block.startMin)}%`, width: `${pctOfDay(block.endMin - block.startMin)}%`, top: block.lane * SUB_ROW_PX + 6, height: SUB_ROW_PX - 12, minWidth: 44 }}
     >
-      <span className="block truncate text-xs font-medium">{block.title}</span>
-      <span className="block text-[11px] tabular-nums opacity-90">
+      <span className="block truncate text-xs font-medium text-ink dark:text-paper">{block.title}</span>
+      <span className="block text-[11px] tabular-nums text-ink-muted dark:text-mist-muted">
         {hhmm(block.startMin)}–{hhmm(block.endMin)}
       </span>
     </div>
