@@ -13,6 +13,7 @@ import { geocodeLocation, fetchWeather } from "../../common/weather";
 import { conversationTurnsQuery } from "../../common/assistantHistory";
 import { toolEvents } from "./toolEvents";
 import { createTaskBody, routineTimeOfDay } from "./taskBody";
+import { missingDeleteError } from "./deleteOutcome";
 import { checkAttachmentTotalSize, MAX_IMAGE_BYTES } from "../../common/attachmentLimits";
 import type {
   AssistantConversationTurn,
@@ -1379,6 +1380,9 @@ async function executeTool(
     if (result.status >= 400) {
       return { content: JSON.stringify(result.data ?? { error: `HTTP ${result.status}` }), isError: true };
     }
+    // A delete of an id that no longer exists answers 200 with deleted:false; report it as a failure.
+    const missing = missingDeleteError(name, result.data);
+    if (missing) return { content: JSON.stringify({ error: missing }), isError: true };
     return { content: JSON.stringify(result.data ?? {}), isError: false };
   } catch (err) {
     return { content: err instanceof Error ? err.message : "Tool execution failed", isError: true };
