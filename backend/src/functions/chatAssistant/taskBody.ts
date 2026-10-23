@@ -27,3 +27,8 @@ export function createTaskBody(input: Record<string, unknown>): Record<string, u
     ...(category !== undefined ? { category } : {}),
   };
 }
+
+// Forwarded only when it is HH:MM; anything else is dropped so the REST handler never sees it.
+export function routineTimeOfDay(value: unknown): string | undefined {
+  return typeof value === "string" && /^\d{2}:\d{2}$/.test(value) ? value : undefined;
+}

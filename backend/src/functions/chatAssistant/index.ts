@@ -12,7 +12,7 @@ import { isMedicationActiveOnDate } from "../../common/medications";
 import { geocodeLocation, fetchWeather } from "../../common/weather";
 import { conversationTurnsQuery } from "../../common/assistantHistory";
 import { toolEvents } from "./toolEvents";
-import { createTaskBody } from "./taskBody";
+import { createTaskBody, routineTimeOfDay } from "./taskBody";
 import { checkAttachmentTotalSize, MAX_IMAGE_BYTES } from "../../common/attachmentLimits";
 import type {
   AssistantConversationTurn,
@@ -709,6 +709,7 @@ const TOOLS: Anthropic.Tool[] = [
           description: "Days this routine runs on: 0=Sunday, 1=Monday, ..., 6=Saturday. Omit entirely if it runs every day.",
         },
         estimatedMinutes: { type: "integer", minimum: 1, description: "How long the whole routine takes to complete, in minutes, if mentioned." },
+        timeOfDay: { type: "string", description: "HH:MM 24-hour, if the user wants this routine at a set time (e.g. 'at 7am' = 07:00)." },
       },
       required: ["category", "name", "steps"],
     },
@@ -738,6 +739,7 @@ const TOOLS: Anthropic.Tool[] = [
           description: "0=Sunday..6=Saturday. Pass every day (or omit this field) to make it run daily again.",
         },
         estimatedMinutes: { type: "integer", minimum: 1, description: "How long the whole routine takes to complete, in minutes." },
+        timeOfDay: { type: "string", description: "HH:MM 24-hour. Set to change the routine's time (e.g. 'move it to 8am' = 08:00)." },
       },
       required: ["routineId"],
     },
@@ -1171,6 +1173,7 @@ async function executeTool(
           steps: input.steps,
           daysOfWeek: input.daysOfWeek,
           estimatedMinutes: input.estimatedMinutes,
+          timeOfDay: routineTimeOfDay(input.timeOfDay),
         });
         break;
       }
@@ -1181,6 +1184,7 @@ async function executeTool(
           steps: input.steps,
           daysOfWeek: input.daysOfWeek,
           estimatedMinutes: input.estimatedMinutes,
+          timeOfDay: routineTimeOfDay(input.timeOfDay),
         });
         break;
       }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createTaskBody } from "./taskBody";
+import { createTaskBody, routineTimeOfDay } from "./taskBody";
 
 describe("createTaskBody", () => {
   it("is unchanged when no priority is given: the app suggests one", () => {
@@ -32,5 +32,18 @@ describe("createTaskBody", () => {
     const body = createTaskBody({ title: "x", estimatedHours: 0, category: "a".repeat(41) });
     expect(body).not.toHaveProperty("estimatedHours");
     expect(body).not.toHaveProperty("category");
+  });
+});
+
+describe("routineTimeOfDay", () => {
+  it("passes a valid HH:MM through", () => {
+    expect(routineTimeOfDay("07:00")).toBe("07:00");
+  });
+
+  it("drops anything that is not HH:MM", () => {
+    expect(routineTimeOfDay("7am")).toBeUndefined();
+    expect(routineTimeOfDay("7:00")).toBeUndefined();
+    expect(routineTimeOfDay(700)).toBeUndefined();
+    expect(routineTimeOfDay(undefined)).toBeUndefined();
   });
 });
