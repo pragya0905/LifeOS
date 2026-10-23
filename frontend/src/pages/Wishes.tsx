@@ -282,38 +282,21 @@ function WishCard({
     <li
       className={`flex flex-col gap-3 transition-all duration-200 ${card} ${removing ? "scale-[0.98] opacity-0" : wish.status !== "active" ? "scale-100 opacity-60" : "scale-100 opacity-100"}`}
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className={`font-medium text-ink dark:text-paper ${wish.status === "abandoned" ? "line-through" : ""}`}>
-            {wish.title}
-          </p>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            <span className={badge}>
-              {WISH_TYPE_EMOJI[wish.type]} {WISH_TYPE_LABEL[wish.type]}
-            </span>
-            {wish.targetDate && (
-              <span className="text-xs text-ink-muted dark:text-mist-muted">
-                Due {wish.targetDate}
-                {daysUntil(wish.targetDate) >= 0
-                  ? ` (${daysUntil(wish.targetDate)}d left)`
-                  : ` (${-daysUntil(wish.targetDate)}d overdue)`}
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="text-xs text-bloom hover:underline"
-          >
+      {/* Option A: type badge and every action on one row (actions always visible, 40px tall),
+          then the title and due date beneath (DESIGN.md: primary actions are never hidden). */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className={badge}>
+          {WISH_TYPE_EMOJI[wish.type]} {WISH_TYPE_LABEL[wish.type]}
+        </span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button type="button" onClick={() => setEditing(true)} className={`${secondaryButton} min-h-10 px-3 text-xs`}>
             Edit
           </button>
           {wish.status === "active" ? (
             <button
               type="button"
               onClick={() => onUpdate({ status: "abandoned" })}
-              className={`${secondaryButton} px-2 py-1 text-xs`}
+              className={`${secondaryButton} min-h-10 px-3 text-xs`}
             >
               Abandon
             </button>
@@ -321,15 +304,28 @@ function WishCard({
             <button
               type="button"
               onClick={() => onUpdate({ status: "active" })}
-              className={`${secondaryButton} px-2 py-1 text-xs`}
+              className={`${secondaryButton} min-h-10 px-3 text-xs`}
             >
               Reactivate
             </button>
           )}
-          <button type="button" onClick={onDelete} className={`${secondaryButton} px-2 py-1 text-xs`}>
+          <button type="button" onClick={onDelete} className={`${secondaryButton} min-h-10 px-3 text-xs`}>
             Delete
           </button>
         </div>
+      </div>
+      <div>
+        <p className={`font-medium text-ink dark:text-paper ${wish.status === "abandoned" ? "line-through" : ""}`}>
+          {wish.title}
+        </p>
+        {wish.targetDate && (
+          <p className="mt-1 text-xs text-ink-muted dark:text-mist-muted">
+            Due {wish.targetDate}
+            {daysUntil(wish.targetDate) >= 0
+              ? ` (${daysUntil(wish.targetDate)}d left)`
+              : ` (${-daysUntil(wish.targetDate)}d overdue)`}
+          </p>
+        )}
       </div>
 
       {wish.status === "completed" && <span className={badge}>Completed</span>}
