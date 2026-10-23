@@ -118,7 +118,7 @@ export default function Onboarding() {
                 key={opt.value}
                 type="button"
                 onClick={() => setSex(opt.value)}
-                className={`${pillButton} px-3 py-1 ${sex === opt.value ? pillButtonDone : pillButtonInactive}`}
+                className={`${pillButton} min-h-10 px-3 py-1 ${sex === opt.value ? pillButtonDone : pillButtonInactive}`}
               >
                 {opt.label}
               </button>
