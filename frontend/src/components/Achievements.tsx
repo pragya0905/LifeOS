@@ -73,14 +73,14 @@ export default function Achievements() {
         type="button"
         onClick={toggleExpanded}
         aria-expanded={expanded}
-        className="mb-3 flex w-full items-center justify-between text-left"
+        className="mb-3 flex min-h-10 w-full items-center justify-between text-left"
       >
         <h2 className={`${sectionLabel} inline-flex items-center gap-1`}>
           <Icon icon={Trophy} size={13} /> Achievements
         </h2>
         <span className="flex items-center gap-1.5">
           {badges && (
-            <span className={mutedText}>
+            <span className={`tabular-nums ${mutedText}`}>
               {unlockedCount} / {badges.length}
             </span>
           )}
@@ -132,7 +132,7 @@ export default function Achievements() {
               >
                 {b.label}
               </p>
-              <p className={`mt-0.5 text-[10px] ${mutedText}`}>
+              <p className={`mt-0.5 text-xs ${mutedText}`}>
                 {b.earnedAt ? formatEarnedDate(b.earnedAt) : b.description}
               </p>
             </div>
