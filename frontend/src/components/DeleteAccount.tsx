@@ -38,7 +38,7 @@ export default function DeleteAccount() {
           <button
             type="button"
             onClick={() => setOpen(true)}
-            className="rounded-full border border-alert px-3 py-1.5 text-xs font-medium text-alert transition-colors hover:bg-alert-soft dark:hover:bg-alert-soft-dark"
+            className="rounded-full border border-alert min-h-10 px-3 py-1.5 text-xs font-medium text-alert transition-colors hover:bg-alert-soft dark:hover:bg-alert-soft-dark"
           >
             Delete account
           </button>
@@ -62,7 +62,7 @@ export default function DeleteAccount() {
               type="button"
               disabled={confirmText !== CONFIRM_TEXT || deleting}
               onClick={handleDelete}
-              className="rounded-full bg-alert px-4 py-1.5 text-xs font-medium text-paper-card transition-colors hover:opacity-90 disabled:opacity-50"
+              className="rounded-full bg-alert min-h-10 px-4 py-1.5 text-xs font-medium text-paper-card transition-colors hover:opacity-90 disabled:opacity-50"
             >
               {deleting ? "Deleting..." : "Permanently delete my account"}
             </button>
@@ -74,7 +74,7 @@ export default function DeleteAccount() {
                 setConfirmText("");
                 setError(null);
               }}
-              className="rounded-full border border-stone px-4 py-1.5 text-xs text-ink transition-colors hover:bg-stone/40 dark:border-stone-dark dark:text-paper dark:hover:bg-stone-dark/40"
+              className="rounded-full border border-stone min-h-10 px-4 py-1.5 text-xs text-ink transition-colors hover:bg-stone/40 dark:border-stone-dark dark:text-paper dark:hover:bg-stone-dark/40"
             >
               Cancel
             </button>

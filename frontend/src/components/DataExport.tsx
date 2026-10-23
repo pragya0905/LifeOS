@@ -187,7 +187,7 @@ export default function DataExport() {
           type="button"
           onClick={handleExportCsv}
           disabled={exportingCsv}
-          className={`${primaryButton} px-3 py-1.5 text-xs`}
+          className={`${primaryButton} min-h-10 px-3 py-1.5 text-xs`}
         >
           {exportingCsv ? "Preparing..." : "Export as CSV"}
         </button>
@@ -195,7 +195,7 @@ export default function DataExport() {
           type="button"
           onClick={handleExportPdf}
           disabled={exportingPdf}
-          className={`${secondaryButton} px-3 py-1.5 text-xs`}
+          className={`${secondaryButton} min-h-10 px-3 py-1.5 text-xs`}
         >
           {exportingPdf ? "Preparing..." : "Export as PDF"}
         </button>

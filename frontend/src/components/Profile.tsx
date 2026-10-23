@@ -205,7 +205,7 @@ export default function Profile() {
                 type="button"
                 onClick={handleSavePreferredName}
                 disabled={savingPreferredName}
-                className={`${primaryButton} px-3 py-1.5 text-xs`}
+                className={`${primaryButton} min-h-10 px-3 py-1.5 text-xs`}
               >
                 {savingPreferredName ? "Saving..." : "Save"}
               </button>
@@ -223,7 +223,7 @@ export default function Profile() {
                   type="button"
                   disabled={savingTone}
                   onClick={() => handleSetTone(opt.value)}
-                  className={`${pillButton} flex-col items-start gap-0.5 px-3 py-1.5 text-left ${
+                  className={`${pillButton} flex-col items-start gap-0.5 min-h-10 px-3 py-1.5 text-left ${
                     tone === opt.value ? pillButtonDone : pillButtonInactive
                   }`}
                 >
@@ -249,7 +249,7 @@ export default function Profile() {
                 type="button"
                 onClick={handleSaveLocation}
                 disabled={savingLocation}
-                className={`${primaryButton} px-3 py-1.5 text-xs`}
+                className={`${primaryButton} min-h-10 px-3 py-1.5 text-xs`}
               >
                 {savingLocation ? "Saving..." : "Save"}
               </button>
@@ -269,7 +269,7 @@ export default function Profile() {
                   type="button"
                   disabled={savingSex}
                   onClick={() => handleSetSex(opt.value)}
-                  className={`${pillButton} px-3 py-1 ${sex === opt.value ? pillButtonDone : pillButtonInactive}`}
+                  className={`${pillButton} min-h-10 px-3 py-1 ${sex === opt.value ? pillButtonDone : pillButtonInactive}`}
                 >
                   {opt.label}
                 </button>
@@ -297,7 +297,7 @@ export default function Profile() {
                 type="button"
                 onClick={handleSaveHeight}
                 disabled={savingHeight}
-                className={`${primaryButton} px-3 py-1.5 text-xs`}
+                className={`${primaryButton} min-h-10 px-3 py-1.5 text-xs`}
               >
                 {savingHeight ? "Saving..." : "Save"}
               </button>
@@ -322,7 +322,7 @@ export default function Profile() {
                 type="button"
                 onClick={handleSaveWeightTarget}
                 disabled={savingWeightTarget}
-                className={`${primaryButton} px-3 py-1.5 text-xs`}
+                className={`${primaryButton} min-h-10 px-3 py-1.5 text-xs`}
               >
                 {savingWeightTarget ? "Saving..." : "Save"}
               </button>

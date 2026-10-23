@@ -92,7 +92,7 @@ export default function PwaSettings() {
         {!installed && canInstall && (
           <div className="flex items-center justify-between">
             <span className="text-sm text-ink dark:text-paper">Install LifeOs as an app</span>
-            <button onClick={promptInstall} className={`${primaryButton} px-3 py-1.5 text-xs`}>
+            <button onClick={promptInstall} className={`${primaryButton} min-h-10 px-3 py-1.5 text-xs`}>
               Install
             </button>
           </div>
@@ -107,7 +107,7 @@ export default function PwaSettings() {
             <span className="text-sm text-ink dark:text-paper">Enable notifications</span>
             <button
               onClick={requestPermission}
-              className={`${secondaryButton} px-3 py-1.5 text-xs`}
+              className={`${secondaryButton} min-h-10 px-3 py-1.5 text-xs`}
             >
               Enable
             </button>
@@ -124,7 +124,7 @@ export default function PwaSettings() {
               <span className="text-sm text-ink dark:text-paper">Notifications enabled</span>
               <button
                 onClick={sendTestNotification}
-                className={`${secondaryButton} px-3 py-1.5 text-xs`}
+                className={`${secondaryButton} min-h-10 px-3 py-1.5 text-xs`}
               >
                 Send test
               </button>
@@ -137,7 +137,7 @@ export default function PwaSettings() {
                 <button
                   onClick={subscribeToPush}
                   disabled={subscribing}
-                  className={`${secondaryButton} px-3 py-1.5 text-xs`}
+                  className={`${secondaryButton} min-h-10 px-3 py-1.5 text-xs`}
                 >
                   {subscribing ? "Enabling..." : "Enable"}
                 </button>
