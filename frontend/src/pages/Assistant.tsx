@@ -29,6 +29,7 @@ import type { ChatMessage } from "../components/assistant/types";
 import { openConversation } from "../lib/chatHistory";
 import { ToolCallTracker, type ToolResultEntry, type StreamOutcome } from "../lib/toolCards";
 import { isActive } from "../lib/voiceMachine";
+import { voiceTurnsToMessages } from "../lib/voiceTranscript";
 import { errorText, primaryButton } from "../components/ui";
 
 const CONVERSATION_ID_KEY = "lifeos_assistant_conversation_id";
@@ -131,6 +132,20 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
   });
   const voiceStatus = voice.state.status;
 
+  // When voice leaves the screen (End, typing, or it ended by itself) the new turns join the chat
+  // under one divider. The server already has them, so nothing is re-fetched.
+  const segmentStartRef = useRef<number | null>(null);
+  const { takeTurns } = voice;
+  useEffect(() => {
+    if (voiceStatus === "listening" && segmentStartRef.current === null) segmentStartRef.current = Date.now();
+    if (voiceStatus !== "typing" && voiceStatus !== "ended") return;
+    const turns = takeTurns();
+    const started = segmentStartRef.current ?? Date.now();
+    segmentStartRef.current = null;
+    const added = voiceTurnsToMessages(turns, Date.now() - started);
+    if (added.length > 0) setMessages((prev) => [...prev, ...added]);
+  }, [voiceStatus, takeTurns]);
+
   // Switching to typing puts the cursor in the composer straight away.
   useEffect(() => {
     if (voiceStatus === "typing") textareaRef.current?.focus();
@@ -160,6 +175,7 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
   }
 
   function startNewConversation() {
+    voice.takeTurns();
     voice.end();
     window.speechSynthesis?.cancel();
     conversationIdRef.current = undefined;
@@ -201,6 +217,7 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
       setOpenError(result.reason);
       return;
     }
+    voice.takeTurns();
     voice.end();
     conversationIdRef.current = conversationId;
     persistConversationId(conversationId);

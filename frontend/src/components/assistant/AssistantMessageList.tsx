@@ -1,7 +1,7 @@
 import { type RefObject, type UIEvent } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ArrowDown, Copy, Paperclip, RotateCcw, Sparkles } from "lucide-react";
+import { ArrowDown, Copy, Mic, Paperclip, RotateCcw, Sparkles } from "lucide-react";
 import { Icon } from "../Icon";
 import { IconButton } from "../IconButton";
 import { AssistantToolCards } from "./AssistantToolCards";
@@ -84,7 +84,7 @@ export function AssistantMessageList({
 }) {
   const lastMessage = messages[messages.length - 1];
   const awaitingFirstToken = sending && (!lastMessage || lastMessage.role === "user");
-  const lastAssistantIndex = messages.map((m) => m.role).lastIndexOf("assistant");
+  const lastAssistantIndex = messages.map((m) => (m.role === "assistant" && !m.divider ? "a" : "-")).lastIndexOf("a");
 
   return (
     <div className="relative min-h-0 flex-1">
@@ -117,7 +117,17 @@ export function AssistantMessageList({
           </div>
         ) : (
           <div className="mx-auto flex max-w-[720px] flex-col gap-4">
-            {messages.map((m, i) => (
+            {messages.map((m, i) =>
+              m.divider ? (
+                <div key={i} role="separator" aria-label={m.divider} className="flex items-center gap-3 text-xs text-ink-muted dark:text-mist-muted">
+                  <span className="h-px flex-1 bg-stone dark:bg-stone-dark" />
+                  <span className="inline-flex items-center gap-1.5 font-medium">
+                    <Icon icon={Mic} size={13} />
+                    {m.divider}
+                  </span>
+                  <span className="h-px flex-1 bg-stone dark:bg-stone-dark" />
+                </div>
+              ) : (
               <div key={i} className={`animate-fade-in-up flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                 {m.role === "user" ? (
                   <button
@@ -135,7 +145,15 @@ export function AssistantMessageList({
                         ))}
                       </span>
                     )}
-                    <span className="block whitespace-pre-wrap">{m.content}</span>
+                    <span className="block whitespace-pre-wrap">
+                      {m.voice && (
+                        <>
+                          <Icon icon={Mic} size={12} className="mr-1 inline align-[-1px] opacity-80" />
+                          <span className="sr-only">Spoken: </span>
+                        </>
+                      )}
+                      {m.content}
+                    </span>
                     {m.createdAt && revealedTimestamp === i && (
                       <span className="mt-1 block text-[11px] opacity-75">{formatTimestamp(m.createdAt)}</span>
                     )}
@@ -192,7 +210,8 @@ export function AssistantMessageList({
                   </div>
                 )}
               </div>
-            ))}
+              ),
+            )}
 
             {awaitingFirstToken && (
               <div className="flex justify-start">

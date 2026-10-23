@@ -24,6 +24,10 @@ export interface ChatMessage {
   toolFailures?: ToolFailure[];
   // One-line notes for tools with no card: a read ("Checked tasks") or a delete request.
   quietNotes?: string[];
+  // A session marker line ("Voice session · 2 turns · 1:30"), not a message. Has no bubble.
+  divider?: string;
+  // A user turn that was spoken. Shown with a mic mark.
+  voice?: boolean;
   // The messages above only exist for the live session. A conversation reopened from history
   // is text and attachment names only.
 }
