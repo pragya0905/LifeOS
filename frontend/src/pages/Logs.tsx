@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useApi } from "../api/useApi";
-import { todayLocal, toLocalDateStr } from "../lib/date";
+import { addDays, todayLocal, toLocalDateStr } from "../lib/date";
 import { Skeleton } from "../components/Skeleton";
 import { EmptyState } from "../components/EmptyState";
 import type { LogEntry, LogType } from "../types";
@@ -109,6 +109,15 @@ function today(): string {
   return todayLocal();
 }
 
+// "Thu 23 Oct", for the day switcher above the list.
+function viewDayLabel(date: string): string {
+  return new Date(`${date}T00:00:00`).toLocaleDateString(undefined, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+}
+
 function dateGroupLabel(date: string): string {
   if (date === todayLocal()) return "Today";
   const yesterday = new Date();
@@ -188,6 +197,8 @@ export default function Logs() {
 
   const [logType, setLogType] = useState<LogType>("food");
   const [date, setDate] = useState(today());
+  // The day the list is anchored to: that day and earlier days show, later ones don't.
+  const [viewDate, setViewDate] = useState(today());
   const [values, setValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
@@ -234,6 +245,7 @@ export default function Logs() {
   }
 
   const filteredEntries = entries
+    .filter((e) => e.date <= viewDate)
     .filter((e) => filterType === "all" || e.logType === filterType)
     .filter(
       (e) =>
@@ -387,6 +399,58 @@ export default function Logs() {
             aria-label="Search log entries"
             className={`min-w-[200px] flex-1 ${input}`}
           />
+        </div>
+      )}
+
+      {entries.length > 0 && (
+        <div className={`mb-4 ${card}`}>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              aria-label="Previous day"
+              onClick={() => setViewDate(addDays(viewDate, -1))}
+              className={`${pillButton} min-h-10 min-w-10 px-3 ${pillButtonInactive}`}
+            >
+              ‹
+            </button>
+            <p className="flex-1 text-center font-medium tabular-nums">
+              {viewDayLabel(viewDate)}
+              {viewDate === today() && <span className="ml-1 text-bloom">•</span>}
+            </p>
+            <button
+              type="button"
+              aria-label="Next day"
+              disabled={viewDate >= today()}
+              onClick={() => setViewDate(addDays(viewDate, 1))}
+              className={`${pillButton} min-h-10 min-w-10 px-3 ${pillButtonInactive} disabled:opacity-40`}
+            >
+              ›
+            </button>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setViewDate(today())}
+              className={`${pillButton} min-h-10 px-3 ${viewDate === today() ? pillButtonDone : pillButtonInactive}`}
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewDate(addDays(today(), -1))}
+              className={`${pillButton} min-h-10 px-3 ${viewDate === addDays(today(), -1) ? pillButtonDone : pillButtonInactive}`}
+            >
+              Yesterday
+            </button>
+            <input
+              type="date"
+              aria-label="Pick date"
+              max={today()}
+              value={viewDate}
+              onChange={(e) => e.target.value && setViewDate(e.target.value)}
+              className={`min-h-10 ${input}`}
+            />
+          </div>
         </div>
       )}
 
