@@ -1,3 +1,4 @@
+import { splitSentences } from "../../lib/speech";
 import type { ReactNode } from "react";
 import {
   AlertCircle,
@@ -174,6 +175,8 @@ function ErrorPanel({
 export interface VoiceScreenProps {
   state: VoiceState;
   reply: string;
+  // Index of the sentence being spoken, or -1 before speech starts.
+  spokenIndex: number;
   toolLabel: string | null;
   cards: ToolResultEntry[];
   errorMessage: string | null;
@@ -245,7 +248,14 @@ export function VoiceScreen(p: VoiceScreenProps) {
         ) : (
           <div aria-live="polite" className="flex max-w-[30ch] flex-col items-center gap-2 sm:max-w-sm">
             {state.status === "speaking" ? (
-              <p className="break-words font-display text-xl font-semibold leading-snug text-ink dark:text-paper">{p.reply}</p>
+              <p className="break-words font-display text-xl font-semibold leading-snug text-ink dark:text-paper">
+                {splitSentences(p.reply).map((sentence, i) => (
+                  <span key={i} className={i === p.spokenIndex || p.spokenIndex < 0 ? "" : "text-ink-muted dark:text-mist-muted"}>
+                    {i > 0 && " "}
+                    {sentence}
+                  </span>
+                ))}
+              </p>
             ) : paused ? (
               <p className="font-display text-xl font-semibold leading-snug text-ink dark:text-paper">Not listening. Nothing is heard or sent.</p>
             ) : state.caption ? (

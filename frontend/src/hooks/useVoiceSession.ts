@@ -50,6 +50,8 @@ export function useVoiceSession(options: VoiceSessionOptions) {
   const [toolLabel, setToolLabel] = useState<string | null>(null);
   const [cards, setCards] = useState<ToolResultEntry[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Which sentence of the reply is being spoken, for the caption to follow.
+  const [spokenIndex, setSpokenIndex] = useState(-1);
   const replyRef = useRef("");
   const turnsRef = useRef<VoiceTurn[]>([]);
   // A heard sentence the assistant has not answered yet (an error, or the session ended first).
@@ -174,7 +176,12 @@ export function useVoiceSession(options: VoiceSessionOptions) {
   useEffect(() => {
     if (state.status !== "speaking") return;
     // The language is read now, not tracked: toggling it mid-reply must not restart the speech.
-    speak(replyRef.current, { lang: stateRef.current.lang, onEnd: () => dispatch({ type: "SPEECH_ENDED" }) });
+    setSpokenIndex(-1);
+    speak(replyRef.current, {
+      lang: stateRef.current.lang,
+      onSentence: setSpokenIndex,
+      onEnd: () => dispatch({ type: "SPEECH_ENDED" }),
+    });
     return () => cancelSpeech();
   }, [state.status, speak, cancelSpeech]);
 
@@ -238,6 +245,7 @@ export function useVoiceSession(options: VoiceSessionOptions) {
     toolLabel,
     cards,
     errorMessage,
+    spokenIndex,
     open,
     takeTurns,
     pause: useCallback(() => dispatch({ type: "PAUSE" }), []),

@@ -585,6 +585,7 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
       <VoiceScreen
         state={voice.state}
         reply={voice.reply}
+        spokenIndex={voice.spokenIndex}
         toolLabel={voice.toolLabel}
         cards={voice.cards}
         errorMessage={voice.errorMessage}

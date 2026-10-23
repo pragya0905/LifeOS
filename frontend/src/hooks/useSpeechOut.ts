@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { pickVoice } from "../lib/speech";
+import { pickVoice, speakableText, splitSentences } from "../lib/speech";
 
 export interface SpeakOptions {
   lang?: string;
   onStart?: () => void;
+  // Fires as each sentence begins, with its position in splitSentences(text).
+  onSentence?: (index: number) => void;
   // Fires when the utterance finishes or fails, but not when cancel() was called: a cancel is the
   // caller's own decision and it already knows.
   onEnd?: () => void;
 }
 
 // Browser text-to-speech behind a small interface, so a cloud voice could replace it later
-// without touching the voice screen. One utterance at a time; speaking again replaces the last.
+// without touching the voice screen. Speaks a reply one sentence at a time (long single utterances get cut off on some phones, and
+// the caption can follow along); speaking again replaces the last.
 export function useSpeechOut() {
   const supported = typeof window !== "undefined" && "speechSynthesis" in window;
   const [speaking, setSpeaking] = useState(false);
@@ -24,31 +27,42 @@ export function useSpeechOut() {
   }, []);
 
   const speak = useCallback((text: string, options: SpeakOptions = {}) => {
-    if (typeof window === "undefined" || !window.speechSynthesis || !text.trim()) {
+    const sentences = splitSentences(text).filter((x) => speakableText(x));
+    if (typeof window === "undefined" || !window.speechSynthesis || sentences.length === 0) {
       options.onEnd?.();
       return;
     }
-    window.speechSynthesis.cancel();
+    const synth = window.speechSynthesis;
+    synth.cancel();
     const token = ++tokenRef.current;
-    const utterance = new SpeechSynthesisUtterance(text);
-    if (options.lang) {
-      utterance.lang = options.lang;
-      const voice = pickVoice(window.speechSynthesis.getVoices(), options.lang);
-      if (voice) utterance.voice = voice;
-    }
-    const done = () => {
+    const voice = options.lang ? pickVoice(synth.getVoices(), options.lang) : undefined;
+    const allSpoken = splitSentences(text);
+
+    const finish = () => {
       if (tokenRef.current !== token) return;
       setSpeaking(false);
       options.onEnd?.();
     };
-    utterance.onstart = () => {
+    const next = (i: number) => {
       if (tokenRef.current !== token) return;
-      setSpeaking(true);
-      options.onStart?.();
+      if (i >= sentences.length) return finish();
+      const utterance = new SpeechSynthesisUtterance(speakableText(sentences[i]));
+      if (options.lang) utterance.lang = options.lang;
+      if (voice) utterance.voice = voice;
+      utterance.onstart = () => {
+        if (tokenRef.current !== token) return;
+        if (i === 0) {
+          setSpeaking(true);
+          options.onStart?.();
+        }
+        options.onSentence?.(allSpoken.indexOf(sentences[i]));
+      };
+      utterance.onend = () => next(i + 1);
+      // A failed sentence ends the reply rather than skipping ahead and talking over a problem.
+      utterance.onerror = finish;
+      synth.speak(utterance);
     };
-    utterance.onend = done;
-    utterance.onerror = done;
-    window.speechSynthesis.speak(utterance);
+    next(0);
   }, []);
 
   // Speech must stop when the page is hidden or goes away, and never carry on in the background.

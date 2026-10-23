@@ -54,3 +54,32 @@ export function pickVoice<T extends VoiceLike>(voices: readonly T[], lang: strin
   const same = voices.filter((v) => norm(v.lang).split("-")[0] === base);
   return same.length > 0 ? best(same) : undefined;
 }
+
+// Splits a reply into the pieces that are spoken one at a time. Line breaks and sentence ends
+// (including the Hindi danda) are boundaries; a bare list number like "1." joins the item after it.
+export function splitSentences(text: string): string[] {
+  const parts = text
+    .split(/(?<=[.!?।…])\s+|\n+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const out: string[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    if (/^\d+[.)]$/.test(parts[i]) && i + 1 < parts.length) {
+      parts[i + 1] = `${parts[i]} ${parts[i + 1]}`;
+    } else {
+      out.push(parts[i]);
+    }
+  }
+  return out;
+}
+
+// What the voice should say for a piece of the reply: markdown marks are dropped, links keep their text.
+export function speakableText(sentence: string): string {
+  return sentence
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/^[-*•]\s+/, "")
+    .replace(/^#+\s+/, "")
+    .replace(/[*_`~]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifySpeechError, pickVoice } from "./speech";
+import { classifySpeechError, pickVoice, speakableText, splitSentences } from "./speech";
 
 describe("classifySpeechError", () => {
   it("treats a blocked microphone as a permission problem", () => {
@@ -47,5 +47,31 @@ describe("pickVoice", () => {
   it("returns nothing when no voice fits, so the browser default is used", () => {
     expect(pickVoice([v("French", "fr-FR", true)], "hi-IN")).toBeUndefined();
     expect(pickVoice([], "en-IN")).toBeUndefined();
+  });
+});
+
+describe("splitSentences", () => {
+  it("splits on sentence ends and line breaks", () => {
+    expect(splitSentences("Added milk. Anything else? Sure!")).toEqual(["Added milk.", "Anything else?", "Sure!"]);
+    expect(splitSentences("Your tasks:\n- Milk\n- Eggs")).toEqual(["Your tasks:", "- Milk", "- Eggs"]);
+  });
+  it("splits Hindi on the danda", () => {
+    expect(splitSentences("ठीक है। मैंने जोड़ दिया।")).toEqual(["ठीक है।", "मैंने जोड़ दिया।"]);
+  });
+  it("keeps decimals and amounts together", () => {
+    expect(splitSentences("It cost 3.5 dollars. Done.")).toEqual(["It cost 3.5 dollars.", "Done."]);
+  });
+  it("joins a bare list number to its item", () => {
+    expect(splitSentences("1. Milk\n2. Eggs")).toEqual(["1. Milk", "2. Eggs"]);
+  });
+  it("returns nothing for blank text", () => {
+    expect(splitSentences("  \n ")).toEqual([]);
+  });
+});
+
+describe("speakableText", () => {
+  it("drops markdown marks and keeps link text", () => {
+    expect(speakableText("**Done** — see [your list](https://x.y)")).toBe("Done — see your list");
+    expect(speakableText("- Milk")).toBe("Milk");
   });
 });
