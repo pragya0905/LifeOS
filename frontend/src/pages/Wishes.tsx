@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useApi } from "../api/useApi";
 import WishImageGallery from "../components/WishImageGallery";
 import { todayLocal } from "../lib/date";
+import { useToast } from "../components/Toast";
+import { canRestoreWish, wishDefinition } from "../lib/wishRestore";
 import { Skeleton } from "../components/Skeleton";
 import { EmptyState } from "../components/EmptyState";
 import type { Wish, WishHabitType, WishMilestone, WishProgressMode, WishType } from "../types";
@@ -423,6 +425,7 @@ function WishCard({
 
 export default function Wishes() {
   const { request } = useApi();
+  const { show: showToast } = useToast();
   const [wishes, setWishes] = useState<Wish[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -517,18 +520,33 @@ export default function Wishes() {
     }
   }
 
-  async function deleteWish(wishId: string) {
+  // Optimistic: the card fades out, then leaves the list at once while the request runs behind it.
+  // If the server refuses, the card comes back. Undo is offered only when recreating the wish loses
+  // nothing (see lib/wishRestore.ts).
+  async function deleteWish(wish: Wish) {
     setError(null);
-    setRemovingId(wishId);
-    const transitionDone = new Promise((resolve) => setTimeout(resolve, 200));
+    setRemovingId(wish.wishId);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    setWishes((prev) => prev.filter((w) => w.wishId !== wish.wishId));
+    setRemovingId(null);
     try {
-      await Promise.all([request(`/wishes/${wishId}`, { method: "DELETE" }), transitionDone]);
-      setWishes((prev) => prev.filter((w) => w.wishId !== wishId));
+      await request(`/wishes/${wish.wishId}`, { method: "DELETE" });
     } catch (err) {
+      setWishes((prev) => [wish, ...prev]);
       setError(err instanceof Error ? err.message : "Failed to delete wish");
-    } finally {
-      setRemovingId(null);
+      return;
     }
+    if (!canRestoreWish(wish)) {
+      showToast(`"${wish.title}" deleted`);
+      return;
+    }
+    showToast(`"${wish.title}" deleted`, {
+      undo: () => {
+        request<Wish>("/wishes", { method: "POST", body: JSON.stringify(wishDefinition(wish)) })
+          .then((restored) => setWishes((prev) => [restored, ...prev]))
+          .catch(() => {});
+      },
+    });
   }
 
   const filteredWishes = search.trim()
@@ -706,7 +724,7 @@ export default function Wishes() {
                         key={wish.wishId}
                         wish={wish}
                         onUpdate={(patch) => updateWish(wish.wishId, patch)}
-                        onDelete={() => deleteWish(wish.wishId)}
+                        onDelete={() => deleteWish(wish)}
                         removing={removingId === wish.wishId}
                       />
                     ))}
@@ -726,7 +744,7 @@ export default function Wishes() {
                         key={wish.wishId}
                         wish={wish}
                         onUpdate={(patch) => updateWish(wish.wishId, patch)}
-                        onDelete={() => deleteWish(wish.wishId)}
+                        onDelete={() => deleteWish(wish)}
                         removing={removingId === wish.wishId}
                       />
                     ))}
@@ -745,7 +763,7 @@ export default function Wishes() {
                     key={wish.wishId}
                     wish={wish}
                     onUpdate={(patch) => updateWish(wish.wishId, patch)}
-                    onDelete={() => deleteWish(wish.wishId)}
+                    onDelete={() => deleteWish(wish)}
                     removing={removingId === wish.wishId}
                   />
                 ))}
