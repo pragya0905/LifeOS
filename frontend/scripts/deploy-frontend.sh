@@ -55,9 +55,13 @@ echo "==> [0/7] Checking caller identity and git state..."
 CALLER_ARN="$(aws sts get-caller-identity --query Arn --output text)"
 echo "    Caller: $CALLER_ARN"
 if [[ "$CALLER_ARN" == *:root ]]; then
-  echo "ERROR: refusing to deploy as the AWS account root user ($CALLER_ARN)." >&2
-  echo "       Use an IAM user or role instead - root should never run day-to-day operations." >&2
-  exit 1
+  if [[ "${ALLOW_ROOT_DEPLOY:-}" != "1" ]]; then
+    echo "ERROR: refusing to deploy as the AWS account root user ($CALLER_ARN)." >&2
+    echo "       Use an IAM user or role instead - root should never run day-to-day operations." >&2
+    echo "       To deliberately deploy as root anyway, run with ALLOW_ROOT_DEPLOY=1." >&2
+    exit 1
+  fi
+  echo "WARNING: deploying as the AWS account root user ($CALLER_ARN) because ALLOW_ROOT_DEPLOY=1 is set." >&2
 fi
 
 CURRENT_BRANCH="$(git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD)"
