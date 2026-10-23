@@ -9,6 +9,7 @@ import {
   formatINR,
 } from "../lib/expenseCategories";
 import { Skeleton } from "../components/Skeleton";
+import { useToast } from "../components/Toast";
 import type { Budget, Expense, ExpenseCategory, UserProfile } from "../types";
 import {
   badge,
@@ -188,6 +189,7 @@ function CategoryBudgetCard({
 
 export default function BudgetPage() {
   const { request } = useApi();
+  const { show: showToast } = useToast();
   const [month, setMonth] = useState(currentMonth());
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -265,14 +267,33 @@ export default function BudgetPage() {
     }
   }
 
-  async function handleDeleteExpense(expenseId: string) {
+  // Optimistic: the row goes at once, and comes back if the server refuses. The Undo toast
+  // recreates it from the data already on the page (a new id, since the server issues ids).
+  async function handleDeleteExpense(expense: Expense) {
     setError(null);
+    setExpenses((prev) => prev.filter((e) => e.expenseId !== expense.expenseId));
     try {
-      await request(`/expenses/${expenseId}`, { method: "DELETE" });
-      setExpenses((prev) => prev.filter((e) => e.expenseId !== expenseId));
+      await request(`/expenses/${expense.expenseId}`, { method: "DELETE" });
     } catch (err) {
+      setExpenses((prev) => [expense, ...prev].sort((a, b) => (a.date < b.date ? 1 : -1)));
       setError(err instanceof Error ? err.message : "Failed to delete expense");
+      return;
     }
+    showToast("Expense deleted", {
+      undo: () => {
+        request<Expense>("/expenses", {
+          method: "POST",
+          body: JSON.stringify({
+            category: expense.category,
+            amount: expense.amount,
+            note: expense.note,
+            date: expense.date,
+          }),
+        })
+          .then((restored) => setExpenses((prev) => [restored, ...prev].sort((a, b) => (a.date < b.date ? 1 : -1))))
+          .catch(() => {});
+      },
+    });
   }
 
   async function handleSaveBudget(cat: ExpenseCategory, monthlyLimit: number) {
@@ -579,7 +600,7 @@ export default function BudgetPage() {
               </div>
               <button
                 type="button"
-                onClick={() => handleDeleteExpense(expense.expenseId)}
+                onClick={() => handleDeleteExpense(expense)}
                 className={`${secondaryButton} px-2 py-1 text-xs`}
               >
                 Delete
