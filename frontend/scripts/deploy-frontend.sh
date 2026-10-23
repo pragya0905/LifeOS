@@ -24,6 +24,7 @@ DISTRIBUTION_ID="E39P84TZAUU8DG"
 CLOUDFRONT_DOMAIN="d1t6ezlql25na7.cloudfront.net"
 REGION="ap-southeast-2"
 BACKUP_ROOT="$HOME/lifeos-backups"
+DEPLOY_LOG="$BACKUP_ROOT/deploy-log.txt"
 
 DRY_RUN=false
 for arg in "$@"; do
@@ -69,7 +70,14 @@ if [[ -n "$(git -C "$REPO_DIR" status --porcelain)" ]]; then
   git -C "$REPO_DIR" status --short >&2
   exit 1
 fi
-echo "    Branch 'main', working tree clean."
+GIT_SHORT_HASH="$(git -C "$REPO_DIR" rev-parse --short HEAD)"
+echo "    Branch 'main', working tree clean (at $GIT_SHORT_HASH)."
+
+# Appends one line per call to the deploy log. Only ever called on a real (non-dry) run.
+append_deploy_log() {
+  mkdir -p "$BACKUP_ROOT"
+  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)  $GIT_SHORT_HASH  $CALLER_ARN  backup=$BACKUP_DIR  $*" >> "$DEPLOY_LOG"
+}
 
 echo
 echo "LifeOs frontend deploy$( [[ "$DRY_RUN" == true ]] && echo " (DRY RUN - no writes will be made)" )"
@@ -96,9 +104,16 @@ else
   aws s3 sync "s3://$BUCKET/" "$BACKUP_DIR/" --region "$REGION"
 
   echo "    Verifying backup against the live bucket..."
-  BUCKET_SUMMARY="$(aws s3 ls "s3://$BUCKET" --recursive --summarize --region "$REGION")"
-  BUCKET_COUNT="$(echo "$BUCKET_SUMMARY" | grep 'Total Objects:' | awk '{print $NF}')"
-  BUCKET_BYTES="$(echo "$BUCKET_SUMMARY" | grep 'Total Size:' | awk '{print $NF}')"
+  # Per-object sizes are listed and totalled with awk across ALL pages. A JMESPath length() or
+  # sum() would return one value PER PAGE, silently undercounting any bucket spanning more
+  # than one page. Keys ending in "/" are S3 folder placeholders that `s3 sync` never
+  # downloads, so they're excluded.
+  # shellcheck disable=SC2016
+  BUCKET_TOTALS="$(aws s3api list-objects-v2 --bucket "$BUCKET" --region "$REGION" \
+    --query 'Contents[?!ends_with(Key, `/`)].Size' --output text \
+    | awk '$0!="None"{for(i=1;i<=NF;i++){if($i!="None"){n++; s+=$i}}} END{print n+0, s+0}')"
+  BUCKET_COUNT="${BUCKET_TOTALS%% *}"
+  BUCKET_BYTES="${BUCKET_TOTALS##* }"
   BACKUP_COUNT="$(find "$BACKUP_DIR" -type f | wc -l | tr -d ' ')"
   BACKUP_BYTES="$(find "$BACKUP_DIR" -type f -exec stat -f%z {} \; | awk '{sum+=$1} END {print sum+0}')"
 
@@ -120,6 +135,10 @@ else
     echo "ERROR: backup verification failed - '$BACKUP_DIR/assets' is empty." >&2
     exit 1
   fi
+
+  echo "    Writing checksum manifest..."
+  (cd "$BACKUP_DIR" && find . -type f ! -name "SHA256SUMS" -exec shasum -a 256 {} \; > SHA256SUMS)
+
   echo "    Backup verified OK: $BACKUP_DIR"
 fi
 
@@ -178,6 +197,7 @@ else
     --id "$INVALIDATION_ID" \
     --region "$REGION"
   echo "    Invalidation completed."
+  append_deploy_log status=deployed
 fi
 
 echo
@@ -209,7 +229,6 @@ else
 
   if [[ "$HEADER_CHECK_FAILED" == true ]]; then
     echo "ERROR: one or more live Cache-Control headers are wrong after deploy." >&2
-    exit 1
   fi
 
   echo
@@ -218,10 +237,19 @@ else
   LOCAL_BUNDLE="$(grep -oE 'assets/index-[A-Za-z0-9_-]+\.js' "$DIST_DIR/index.html" | head -1 || true)"
   echo "    Live:  ${LIVE_BUNDLE:-<not found>}"
   echo "    Local: ${LOCAL_BUNDLE:-<not found>}"
+  BUNDLE_MISMATCH=false
   if [[ "$LIVE_BUNDLE" != "$LOCAL_BUNDLE" ]]; then
-    echo "WARNING: live bundle hash does not match the local build. The invalidation already" >&2
-    echo "         completed, so this may just need a moment to propagate - re-check shortly." >&2
+    echo "ERROR: live bundle hash does not match the local build." >&2
+    BUNDLE_MISMATCH=true
   fi
+
+  if [[ "$HEADER_CHECK_FAILED" == true || "$BUNDLE_MISMATCH" == true ]]; then
+    append_deploy_log verified=FAILED
+    echo "ERROR: post-deploy verification failed (see above). The new build is already live -" >&2
+    echo "       roll back with rollback-frontend.sh if it needs undoing." >&2
+    exit 1
+  fi
+  append_deploy_log verified=ok
 fi
 
 echo

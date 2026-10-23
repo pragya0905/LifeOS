@@ -15,21 +15,34 @@
 # what's currently live. `cp --recursive` has no such skip logic; it unconditionally
 # overwrites every object every time.
 #
-# Usage: ./rollback-frontend.sh [--dry-run] <backup-dir>
+# Usage: ./rollback-frontend.sh [--dry-run] [--allow-unverified-backup] <backup-dir>
+#   --allow-unverified-backup   Required if <backup-dir> has no SHA256SUMS manifest (backups
+#                               made before checksums existed). Without it, the rollback
+#                               refuses, since there's no way to tell whether such a backup
+#                               is intact.
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+GIT_SHORT_HASH="$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
 
 BUCKET="lifeos-frontend-dev-593110023904"
 DISTRIBUTION_ID="E39P84TZAUU8DG"
 CLOUDFRONT_DOMAIN="d1t6ezlql25na7.cloudfront.net"
 REGION="ap-southeast-2"
 BACKUP_ROOT="$HOME/lifeos-backups"
+DEPLOY_LOG="$BACKUP_ROOT/deploy-log.txt"
 
 DRY_RUN=false
+ALLOW_UNVERIFIED=false
 BACKUP_DIR=""
 for arg in "$@"; do
   case "$arg" in
     --dry-run)
       DRY_RUN=true
+      ;;
+    --allow-unverified-backup)
+      ALLOW_UNVERIFIED=true
       ;;
     -*)
       echo "Unknown flag: '$arg'." >&2
@@ -37,7 +50,7 @@ for arg in "$@"; do
       ;;
     *)
       if [[ -n "$BACKUP_DIR" ]]; then
-        echo "Usage: $0 [--dry-run] <backup-dir>" >&2
+        echo "Usage: $0 [--dry-run] [--allow-unverified-backup] <backup-dir>" >&2
         exit 1
       fi
       BACKUP_DIR="$arg"
@@ -46,7 +59,7 @@ for arg in "$@"; do
 done
 
 if [[ -z "$BACKUP_DIR" ]]; then
-  echo "Usage: $0 [--dry-run] <backup-dir>" >&2
+  echo "Usage: $0 [--dry-run] [--allow-unverified-backup] <backup-dir>" >&2
   echo "  <backup-dir> is a local directory previously downloaded via:" >&2
   echo "    aws s3 sync s3://$BUCKET/ <backup-dir>/ --region $REGION" >&2
   exit 1
@@ -87,6 +100,24 @@ for required in index.html sw.js assets; do
 done
 echo "    Backup directory looks valid: $BACKUP_DIR"
 
+if [[ -f "$BACKUP_DIR/SHA256SUMS" ]]; then
+  echo "    Verifying checksum manifest..."
+  if ! (cd "$BACKUP_DIR" && shasum -a 256 -c SHA256SUMS --quiet); then
+    echo "ERROR: checksum verification failed for '$BACKUP_DIR' - it may be corrupted or tampered with." >&2
+    echo "       Refusing to restore from it." >&2
+    exit 1
+  fi
+  echo "    Checksum manifest verified OK."
+else
+  if [[ "$ALLOW_UNVERIFIED" != true ]]; then
+    echo "ERROR: '$BACKUP_DIR' has no SHA256SUMS manifest, so its integrity can't be verified." >&2
+    echo "       Refusing to restore. If you're sure this backup is intact, re-run with" >&2
+    echo "       --allow-unverified-backup." >&2
+    exit 1
+  fi
+  echo "    WARNING: no SHA256SUMS manifest - proceeding unverified (--allow-unverified-backup given)." >&2
+fi
+
 echo
 echo "LifeOs frontend rollback$( [[ "$DRY_RUN" == true ]] && echo " (DRY RUN - no writes will be made)" )"
 echo "  Restoring from: $BACKUP_DIR"
@@ -102,6 +133,12 @@ if [[ "$DRY_RUN" != true ]]; then
   fi
 fi
 
+# Appends one line per call to the deploy log. Only ever called on a real (non-dry) run.
+append_rollback_log() {
+  mkdir -p "$BACKUP_ROOT"
+  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)  $GIT_SHORT_HASH  $CALLER_ARN  backup=$PRE_ROLLBACK_BACKUP_DIR  restored-from=$BACKUP_DIR  $*" >> "$DEPLOY_LOG"
+}
+
 echo
 echo "==> [1/5] Backing up the CURRENT live state before restoring over it..."
 if [[ "$DRY_RUN" == true ]]; then
@@ -111,9 +148,15 @@ else
   mkdir -p "$PRE_ROLLBACK_BACKUP_DIR"
   aws s3 sync "s3://$BUCKET/" "$PRE_ROLLBACK_BACKUP_DIR/" --region "$REGION"
 
-  BUCKET_SUMMARY="$(aws s3 ls "s3://$BUCKET" --recursive --summarize --region "$REGION")"
-  BUCKET_COUNT="$(echo "$BUCKET_SUMMARY" | grep 'Total Objects:' | awk '{print $NF}')"
-  BUCKET_BYTES="$(echo "$BUCKET_SUMMARY" | grep 'Total Size:' | awk '{print $NF}')"
+  # Per-object sizes totalled with awk across ALL pages - see deploy-frontend.sh for why a
+  # JMESPath length()/sum() would undercount a multi-page bucket. Folder placeholders ("/"
+  # keys) are excluded because `s3 sync` never downloads them.
+  # shellcheck disable=SC2016
+  BUCKET_TOTALS="$(aws s3api list-objects-v2 --bucket "$BUCKET" --region "$REGION" \
+    --query 'Contents[?!ends_with(Key, `/`)].Size' --output text \
+    | awk '$0!="None"{for(i=1;i<=NF;i++){if($i!="None"){n++; s+=$i}}} END{print n+0, s+0}')"
+  BUCKET_COUNT="${BUCKET_TOTALS%% *}"
+  BUCKET_BYTES="${BUCKET_TOTALS##* }"
   SNAPSHOT_COUNT="$(find "$PRE_ROLLBACK_BACKUP_DIR" -type f | wc -l | tr -d ' ')"
   SNAPSHOT_BYTES="$(find "$PRE_ROLLBACK_BACKUP_DIR" -type f -exec stat -f%z {} \; | awk '{sum+=$1} END {print sum+0}')"
 
@@ -131,6 +174,10 @@ else
       exit 1
     fi
   done
+
+  echo "    Writing checksum manifest..."
+  (cd "$PRE_ROLLBACK_BACKUP_DIR" && find . -type f ! -name "SHA256SUMS" -exec shasum -a 256 {} \; > SHA256SUMS)
+
   echo "    Pre-rollback snapshot verified OK: $PRE_ROLLBACK_BACKUP_DIR"
 fi
 
@@ -149,7 +196,9 @@ run_aws s3 cp "$BACKUP_DIR/" "s3://$BUCKET/" \
   --exclude "assets/*" \
   --exclude "index.html" \
   --exclude "sw.js" \
-  --exclude "manifest.webmanifest"
+  --exclude "manifest.webmanifest" \
+  --exclude "*.DS_Store" \
+  --exclude "SHA256SUMS"
 
 echo "    Restoring index.html, sw.js, manifest.webmanifest with Cache-Control: no-cache..."
 run_aws s3 cp "$BACKUP_DIR/index.html" "s3://$BUCKET/index.html" \
@@ -186,6 +235,7 @@ else
     --id "$INVALIDATION_ID" \
     --region "$REGION"
   echo "    Invalidation completed."
+  append_rollback_log status=rolled-back
 fi
 
 echo
@@ -216,9 +266,11 @@ else
   fi
 
   if [[ "$HEADER_CHECK_FAILED" == true ]]; then
+    append_rollback_log verified=FAILED
     echo "ERROR: one or more live Cache-Control headers are wrong after rollback." >&2
     exit 1
   fi
+  append_rollback_log verified=ok
 fi
 
 echo
