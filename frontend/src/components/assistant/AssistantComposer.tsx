@@ -18,9 +18,8 @@ export function AssistantComposer({
   onSubmit,
   sending,
   onStop,
-  listening,
   voiceSupported,
-  onToggleVoice,
+  onOpenVoice,
   attachmentTray,
   hasContent,
   canSend,
@@ -34,9 +33,9 @@ export function AssistantComposer({
   onSubmit: () => void;
   sending: boolean;
   onStop: () => void;
-  listening: boolean;
   voiceSupported: boolean;
-  onToggleVoice: () => void;
+  // The mic opens voice mode and nothing else (dictating into the field is gone).
+  onOpenVoice: () => void;
   attachmentTray: ReactNode;
   // Text or any attachment in the tray — decides whether the send slot shows at all.
   hasContent: boolean;
@@ -120,14 +119,9 @@ export function AssistantComposer({
         ) : voiceSupported ? (
           <button
             type="button"
-            onClick={onToggleVoice}
-            aria-label={listening ? "Stop listening" : "Start voice input"}
-            aria-pressed={listening}
-            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors ${
-              listening
-                ? "bg-alert text-paper-card"
-                : "text-ink-muted hover:bg-stone/40 dark:text-mist-muted dark:hover:bg-stone-dark/40"
-            }`}
+            onClick={onOpenVoice}
+            aria-label="Start voice conversation"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-mist/70 text-ink transition-colors hover:bg-stone/60 dark:bg-stone-dark/60 dark:text-paper dark:hover:bg-stone-dark"
           >
             <Icon icon={Mic} size={18} />
           </button>

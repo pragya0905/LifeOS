@@ -79,7 +79,7 @@ function Meta({ part }: { part: MetaPart }) {
 
 type Phase = "idle" | "undoing" | "removed" | "redoing";
 
-function ResultCard({ entry }: { entry: ToolResultEntry }) {
+function ResultCard({ entry, tapThrough }: { entry: ToolResultEntry; tapThrough: boolean }) {
   const { request } = useApi();
   const [phase, setPhase] = useState<Phase>("idle");
   const [failed, setFailed] = useState<"undo" | "redo" | null>(null);
@@ -132,7 +132,7 @@ function ResultCard({ entry }: { entry: ToolResultEntry }) {
           removed ? "border-dashed !bg-transparent dark:!bg-transparent" : ""
         }`}
       >
-        {!removed && (
+        {!removed && tapThrough && (
           <Link
             to={page.path}
             aria-label={`Open ${page.label}: ${present.title}`}
@@ -261,6 +261,9 @@ export function AssistantToolCards({
   reply,
   canRetry,
   onRetry,
+  cap = STACK_CAP,
+  onShowMore,
+  tapThrough = true,
 }: {
   entries: ToolResultEntry[];
   failures: ToolFailure[];
@@ -269,21 +272,32 @@ export function AssistantToolCards({
   reply: ReactNode;
   canRetry: boolean;
   onRetry: () => void;
+  // How many cards show before the rest are folded away.
+  cap?: number;
+  // When set, the folded cards are not expanded in place: the button reads "N more in chat" and
+  // calls this instead (the voice screen sends you to the chat, where they all are).
+  onShowMore?: () => void;
+  // Whether a card is a link to its list page. Off in voice, so a tap cannot leave the session.
+  tapThrough?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   if (entries.length === 0 && failures.length === 0 && quietNotes.length === 0) return null;
 
-  const shown = expanded ? entries : entries.slice(0, STACK_CAP);
+  const shown = expanded && !onShowMore ? entries : entries.slice(0, cap);
   const hidden = entries.length - shown.length;
 
   return (
     <div className="mt-2.5 flex flex-col gap-2">
       {shown.map((entry, i) => (
-        <ResultCard key={i} entry={entry} />
+        <ResultCard key={i} entry={entry} tapThrough={tapThrough} />
       ))}
       {hidden > 0 && (
-        <button type="button" onClick={() => setExpanded(true)} className={`${buttonBase} border border-stone dark:border-stone-dark ${actionText}`}>
-          Show {hidden} more
+        <button
+          type="button"
+          onClick={() => (onShowMore ? onShowMore() : setExpanded(true))}
+          className={`${buttonBase} border border-stone dark:border-stone-dark ${actionText}`}
+        >
+          {onShowMore ? `${hidden} more in chat` : `Show ${hidden} more`}
         </button>
       )}
       {failures.map((f, i) => (

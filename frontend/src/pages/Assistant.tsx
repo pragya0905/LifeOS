@@ -13,20 +13,22 @@ import {
   formatMegabytes,
   usePendingAttachments,
 } from "../hooks/usePendingAttachments";
-import { useSpeechToText } from "../hooks/useSpeechToText";
+import { useVoiceSession } from "../hooks/useVoiceSession";
 import { useViewportHeight } from "../hooks/useViewportHeight";
 import { describeToolUse } from "../lib/toolLabels";
-import VoiceMode from "../components/VoiceMode";
 import { useToast } from "../components/Toast";
 import type { LayoutOutletContext } from "../components/Layout";
 import { AssistantHeader } from "../components/assistant/AssistantHeader";
 import { AssistantMessageList } from "../components/assistant/AssistantMessageList";
 import { AssistantComposer } from "../components/assistant/AssistantComposer";
 import { AssistantAttachmentTray } from "../components/assistant/AssistantAttachmentTray";
+import { VoiceScreen } from "../components/assistant/VoiceScreen";
+import { VoiceBanner } from "../components/assistant/VoiceBanner";
 import { AssistantHistorySheet, type ConversationSummary } from "../components/assistant/AssistantHistorySheet";
 import type { ChatMessage } from "../components/assistant/types";
-import { openConversation, toChatMessages } from "../lib/chatHistory";
+import { openConversation } from "../lib/chatHistory";
 import { ToolCallTracker, type ToolResultEntry, type StreamOutcome } from "../lib/toolCards";
+import { isActive } from "../lib/voiceMachine";
 import { errorText, primaryButton } from "../components/ui";
 
 const CONVERSATION_ID_KEY = "lifeos_assistant_conversation_id";
@@ -89,7 +91,7 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
   const [statusLabel, setStatusLabel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [voiceModeOpen, setVoiceModeOpen] = useState(false);
+  const [endDismissed, setEndDismissed] = useState(false);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   // Opening a conversation from the sheet: the sheet stays open and shows the failure, with Retry.
@@ -118,19 +120,21 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
 
   const viewportHeight = useViewportHeight();
 
-  const {
-    supported: voiceSupported,
-    listening,
-    error: voiceError,
-    start: startListening,
-    stop: stopListening,
-  } = useSpeechToText((transcript, isFinal) => {
-    setText(transcript);
-    if (isFinal && transcript.trim()) {
-      sendMessage(transcript.trim());
-      setText("");
-    }
+  const voice = useVoiceSession({
+    getConversationId: () => conversationIdRef.current,
+    onConversationId: (id) => {
+      conversationIdRef.current = id;
+      persistConversationId(id);
+    },
+    initialLang: "en-IN",
+    initialMuted: loadMuted(),
   });
+  const voiceStatus = voice.state.status;
+
+  // Switching to typing puts the cursor in the composer straight away.
+  useEffect(() => {
+    if (voiceStatus === "typing") textareaRef.current?.focus();
+  }, [voiceStatus]);
 
   useEffect(() => {
     if (wasNearBottomRef.current) {
@@ -156,6 +160,7 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
   }
 
   function startNewConversation() {
+    voice.end();
     window.speechSynthesis?.cancel();
     conversationIdRef.current = undefined;
     persistConversationId(undefined);
@@ -196,6 +201,7 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
       setOpenError(result.reason);
       return;
     }
+    voice.end();
     conversationIdRef.current = conversationId;
     persistConversationId(conversationId);
     setMessages(result.messages);
@@ -218,7 +224,6 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
     message: string,
     options?: { skipUserBubble?: boolean; fromComposer?: boolean; retryAttachments?: AssistantAttachmentRef[] },
   ) {
-    if (listening) stopListening();
     const retrying = options?.retryAttachments !== undefined;
     if (!retrying && (attachments.anyUploading || attachments.overLimit)) {
       setError(
@@ -408,13 +413,9 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
     await sendMessage(trimmed, { fromComposer: true });
   }
 
-  function handleToggleVoice() {
-    if (listening) {
-      stopListening();
-      return;
-    }
-    setText("");
-    startListening();
+  function openVoice() {
+    setEndDismissed(false);
+    voice.open();
   }
 
   async function copyMessage(content: string) {
@@ -440,35 +441,8 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
     sendMessage(last.content, { skipUserBubble: true, retryAttachments: last.attachments ?? [] });
   }
 
-  async function handleExitVoiceMode() {
-    setVoiceModeOpen(false);
-    if (conversationIdRef.current) {
-      try {
-        const data = await request<{ turns: { role: "user" | "assistant"; content: string }[] }>(
-          `/assistant/conversations/${conversationIdRef.current}`,
-        );
-        setMessages(toChatMessages(data.turns));
-      } catch {
-        // Best-effort resync — the existing text-mode messages just stay as they were.
-      }
-    }
-  }
-
-  if (voiceModeOpen) {
-    return (
-      <VoiceMode
-        conversationId={conversationIdRef.current}
-        onConversationId={(id) => {
-          conversationIdRef.current = id;
-          persistConversationId(id);
-        }}
-        muted={loadMuted()}
-        onClose={handleExitVoiceMode}
-      />
-    );
-  }
-
   return (
+    <>
     <div
       className={`fixed inset-x-0 top-0 z-20 flex flex-col bg-paper md:left-56 dark:bg-ink-bg ${
         // Reserves room for the (mobile-only) bottom tab bar, which Layout hides outright
@@ -508,8 +482,12 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
       />
 
       {error && <p className={`shrink-0 px-4 py-1 ${errorText}`}>{error}</p>}
-      {listening && <p className="shrink-0 px-4 py-1 text-xs text-alert">Listening…</p>}
-      {voiceError && <p className={`shrink-0 px-4 py-1 text-xs ${errorText}`}>{voiceError}</p>}
+      {voiceStatus === "typing" && (
+        <VoiceBanner mode="typing" endReason={null} onResume={voice.resume} onStartAgain={openVoice} onDismiss={() => {}} />
+      )}
+      {voiceStatus === "ended" && voice.state.endReason !== "user" && !endDismissed && (
+        <VoiceBanner mode="ended" endReason={voice.state.endReason} onResume={voice.resume} onStartAgain={openVoice} onDismiss={() => setEndDismissed(true)} />
+      )}
 
       <input
         ref={fileInputRef}
@@ -531,9 +509,8 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
         onSubmit={triggerSend}
         sending={sending}
         onStop={stopStreaming}
-        listening={listening}
-        voiceSupported={voiceSupported}
-        onToggleVoice={handleToggleVoice}
+        voiceSupported={voice.supported && !onboarding}
+        onOpenVoice={openVoice}
         attachmentTray={
           <AssistantAttachmentTray
             items={attachments.items}
@@ -574,5 +551,25 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
         />
       )}
     </div>
+
+    {isActive(voiceStatus) && (
+      <VoiceScreen
+        state={voice.state}
+        reply={voice.reply}
+        toolLabel={voice.toolLabel}
+        cards={voice.cards}
+        errorMessage={voice.errorMessage}
+        awake={false}
+        onPause={voice.pause}
+        onResume={voice.resume}
+        onInterrupt={voice.interrupt}
+        onRetry={voice.retry}
+        onType={voice.typeInstead}
+        onEnd={voice.end}
+        onToggleMute={voice.toggleMute}
+        onSetLang={voice.setLang}
+      />
+    )}
+    </>
   );
 }
