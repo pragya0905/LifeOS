@@ -39,6 +39,9 @@ export type AssistantStreamEvent =
   // is absent for an older backend, a failed call, or a tool with nothing to summarize; never
   // assume it's there.
   | { type: "tool_use"; name: string; result?: AssistantToolResultSummary }
+  // Not sent by the backend today. If a future backend reports a failed tool call outright,
+  // this is the shape the confirmation cards will pick up (see ToolCallTracker).
+  | { type: "tool_error"; name: string; message?: string }
   | { type: "done"; conversationId: string }
   | { type: "error"; message: string };
 

@@ -25,6 +25,8 @@ import { AssistantComposer } from "../components/assistant/AssistantComposer";
 import { AssistantAttachmentTray } from "../components/assistant/AssistantAttachmentTray";
 import { AssistantHistorySheet, type ConversationSummary } from "../components/assistant/AssistantHistorySheet";
 import type { ChatMessage } from "../components/assistant/types";
+import { toChatMessages } from "../lib/chatHistory";
+import { ToolCallTracker, type ToolResultEntry, type StreamOutcome } from "../lib/toolCards";
 import { errorText, primaryButton } from "../components/ui";
 
 const CONVERSATION_ID_KEY = "lifeos_assistant_conversation_id";
@@ -46,21 +48,6 @@ function persistConversationId(id: string | undefined) {
   } catch {
     // Best-effort — just won't persist across reloads.
   }
-}
-
-// The server stores a turn's files as a trailing "[Attached a.png, b.pdf]" line (see chatAssistant's
-// persistedUserText). This turns that back into names on the bubble, so reloaded history shows
-// every attachment, not just the first.
-const STORED_ATTACHMENTS = /(?:^|\n\n)\[Attached ([^\]]+)\]$/;
-
-function toChatMessages(turns: { role: "user" | "assistant"; content: string }[]): ChatMessage[] {
-  return turns.map((t) => {
-    const match = t.role === "user" ? t.content.match(STORED_ATTACHMENTS) : null;
-    if (match && match.index !== undefined) {
-      return { role: "user", content: t.content.slice(0, match.index), attachmentNames: match[1].split(", ") };
-    }
-    return { role: t.role, content: t.content };
-  });
 }
 
 // The header has no toggle for this anymore (the approved Part 2 header is title + New +
@@ -268,7 +255,11 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
     // updater, for the same StrictMode-double-invoke reason as before: React dev-mode
     // double-invokes updater functions, and mutating this flag inside one flipped it early.
     let assistantMessageStarted = false;
-    let pendingToolResults: NonNullable<ChatMessage["toolResults"]> = [];
+    let pendingToolResults: ToolResultEntry[] = [];
+    const tracker = new ToolCallTracker();
+    let resultCount = 0;
+    let sawDone = false;
+    let errorMessage: string | undefined;
 
     function appendToLastAssistantMessage(delta: string) {
       if (!assistantMessageStarted) {
@@ -292,17 +283,50 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
       }
     }
 
-    function appendToolResult(result: NonNullable<ChatMessage["toolResults"]>[number]) {
+    function appendToolResult(entry: ToolResultEntry) {
+      resultCount += 1;
       if (!assistantMessageStarted) {
-        pendingToolResults = [...pendingToolResults, result];
+        pendingToolResults = [...pendingToolResults, entry];
         return;
       }
       setMessages((prev) => {
         const next = [...prev];
         const last = next[next.length - 1];
-        next[next.length - 1] = { ...last, toolResults: [...(last.toolResults ?? []), result] };
+        next[next.length - 1] = { ...last, toolResults: [...(last.toolResults ?? []), entry] };
         return next;
       });
+    }
+
+    // Once the stream is over, any tool that started and never returned a result becomes a
+    // failure card, and reads/deletes become quiet notes. If the reply never produced a message
+    // (no text), one is created to hold them.
+    function settleToolCalls(outcome: StreamOutcome) {
+      const toolFailures = tracker.finish(outcome, errorMessage, resultCount);
+      const quietNotes = tracker.quiet;
+      if (toolFailures.length === 0 && quietNotes.length === 0) return;
+      const patch = {
+        toolFailures: toolFailures.length > 0 ? toolFailures : undefined,
+        quietNotes: quietNotes.length > 0 ? [...quietNotes] : undefined,
+      };
+      if (assistantMessageStarted) {
+        setMessages((prev) => {
+          const next = [...prev];
+          next[next.length - 1] = { ...next[next.length - 1], ...patch };
+          return next;
+        });
+      } else {
+        assistantMessageStarted = true;
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: "",
+            createdAt: new Date().toISOString(),
+            toolResults: pendingToolResults.length > 0 ? pendingToolResults : undefined,
+            ...patch,
+          },
+        ]);
+      }
     }
 
     try {
@@ -313,16 +337,21 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
           if (event.type === "text") {
             replyStarted = true;
             appendToLastAssistantMessage(event.delta);
-          } else if (event.type === "tool_use") {
+          } else if (event.type === "tool_use" || event.type === "tool_error") {
             replyStarted = true;
-            setStatusLabel(describeToolUse(event.name));
-            if (event.result) appendToolResult(event.result);
+            if (event.type === "tool_use") setStatusLabel(describeToolUse(event.name));
+            const card = tracker.handle(event);
+            if (card) appendToolResult(card);
           } else if (event.type === "done") {
             replyStarted = true;
+            sawDone = true;
             conversationIdRef.current = event.conversationId;
             persistConversationId(event.conversationId);
           } else if (event.type === "error") {
-            if (replyStarted) setError(event.message);
+            // With a tool still running, the failure card carries this message instead of a
+            // separate red line.
+            if (tracker.hasPending()) errorMessage = event.message;
+            else if (replyStarted) setError(event.message);
             else rollBack(event.message);
           }
         },
@@ -330,9 +359,14 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
         refs,
         controller.signal,
       );
+      // The stream closed cleanly: finished, ended on an error event, or just stopped with no
+      // "done" (a timeout looks like this).
+      settleToolCalls(sawDone ? "done" : errorMessage !== undefined ? "error" : "ended");
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
         // A user-initiated Stop — not a failure, nothing to show.
+      } else if (replyStarted && tracker.hasPending()) {
+        settleToolCalls("ended");
       } else if (!replyStarted) {
         rollBack(
           err instanceof AssistantRequestError

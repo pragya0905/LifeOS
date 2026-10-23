@@ -4,7 +4,7 @@ import remarkGfm from "remark-gfm";
 import { ArrowDown, Copy, Paperclip, RotateCcw, Sparkles } from "lucide-react";
 import { Icon } from "../Icon";
 import { IconButton } from "../IconButton";
-import { AssistantToolResultCard } from "./AssistantToolResultCard";
+import { AssistantToolCards } from "./AssistantToolCards";
 import type { ChatMessage } from "./types";
 
 const markdownComponents: Components = {
@@ -141,22 +141,41 @@ export function AssistantMessageList({
                     )}
                   </button>
                 ) : (
-                  <div className="flex max-w-full gap-2">
+                  <div className="flex w-full max-w-full gap-2">
                     <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-bloom-soft text-bloom dark:bg-bloom-soft-dark dark:text-bloom-light">
                       <Icon icon={Sparkles} size={12} />
                     </div>
                     <div className="min-w-0 flex-1 text-sm leading-[1.6] text-ink dark:text-paper">
-                      <button
-                        type="button"
-                        onClick={() => m.createdAt && onToggleTimestamp(i)}
-                        className="block w-full text-left"
-                      >
-                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                          {m.content}
-                        </ReactMarkdown>
-                      </button>
+                      {/* A failure card that uses the reply as its reason shows that text itself,
+                          so it isn't repeated here above it. */}
+                      {!m.toolFailures?.some((f) => f.useReply) && (
+                        <button
+                          type="button"
+                          onClick={() => m.createdAt && onToggleTimestamp(i)}
+                          className="block w-full text-left"
+                        >
+                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                            {m.content}
+                          </ReactMarkdown>
+                        </button>
+                      )}
 
-                      {m.toolResults?.map((result, ri) => <AssistantToolResultCard key={ri} result={result} />)}
+                      <AssistantToolCards
+                        entries={m.toolResults ?? []}
+                        failures={m.toolFailures ?? []}
+                        quietNotes={m.quietNotes ?? []}
+                        reply={
+                          m.content.trim() ? (
+                            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                              {m.content}
+                            </ReactMarkdown>
+                          ) : (
+                            "The assistant didn't say why."
+                          )
+                        }
+                        canRetry={i === lastAssistantIndex && !sending}
+                        onRetry={onRetry}
+                      />
 
                       <div className="-ml-2.5 -my-1.5 flex items-center">
                         <IconButton icon={Copy} iconSize={14} label="Copy" onClick={() => onCopy(m.content)} />
