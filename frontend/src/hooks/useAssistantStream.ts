@@ -56,7 +56,7 @@ export function useAssistantStream() {
       message: string,
       conversationId: string | undefined,
       onEvent: (event: AssistantStreamEvent) => void,
-      mode?: "onboarding",
+      mode?: "onboarding" | "voice",
       attachments?: AssistantAttachmentRef[],
       // Lets a caller cancel mid-stream (a Stop button, or unmounting while a reply is still
       // streaming in) — the fetch and the read loop below both honor it. A caller-initiated
