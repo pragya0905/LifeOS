@@ -358,6 +358,8 @@ function TaskCard({
   setEditDueTime,
   editReminderLead,
   setEditReminderLead,
+  editBlockProtected,
+  setEditBlockProtected,
   editEstimatedHours,
   setEditEstimatedHours,
   editCategory,
@@ -386,6 +388,8 @@ function TaskCard({
   setEditDueTime: (v: string) => void;
   editReminderLead: number;
   setEditReminderLead: (v: number) => void;
+  editBlockProtected: boolean;
+  setEditBlockProtected: (v: boolean) => void;
   editEstimatedHours: string;
   setEditEstimatedHours: (v: string) => void;
   editCategory: string;
@@ -537,6 +541,10 @@ function TaskCard({
             <label className={label}>Est. hours</label>
             <input type="number" min={0} step="0.5" value={editEstimatedHours} onChange={(e) => setEditEstimatedHours(e.target.value)} className={`w-20 ${input}`} />
           </div>
+          <label className={`flex items-center gap-1.5 pb-2 ${label}`}>
+            <input type="checkbox" checked={editBlockProtected} onChange={(e) => setEditBlockProtected(e.target.checked)} className="h-4 w-4" />
+            Protected time (set aside, not a to-do)
+          </label>
           <CategoryEditor value={editCategory} onChange={setEditCategory} />
           <RecurrenceEditor value={editRecurrence} onChange={setEditRecurrence} />
           <label className={`flex items-center gap-1.5 pb-2 ${label}`}>
@@ -588,6 +596,7 @@ export default function Tasks() {
   const [dueTime, setDueTime] = useState("");
   const [estimatedHours, setEstimatedHours] = useState("");
   const [reminderLead, setReminderLead] = useState(0);
+  const [blockProtected, setBlockProtected] = useState(false);
   const [category, setCategory] = useState("");
   const [priority, setPriority] = useState<TaskPriority>("Medium");
   const [scheduleTime, setScheduleTime] = useState("");
@@ -604,6 +613,7 @@ export default function Tasks() {
   const [editDueTime, setEditDueTime] = useState("");
   const [editEstimatedHours, setEditEstimatedHours] = useState("");
   const [editReminderLead, setEditReminderLead] = useState(0);
+  const [editBlockProtected, setEditBlockProtected] = useState(false);
   const [editCategory, setEditCategory] = useState("");
   const [editSuggestPriority, setEditSuggestPriority] = useState(false);
   const [editRecurrence, setEditRecurrence] = useState<TaskRecurrence | undefined>(undefined);
@@ -696,6 +706,7 @@ export default function Tasks() {
           dueAtUtc: computeDueAtUtc(dueDate, dueTime),
           estimatedHours: estimatedHours ? Number(estimatedHours) : undefined,
           ...(dueTime ? { reminderLeadMinutes: reminderLead } : {}),
+          blockType: blockProtected ? "protected" : "task",
           category: category.trim() || undefined,
           voiceInput: usedVoice,
           priority,
@@ -711,6 +722,7 @@ export default function Tasks() {
       setDueTime("");
       setEstimatedHours("");
       setReminderLead(0);
+      setBlockProtected(false);
       setCategory("");
       setScheduleTime("");
       setPriority("Medium");
@@ -797,6 +809,7 @@ export default function Tasks() {
     setEditDueTime(task.dueTime ?? "");
     setEditEstimatedHours(task.estimatedHours !== undefined ? String(task.estimatedHours) : "");
     setEditReminderLead(task.reminderLeadMinutes ?? 0);
+    setEditBlockProtected(task.blockType === "protected");
     setEditCategory(task.category ?? "");
     setEditSuggestPriority(false);
     setEditRecurrence(task.recurrence);
@@ -811,6 +824,7 @@ export default function Tasks() {
       dueAtUtc: computeDueAtUtc(editDueDate, editDueTime),
       estimatedHours: editEstimatedHours ? Number(editEstimatedHours) : undefined,
       ...(editDueTime ? { reminderLeadMinutes: editReminderLead } : {}),
+      blockType: editBlockProtected ? "protected" : "task",
       category: editCategory.trim(),
       recurrence: editRecurrence,
       suggestPriority: editSuggestPriority || undefined,
@@ -922,6 +936,10 @@ export default function Tasks() {
           <label className={label}>Est. hours</label>
           <input type="number" min={0} step="0.5" value={estimatedHours} onChange={(e) => setEstimatedHours(e.target.value)} className={`w-20 ${input}`} />
         </div>
+        <label className={`flex items-center gap-1.5 pb-2 ${label}`}>
+          <input type="checkbox" checked={blockProtected} onChange={(e) => setBlockProtected(e.target.checked)} className="h-4 w-4" />
+          Protected time (set aside, not a to-do)
+        </label>
         <CategoryEditor value={category} onChange={setCategory} />
         <RecurrenceEditor value={recurrence} onChange={setRecurrence} />
         <div>
@@ -1035,6 +1053,8 @@ export default function Tasks() {
                     setEditDueTime={setEditDueTime}
                     editReminderLead={editReminderLead}
                     setEditReminderLead={setEditReminderLead}
+                    editBlockProtected={editBlockProtected}
+                    setEditBlockProtected={setEditBlockProtected}
                     editEstimatedHours={editEstimatedHours}
                     setEditEstimatedHours={setEditEstimatedHours}
                     editCategory={editCategory}
