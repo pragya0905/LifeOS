@@ -9,9 +9,10 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
   const category = event.pathParameters?.category;
   if (!category) return errorResponse(400, "Missing category");
 
-  await ddb.send(
-    new DeleteCommand({ TableName: process.env.BUDGETS_TABLE_NAME, Key: { userId, category } }),
+  // ReturnValues ALL_OLD: the removed item comes back only if one existed.
+  const removed = await ddb.send(
+    new DeleteCommand({ TableName: process.env.BUDGETS_TABLE_NAME, Key: { userId, category }, ReturnValues: "ALL_OLD" }),
   );
 
-  return jsonResponse(200, { deleted: true });
+  return jsonResponse(200, { deleted: removed.Attributes !== undefined });
 };

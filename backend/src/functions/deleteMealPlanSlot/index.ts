@@ -14,12 +14,14 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
   if (!DATE_RE.test(date)) return errorResponse(400, "date must be YYYY-MM-DD");
   if (!mealType) return errorResponse(400, "Missing meal type");
 
-  await ddb.send(
+  // ReturnValues ALL_OLD: the removed item comes back only if one existed.
+  const removed = await ddb.send(
     new DeleteCommand({
       TableName: process.env.MEAL_PLAN_TABLE_NAME,
       Key: { userId, dateMealType: `${date}#${mealType}` },
+      ReturnValues: "ALL_OLD",
     }),
   );
 
-  return jsonResponse(200, { deleted: true });
+  return jsonResponse(200, { deleted: removed.Attributes !== undefined });
 };

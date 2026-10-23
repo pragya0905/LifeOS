@@ -9,7 +9,10 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
   const taskId = event.pathParameters?.id;
   if (!taskId) return errorResponse(400, "Missing task id");
 
-  await ddb.send(new DeleteCommand({ TableName: process.env.TASKS_TABLE_NAME, Key: { userId, taskId } }));
+  // ReturnValues ALL_OLD: the removed item comes back only if one existed.
+  const removed = await ddb.send(
+    new DeleteCommand({ TableName: process.env.TASKS_TABLE_NAME, Key: { userId, taskId }, ReturnValues: "ALL_OLD" }),
+  );
 
-  return jsonResponse(200, { deleted: true });
+  return jsonResponse(200, { deleted: removed.Attributes !== undefined });
 };

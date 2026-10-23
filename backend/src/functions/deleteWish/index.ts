@@ -18,7 +18,10 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
   );
   const wish = existing.Item as Wish | undefined;
 
-  if (wish?.imageKeys && wish.imageKeys.length > 0) {
+  // Nothing to delete: report it, and skip the S3 cleanup entirely.
+  if (!wish) return jsonResponse(200, { deleted: false });
+
+  if (wish.imageKeys && wish.imageKeys.length > 0) {
     await s3.send(
       new DeleteObjectsCommand({
         Bucket: process.env.WISH_IMAGES_BUCKET_NAME,
@@ -27,9 +30,10 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     );
   }
 
-  await ddb.send(
-    new DeleteCommand({ TableName: process.env.WISHES_TABLE_NAME, Key: { userId, wishId } }),
+  // A concurrent delete could remove it between the read and here, so report what this call removed.
+  const removed = await ddb.send(
+    new DeleteCommand({ TableName: process.env.WISHES_TABLE_NAME, Key: { userId, wishId }, ReturnValues: "ALL_OLD" }),
   );
 
-  return jsonResponse(200, { deleted: true });
+  return jsonResponse(200, { deleted: removed.Attributes !== undefined });
 };

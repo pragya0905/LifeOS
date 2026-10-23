@@ -9,9 +9,10 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
   const expenseId = event.pathParameters?.id;
   if (!expenseId) return errorResponse(400, "Missing expense id");
 
-  await ddb.send(
-    new DeleteCommand({ TableName: process.env.EXPENSES_TABLE_NAME, Key: { userId, expenseId } }),
+  // ReturnValues ALL_OLD: the removed item comes back only if one existed.
+  const removed = await ddb.send(
+    new DeleteCommand({ TableName: process.env.EXPENSES_TABLE_NAME, Key: { userId, expenseId }, ReturnValues: "ALL_OLD" }),
   );
 
-  return jsonResponse(200, { deleted: true });
+  return jsonResponse(200, { deleted: removed.Attributes !== undefined });
 };
