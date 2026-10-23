@@ -30,10 +30,12 @@ import { openConversation } from "../lib/chatHistory";
 import { ToolCallTracker, type ToolResultEntry, type StreamOutcome } from "../lib/toolCards";
 import { isActive } from "../lib/voiceMachine";
 import { voiceTurnsToMessages } from "../lib/voiceTranscript";
+import { acceptPrivacy, loadLang, loadMuted, privacyAccepted, saveLang, saveMuted } from "../lib/voiceSettings";
+import { useWakeLock } from "../hooks/useWakeLock";
+import { VoicePrivacySheet } from "../components/assistant/VoicePrivacySheet";
 import { errorText, primaryButton } from "../components/ui";
 
 const CONVERSATION_ID_KEY = "lifeos_assistant_conversation_id";
-const MUTED_KEY = "lifeos_assistant_muted";
 const SCROLL_NEAR_BOTTOM_PX = 80;
 
 function loadConversationId(): string | undefined {
@@ -50,17 +52,6 @@ function persistConversationId(id: string | undefined) {
     else localStorage.removeItem(CONVERSATION_ID_KEY);
   } catch {
     // Best-effort — just won't persist across reloads.
-  }
-}
-
-// The header has no toggle for this anymore (the approved Part 2 header is title + New +
-// History, "nothing else") — Part 4 is where voice preferences get a real home in Settings.
-// Until then this just preserves whatever a user previously set via the old toggle, read-only.
-function loadMuted(): boolean {
-  try {
-    return localStorage.getItem(MUTED_KEY) === "1";
-  } catch {
-    return false;
   }
 }
 
@@ -127,10 +118,15 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
       conversationIdRef.current = id;
       persistConversationId(id);
     },
-    initialLang: "en-IN",
+    initialLang: loadLang(),
     initialMuted: loadMuted(),
+    onLangChange: saveLang,
+    onMutedChange: saveMuted,
   });
   const voiceStatus = voice.state.status;
+  const [privacyOpen, setPrivacyOpen] = useState(false);
+  // Held while the session is live; let go while paused so the screen can sleep.
+  const awake = useWakeLock(voiceStatus === "listening" || voiceStatus === "thinking" || voiceStatus === "speaking");
 
   // When voice leaves the screen (End, typing, or it ended by itself) the new turns join the chat
   // under one divider. The server already has them, so nothing is re-fetched.
@@ -430,9 +426,15 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
     await sendMessage(trimmed, { fromComposer: true });
   }
 
-  function openVoice() {
+  function startVoice() {
     setEndDismissed(false);
     voice.open();
+  }
+
+  // The first session on this device shows the privacy line before the mic is touched.
+  function openVoice() {
+    if (privacyAccepted()) startVoice();
+    else setPrivacyOpen(true);
   }
 
   async function copyMessage(content: string) {
@@ -569,6 +571,16 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
       )}
     </div>
 
+    <VoicePrivacySheet
+      open={privacyOpen}
+      onContinue={() => {
+        acceptPrivacy();
+        setPrivacyOpen(false);
+        startVoice();
+      }}
+      onCancel={() => setPrivacyOpen(false)}
+    />
+
     {isActive(voiceStatus) && (
       <VoiceScreen
         state={voice.state}
@@ -576,7 +588,7 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
         toolLabel={voice.toolLabel}
         cards={voice.cards}
         errorMessage={voice.errorMessage}
-        awake={false}
+        awake={awake}
         onPause={voice.pause}
         onResume={voice.resume}
         onInterrupt={voice.interrupt}
