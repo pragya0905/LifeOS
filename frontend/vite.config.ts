@@ -26,8 +26,9 @@ export default defineConfig({
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw.ts',
-      injectRegister: 'auto',
-      registerType: 'autoUpdate',
+      // The app registers the worker itself (virtual:pwa-register) so it can ask before updating.
+      injectRegister: null,
+      registerType: 'prompt',
       devOptions: {
         enabled: true,
         type: 'module',

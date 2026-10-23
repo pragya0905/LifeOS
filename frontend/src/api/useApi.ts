@@ -57,7 +57,14 @@ export function useApi() {
 
   async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const method = (options.method ?? "GET").toUpperCase();
-    if (method !== "GET") return doFetch<T>(path, options, method);
+    // Changes need the server: refuse while the device is offline, with a message the page can show,
+    // instead of a raw network error. The page's optimistic update rolls back as for any failure.
+    if (method !== "GET") {
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        throw new Error("You're offline. Changes need a connection.");
+      }
+      return doFetch<T>(path, options, method);
+    }
     // A caller that asks for a fresh read (cache: "no-store", as a user's Retry does) must hit the
     // network. Otherwise a recent answer, even an empty or failed-looking one, would be replayed.
     if (options.cache === "no-store") return doFetch<T>(path, options, method);

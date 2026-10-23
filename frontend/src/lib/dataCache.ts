@@ -37,7 +37,16 @@ export function clearUserCache(userId: string): void {
   }
 }
 
+// The service worker's offline copy of API reads (see sw.ts). Keyed by URL, not user, so it is
+// cleared with the rest on sign-out and when another user takes the device.
+const API_READS_CACHE = "lifeos-api-reads";
+function clearApiReadsCache(): void {
+  if (typeof caches === "undefined") return;
+  caches.delete(API_READS_CACHE).catch(() => {});
+}
+
 export function clearAllCache(): void {
+  clearApiReadsCache();
   for (let i = localStorage.length - 1; i >= 0; i--) {
     const k = localStorage.key(i);
     if (k?.startsWith(CACHE_PREFIX)) localStorage.removeItem(k);
@@ -58,6 +67,7 @@ export function ensureCacheOwner(userId: string): void {
     const owner = localStorage.getItem(OWNER_KEY);
     if (owner === userId) return;
     if (owner) clearUserCache(owner);
+    clearApiReadsCache();
     localStorage.setItem(OWNER_KEY, userId);
   } catch {
     // best-effort

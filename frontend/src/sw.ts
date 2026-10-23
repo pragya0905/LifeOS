@@ -21,6 +21,21 @@ if (manifest.length > 0) {
   registerRoute(new NavigationRoute(createHandlerBoundToURL("/index.html")));
 }
 
+// Offline reads: GET responses from the API are kept so pages still show the last data offline.
+// Only successful responses are stored. The cache is keyed by URL, not user, so the app clears it
+// on sign-out and whenever a different user signs in (see lib/dataCache.ts). Keep the name in sync.
+const API_READS_CACHE = "lifeos-api-reads";
+registerRoute(
+  ({ request, url }) => request.method === "GET" && /\.execute-api\.ap-southeast-2\.amazonaws\.com$/.test(url.hostname),
+  new StaleWhileRevalidate({
+    cacheName: API_READS_CACHE,
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [200] }),
+      new ExpirationPlugin({ maxAgeSeconds: 60 * 60 * 24 * 7, maxEntries: 300 }),
+    ],
+  }),
+);
+
 // Google Fonts: stylesheet checked fresh when online (falls back to cache offline),
 // the actual font files cached long-term since they're immutable per URL.
 registerRoute(
@@ -38,7 +53,11 @@ registerRoute(
   }),
 );
 
-self.skipWaiting();
+// Updates wait for the user: a new worker installs and then sits "waiting" until the page asks it
+// to take over (see components/UpdatePrompt.tsx). Nothing reloads under an open form.
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
+});
 self.addEventListener("activate", () => {
   self.clients.claim();
 });

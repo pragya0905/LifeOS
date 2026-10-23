@@ -10,6 +10,7 @@ import ConfirmSignUp from "./pages/ConfirmSignUp";
 import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
 import { mutedText } from "./components/ui";
+import UpdatePrompt from "./components/UpdatePrompt";
 
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const OnboardingChat = lazy(() => import("./pages/OnboardingChat"));
@@ -37,6 +38,7 @@ export default function App() {
   return (
     <AuthProvider>
       <ToastProvider>
+        <UpdatePrompt />
         <BrowserRouter>
           <Suspense fallback={<PageLoading />}>
             <Routes>
