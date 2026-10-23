@@ -420,15 +420,17 @@ export default function TodayHabits({ date: selectedDate }: { date: string }) {
   const sleepDuration = computeSleepDuration(bedTime, wakeTime);
   const isToday = selectedDate === today();
 
-  const rowLabelClass = "px-1.5 py-3 text-sm font-medium text-ink dark:text-paper sm:px-3";
-  const detailCellClass = "px-1.5 py-3 sm:px-3";
+  const rowLabelClass = "px-1 py-3 text-sm font-medium text-ink dark:text-paper sm:px-3";
+  const detailCellClass = "px-1 py-3 sm:px-3";
 
   function updateGoalDraft(metric: GoalMetric, value: string) {
     setGoalDrafts((prev) => ({ ...prev, [metric]: value }));
   }
 
+  // The habits table is wider than the card's 24px side padding allows on a 360px phone, so the
+  // Sleep and Mood cells were scrolled sideways. The narrower gutter applies only below sm.
   return (
-    <div className={card}>
+    <div className={`${card} max-sm:px-4`}>
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className={sectionLabel}>
           {isToday ? "Today's habits" : "Habits"} ({selectedDate})
