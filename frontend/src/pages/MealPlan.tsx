@@ -286,13 +286,14 @@ export default function MealPlan() {
                     const value = templates[key] ?? "";
                     return (
                       <td key={dayOfWeek} className="p-1 align-top">
-                        <input
-                          type="text"
+                        {/* Two-line textarea, not a one-line input: a meal name wraps instead of being cut off (DESIGN.md). */}
+                        <textarea
+                          rows={2}
                           defaultValue={value}
                           key={value}
                           placeholder="No default"
                           onBlur={(e) => saveTemplate(dayOfWeek, mealType, e.target.value)}
-                          className={`w-full ${input} text-xs`}
+                          className={`w-full resize-none ${input} text-xs`}
                         />
                       </td>
                     );
@@ -339,8 +340,8 @@ export default function MealPlan() {
                     const isInherited = !hasExplicitSlot && pendingText === undefined && Boolean(inheritedText);
                     return (
                       <td key={date} className="p-1 align-top">
-                        <input
-                          type="text"
+                        <textarea
+                          rows={2}
                           defaultValue={value}
                           key={value}
                           placeholder="Tap to plan"
@@ -360,7 +361,7 @@ export default function MealPlan() {
                               saveSlot(date, mealType, e.target.value);
                             }
                           }}
-                          className={`w-full ${input} text-xs ${pendingText !== undefined ? "border-bloom" : ""} ${isInherited ? "italic text-ink-muted dark:text-mist-muted" : ""}`}
+                          className={`w-full resize-none ${input} text-xs ${pendingText !== undefined ? "border-bloom" : ""} ${isInherited ? "italic text-ink-muted dark:text-mist-muted" : ""}`}
                         />
                       </td>
                     );
