@@ -26,7 +26,7 @@ import {
   type TimelineSource,
   type UnscheduledItem,
 } from "../lib/timeline";
-import type { LogEntry, Medication, MealPlanSlot, MedicationLog, MedicationLogStatus, RoutineStepLog, RoutineTemplate, Task } from "../types";
+import type { HabitLog, LogEntry, Medication, MealPlanSlot, MedicationLog, MedicationLogStatus, RoutineStepLog, RoutineTemplate, Task } from "../types";
 
 // Shared horizontal line (see mockups/b5/timeline-B.html): every visible block sits on one line
 // and only takes a second row when it overlaps another in time. Colour codes the kind.
@@ -37,7 +37,13 @@ const LANES: { kind: TimelineKind; label: string; color: string }[] = [
   { kind: "med", label: "Meds", color: "bg-medication" },
   { kind: "meal", label: "Meals", color: "bg-[#c26a8f]" },
   { kind: "task", label: "Tasks", color: "bg-amber" },
+  { kind: "workout", label: "Workouts", color: "bg-success" },
+  { kind: "call", label: "Calls", color: "bg-slate" },
 ];
+
+// A protected task (deep work, commute — time set aside, not a to-do) gets its own colour so
+// it reads differently from an ordinary task even though both are Task records underneath.
+const PROTECTED_COLOR = "bg-ink-muted dark:bg-mist-muted";
 
 // Static background bands so morning, afternoon, evening and night read at a glance.
 const ZONES: { fromHour: number; toHour: number; color: string }[] = [
@@ -57,8 +63,9 @@ const SUB_ROW_PX = 58;
 const WEEKDAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const CYCLE_HINT_KEY = "lifeos.timeline.cycleHints";
 
-function colorFor(kind: TimelineKind): string {
-  return LANES.find((l) => l.kind === kind)?.color ?? "bg-stone";
+function colorFor(block: TimelineBlock): string {
+  if (block.protected) return PROTECTED_COLOR;
+  return LANES.find((l) => l.kind === block.kind)?.color ?? "bg-stone";
 }
 
 // Every horizontal position is a percentage of the full-day width, so a zoomed chart is just
@@ -93,6 +100,8 @@ interface TimelineData {
   sleep: LogEntry[];
   cycle: LogEntry[];
   meals: MealPlanSlot[];
+  habits: HabitLog[];
+  calls: LogEntry[];
   routineLogs: RoutineStepLog[];
   medicationLogs: MedicationLog[];
 }
@@ -110,10 +119,16 @@ export default function Timeline() {
   const [data, setData] = useState<TimelineData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [zoom, setZoom] = useState<Zoom>(24);
-  const [filters, setFilters] = useState<Record<TimelineKind, boolean>>({ sleep: true, routine: true, med: true, meal: true, task: true });
+  const [filters, setFilters] = useState<Record<TimelineKind, boolean>>({ sleep: true, routine: true, med: true, meal: true, task: true, workout: true, call: true });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [now, setNow] = useState<number>(() => nowMinutes());
   const [cycleHintsOn, setCycleHintsOn] = useState<boolean>(readCycleHintsOn);
+  const [suggestions, setSuggestions] = useState<{ id: string; startMin: number }[] | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+  const [reflection, setReflection] = useState<string | null>(null);
+  const [reflecting, setReflecting] = useState(false);
+  const [reflectError, setReflectError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -138,10 +153,12 @@ export default function Timeline() {
       request<{ entries: LogEntry[] }>(`/logs?logType=sleep&from=${selectedDate}&to=${selectedDate}`, { signal }),
       request<{ entries: LogEntry[] }>("/logs?logType=cycle", { signal }),
       request<{ slots: MealPlanSlot[] }>(`/meal-plan?from=${selectedDate}&to=${selectedDate}`, { signal }),
+      request<{ habits: HabitLog[] }>(`/habits/${selectedDate}`, { signal }),
+      request<{ entries: LogEntry[] }>(`/logs?logType=call&from=${selectedDate}&to=${selectedDate}`, { signal }),
       request<{ logs: RoutineStepLog[] }>(`/routine-logs/${selectedDate}`, { signal }),
       request<{ logs: MedicationLog[] }>(`/medication-logs/${selectedDate}`, { signal }),
     ])
-      .then(([routines, medications, tasks, sleep, cycle, meals, routineLogs, medicationLogs]) => {
+      .then(([routines, medications, tasks, sleep, cycle, meals, habits, calls, routineLogs, medicationLogs]) => {
         setData({
           routines: routines.routines,
           medications: medications.medications,
@@ -149,6 +166,8 @@ export default function Timeline() {
           sleep: sleep.entries,
           cycle: cycle.entries,
           meals: meals.slots,
+          habits: habits.habits,
+          calls: calls.entries,
           routineLogs: routineLogs.logs,
           medicationLogs: medicationLogs.logs,
         });
@@ -168,13 +187,23 @@ export default function Timeline() {
     return {
       routines: data.routines,
       medications: data.medications,
-      tasks: data.tasks.map((t) => ({ taskId: t.taskId, title: t.title, dueDate: t.dueDate, dueTime: t.dueTime, scheduleTime: t.scheduleTime, estimatedHours: t.estimatedHours, status: t.status })),
+      tasks: data.tasks.map((t) => ({ taskId: t.taskId, title: t.title, dueDate: t.dueDate, dueTime: t.dueTime, scheduleTime: t.scheduleTime, estimatedHours: t.estimatedHours, status: t.status, blockType: t.blockType })),
       sleep: data.sleep.map((e) => ({
         logId: e.logId,
         bedTime: typeof e.data.bedTime === "string" ? e.data.bedTime : undefined,
         wakeTime: typeof e.data.wakeTime === "string" ? e.data.wakeTime : undefined,
       })),
       meals: data.meals.map((m) => ({ mealType: m.mealType, text: m.text })),
+      workout: (() => {
+        const exercise = data.habits.find((h) => h.habitType === "exercise");
+        return exercise ? { startTime: exercise.startTime, minutes: exercise.value } : undefined;
+      })(),
+      calls: data.calls.map((c) => ({
+        logId: c.logId,
+        personName: typeof c.data.personName === "string" ? c.data.personName : "Unknown",
+        startTime: typeof c.data.startTime === "string" ? c.data.startTime : undefined,
+        durationMinutes: typeof c.data.durationMinutes === "number" ? c.data.durationMinutes : undefined,
+      })),
     };
   }, [data]);
 
@@ -428,6 +457,130 @@ export default function Timeline() {
     });
   }
 
+  // Duration learning: Start/Finished write the ISO instants the comparison is based on; the
+  // estimate itself is only ever changed by an explicit tap on "Update to Xm?".
+  async function patchRoutine(routine: RoutineTemplate, patch: Record<string, unknown>, successMessage?: string) {
+    if (!data) return;
+    const snapshot = data;
+    setData({ ...data, routines: data.routines.map((r) => (r.routineId === routine.routineId ? { ...r, ...patch } : r)) });
+    try {
+      const saved = await request<RoutineTemplate>(`/routines/${routine.routineId}`, { method: "PATCH", body: JSON.stringify(patch) });
+      setData((prev) => prev && { ...prev, routines: prev.routines.map((r) => (r.routineId === saved.routineId ? saved : r)) });
+    } catch {
+      setData(snapshot);
+      showToast("Something went wrong — that change wasn't saved");
+      return;
+    }
+    if (successMessage) showToast(successMessage);
+  }
+
+  function startRoutine(routine: RoutineTemplate) {
+    patchRoutine(routine, { lastStartedAt: new Date().toISOString() }, `${routine.name} started`);
+  }
+
+  function finishRoutine(routine: RoutineTemplate) {
+    patchRoutine(routine, { lastCompletedAt: new Date().toISOString() }, `${routine.name} finished`);
+  }
+
+  function updateEstimate(routine: RoutineTemplate, minutes: number) {
+    patchRoutine(routine, { estimatedMinutes: minutes }, `${routine.name}: estimate updated to ${formatDuration(minutes)}`);
+  }
+
+  // Planned/done counts across the kinds that actually carry a status, scoped to items that
+  // apply today (scheduled or unscheduled) — used for the daily reflection request. Never sent
+  // with titles or notes, only these two counts.
+  const dayProgress = useMemo(() => {
+    if (!data || !built) return { planned: 0, done: 0 };
+    let planned = 0;
+    let done = 0;
+    const isTracked = (id: string) => built.blocks.some((b) => b.id === id) || built.unscheduled.some((u) => u.id === id);
+    for (const r of data.routines) {
+      if (!isTracked(`routine:${r.routineId}`)) continue;
+      planned += 1;
+      const logs = data.routineLogs.filter((l) => l.routineId === r.routineId);
+      if (r.steps.length > 0 && logs.filter((l) => l.status === "done").length === r.steps.length) done += 1;
+    }
+    for (const m of data.medications) {
+      if (!isTracked(`med:${m.medicationId}`)) continue;
+      planned += 1;
+      if (data.medicationLogs.find((l) => l.medicationId === m.medicationId)?.status === "taken") done += 1;
+    }
+    for (const t of data.tasks) {
+      if (t.dueDate !== selectedDate) continue;
+      planned += 1;
+      if (t.status === "done") done += 1;
+    }
+    return { planned, done };
+  }, [data, built, selectedDate]);
+
+  // Auto-arrange: sends only unscheduled tasks that already have an estimate, plus the day's
+  // free gaps, to /timeline/suggest. The server re-checks every returned placement against
+  // those same gaps, so nothing here is trusted blindly either.
+  async function requestSuggestions() {
+    if (!data) return;
+    const fittable = unscheduled
+      .map((item) => {
+        if (item.kind !== "task" || item.reason !== "no time set") return null;
+        const task = taskById(item.id.replace(/^task:/, ""));
+        return task && task.estimatedHours !== undefined
+          ? { id: item.id, title: item.title, estimatedMinutes: Math.round(task.estimatedHours * 60) }
+          : null;
+      })
+      .filter((x): x is { id: string; title: string; estimatedMinutes: number } => x !== null);
+    if (fittable.length === 0 || gaps.length === 0) {
+      setSuggestions([]);
+      return;
+    }
+    setSuggesting(true);
+    setSuggestError(null);
+    try {
+      const result = await request<{ placements: { id: string; startMin: number }[] }>("/timeline/suggest", {
+        method: "POST",
+        body: JSON.stringify({ items: fittable, gaps }),
+      });
+      setSuggestions(result.placements);
+    } catch (err) {
+      setSuggestError(err instanceof Error ? err.message : "Couldn't get suggestions");
+    } finally {
+      setSuggesting(false);
+    }
+  }
+
+  function acceptSuggestion(id: string, startMin: number) {
+    const task = taskById(id.replace(/^task:/, ""));
+    if (!task) return;
+    setTaskTime(task, hhmm(startMin), `"${task.title}" placed at ${hhmm(startMin)}`);
+    setSuggestions((prev) => prev?.filter((p) => p.id !== id) ?? null);
+  }
+
+  function rejectSuggestion(id: string) {
+    setSuggestions((prev) => prev?.filter((p) => p.id !== id) ?? null);
+  }
+
+  // Daily reflection: one sentence generated on demand from counts only (never titles, notes,
+  // or health/cycle detail) — nothing here is stored, and it isn't requested automatically.
+  async function requestReflection() {
+    setReflecting(true);
+    setReflectError(null);
+    try {
+      const result = await request<{ reflection: string | null }>("/timeline/reflect", {
+        method: "POST",
+        body: JSON.stringify({
+          plannedCount: dayProgress.planned,
+          doneCount: dayProgress.done,
+          sleepMinutes: totals.sleep,
+          routineMinutes: totals.routine,
+          taskMinutes: totals.task,
+        }),
+      });
+      setReflection(result.reflection);
+    } catch (err) {
+      setReflectError(err instanceof Error ? err.message : "Couldn't generate a reflection");
+    } finally {
+      setReflecting(false);
+    }
+  }
+
   const taskById = (id: string) => data?.tasks.find((t) => t.taskId === id);
 
   return (
@@ -499,6 +652,8 @@ export default function Timeline() {
         <>
           <p className="mt-4 text-sm tabular-nums text-ink dark:text-paper">
             Sleep {formatDuration(totals.sleep)} · Routines {formatDuration(totals.routine)} · Meds {formatDuration(totals.med)} · Meals {formatDuration(totals.meal)} · Tasks {formatDuration(totals.task)}
+            {totals.workout > 0 && <> · Workout {formatDuration(totals.workout)}</>}
+            {totals.call > 0 && <> · Calls {formatDuration(totals.call)}</>}
           </p>
 
           {moonToday && <p className="mt-1 text-sm text-ink-muted dark:text-mist-muted">{MOON_EVENT_LABEL[moonToday]} today</p>}
@@ -559,7 +714,7 @@ export default function Timeline() {
               {/* One shared line: blocks sit side by side until two of them overlap in time, and only then take a second row. */}
               <div className="relative border-b border-stone dark:border-stone-dark">
                 {packed.map((b) => (
-                  <BlockButton key={b.id} block={b} color={colorFor(b.kind)} selected={selectedId === b.id} onSelect={() => setSelectedId(selectedId === b.id ? null : b.id)} />
+                  <BlockButton key={b.id} block={b} color={colorFor(b)} selected={selectedId === b.id} onSelect={() => setSelectedId(selectedId === b.id ? null : b.id)} />
                 ))}
                 <div style={{ height: packedRows * SUB_ROW_PX + 8 }} />
                 {expanded && (
@@ -575,6 +730,9 @@ export default function Timeline() {
                       stepStatus={(routineId, stepIndex) => data?.routineLogs.find((l) => l.routineId === routineId && l.stepIndex === stepIndex)}
                       onMoveRoutine={moveRoutine}
                       onMoveTask={(task, time) => setTaskTime(task, time, `"${task.title}" moved to ${time}`)}
+                      onStartRoutine={startRoutine}
+                      onFinishRoutine={finishRoutine}
+                      onUpdateEstimate={updateEstimate}
                     />
                   </div>
                 )}
@@ -612,6 +770,42 @@ export default function Timeline() {
             </div>
           )}
 
+          <div className={`mt-6 ${sectionLabel}`}>Suggestions</div>
+          <div className="rounded-control border border-stone p-3 dark:border-stone-dark">
+            {suggestions === null && (
+              <button type="button" disabled={suggesting} onClick={requestSuggestions} className="min-h-10 w-full rounded-control border border-stone text-sm font-medium disabled:opacity-60 dark:border-stone-dark">
+                {suggesting ? "Thinking..." : "Suggest placements for unscheduled tasks"}
+              </button>
+            )}
+            {suggestError && <p className="mt-2 text-xs text-alert">{suggestError}</p>}
+            {suggestions !== null && suggestions.length === 0 && (
+              <p className={mutedText}>No fitting placement found right now — add an estimate to an unscheduled task, or open up some free time.</p>
+            )}
+            {suggestions !== null && suggestions.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {suggestions.map((sug) => {
+                  const task = taskById(sug.id.replace(/^task:/, ""));
+                  if (!task) return null;
+                  return (
+                    <li key={sug.id} className="flex items-center justify-between gap-2 rounded-control border border-stone px-3 py-2 text-sm dark:border-stone-dark">
+                      <span className="break-words text-ink dark:text-paper">
+                        {task.title} <span className="tabular-nums text-ink-muted dark:text-mist-muted">at {hhmm(sug.startMin)}</span>
+                      </span>
+                      <span className="flex shrink-0 gap-1.5">
+                        <button type="button" onClick={() => acceptSuggestion(sug.id, sug.startMin)} className="min-h-10 rounded-control bg-bloom px-3 text-xs font-medium text-paper-card">
+                          Accept
+                        </button>
+                        <button type="button" onClick={() => rejectSuggestion(sug.id)} className="min-h-10 rounded-control border border-stone px-3 text-xs dark:border-stone-dark">
+                          Reject
+                        </button>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+
           <div className={`mt-6 ${sectionLabel}`}>Unscheduled</div>
           <UnscheduledList
             items={unscheduled}
@@ -624,6 +818,17 @@ export default function Timeline() {
               These have no time or duration, so they aren't placed on the chart. Add one on the <Link to="/routines" className="text-bloom underline">Routines</Link> or <Link to="/tasks" className="text-bloom underline">Tasks</Link> page.
             </p>
           )}
+
+          <div className={`mt-6 ${sectionLabel}`}>Reflection</div>
+          <div className="rounded-control border border-stone p-3 dark:border-stone-dark">
+            {reflection === null && (
+              <button type="button" disabled={reflecting} onClick={requestReflection} className="min-h-10 w-full rounded-control border border-stone text-sm font-medium disabled:opacity-60 dark:border-stone-dark">
+                {reflecting ? "Thinking..." : "How did today go?"}
+              </button>
+            )}
+            {reflectError && <p className="mt-2 text-xs text-alert">{reflectError}</p>}
+            {reflection && <p className="text-sm text-ink dark:text-paper">{reflection}</p>}
+          </div>
         </>
       )}
     </div>
@@ -653,7 +858,11 @@ function BlockButton({
       <span className="block text-[11px] tabular-nums opacity-90">
         {hhmm(block.startMin)}–{hhmm(block.endMin)}
       </span>
-      {block.status && <span className="block truncate text-[11px] opacity-90">{block.status}</span>}
+      {block.protected ? (
+        <span className="block truncate text-[11px] opacity-90">Protected</span>
+      ) : (
+        block.status && <span className="block truncate text-[11px] opacity-90">{block.status}</span>
+      )}
     </button>
   );
 }
@@ -722,6 +931,56 @@ function MoveControl({ current, onSave }: { current?: string; onSave: (time: str
   );
 }
 
+// Deterministic, no AI call: compares the elapsed time between the last Start and Finished
+// tap against the routine's own estimate, and offers to update it when they're meaningfully
+// apart (at least 5 min and at least 20%). The estimate is never changed without a tap.
+function RoutineDurationLearning({
+  routine,
+  onStart,
+  onFinish,
+  onAcceptEstimate,
+}: {
+  routine: RoutineTemplate;
+  onStart: (routine: RoutineTemplate) => void;
+  onFinish: (routine: RoutineTemplate) => void;
+  onAcceptEstimate: (routine: RoutineTemplate, minutes: number) => void;
+}) {
+  const inProgress = !!routine.lastStartedAt && (!routine.lastCompletedAt || routine.lastCompletedAt < routine.lastStartedAt);
+  const actualMinutes =
+    routine.lastStartedAt && routine.lastCompletedAt && routine.lastCompletedAt > routine.lastStartedAt
+      ? Math.round((new Date(routine.lastCompletedAt).getTime() - new Date(routine.lastStartedAt).getTime()) / 60000)
+      : null;
+  const estimate = routine.estimatedMinutes;
+  const showLearning =
+    actualMinutes !== null &&
+    estimate !== undefined &&
+    Math.abs(actualMinutes - estimate) >= 5 &&
+    Math.abs(actualMinutes - estimate) / estimate >= 0.2;
+
+  return (
+    <div className="mt-3 flex flex-col gap-2">
+      <div className="flex gap-2">
+        <button type="button" onClick={() => onStart(routine)} className="min-h-10 flex-1 rounded-control border border-stone text-xs font-medium dark:border-stone-dark">
+          {inProgress ? "Restart" : "Start"}
+        </button>
+        {inProgress && (
+          <button type="button" onClick={() => onFinish(routine)} className="min-h-10 flex-1 rounded-control bg-bloom text-xs font-medium text-paper-card">
+            Finished
+          </button>
+        )}
+      </div>
+      {showLearning && actualMinutes !== null && estimate !== undefined && (
+        <p className="text-xs text-ink-muted dark:text-mist-muted">
+          Last time this took {formatDuration(actualMinutes)}, estimate is {formatDuration(estimate)}.{" "}
+          <button type="button" onClick={() => onAcceptEstimate(routine, actualMinutes)} className="font-medium text-bloom underline">
+            Update to {formatDuration(actualMinutes)}?
+          </button>
+        </p>
+      )}
+    </div>
+  );
+}
+
 function SelectedPanel({
   block,
   data,
@@ -732,6 +991,9 @@ function SelectedPanel({
   stepStatus,
   onMoveRoutine,
   onMoveTask,
+  onStartRoutine,
+  onFinishRoutine,
+  onUpdateEstimate,
 }: {
   block: TimelineBlock;
   data: TimelineData;
@@ -742,6 +1004,9 @@ function SelectedPanel({
   stepStatus: (routineId: string, stepIndex: number) => RoutineStepLog | undefined;
   onMoveRoutine: (routine: RoutineTemplate, time: string) => void;
   onMoveTask: (task: Task, time: string) => void;
+  onStartRoutine: (routine: RoutineTemplate) => void;
+  onFinishRoutine: (routine: RoutineTemplate) => void;
+  onUpdateEstimate: (routine: RoutineTemplate, minutes: number) => void;
 }) {
   const header = (
     <p className="text-sm font-medium text-ink dark:text-paper">
@@ -771,6 +1036,9 @@ function SelectedPanel({
     return (
       <div className={shell}>
         {header}
+        {block.protected && (
+          <p className="mt-1 text-xs text-ink-muted dark:text-mist-muted">Protected time — set aside, not a to-do to tick off.</p>
+        )}
         <div className="mt-2 flex flex-col gap-2">
           <button
             type="button"
@@ -810,9 +1078,21 @@ function SelectedPanel({
             );
           })}
         </ul>
+        <RoutineDurationLearning routine={routine} onStart={onStartRoutine} onFinish={onFinishRoutine} onAcceptEstimate={onUpdateEstimate} />
         <div className="mt-3">
           <MoveControl current={routine.timeOfDay} onSave={(time) => onMoveRoutine(routine, time)} />
         </div>
+      </div>
+    );
+  }
+
+  if (block.kind === "workout" || block.kind === "call") {
+    return (
+      <div className={shell}>
+        {header}
+        <p className="mt-1 text-xs text-ink-muted dark:text-mist-muted">
+          {block.kind === "workout" ? "Logged from Today's habits." : "Logged from Today's call entry."}
+        </p>
       </div>
     );
   }
