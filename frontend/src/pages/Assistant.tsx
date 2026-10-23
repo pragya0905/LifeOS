@@ -145,6 +145,8 @@ export default function Assistant({ onboarding = false, onFinish }: AssistantPro
   // Switching to typing puts the cursor in the composer straight away.
   useEffect(() => {
     if (voiceStatus === "typing") textareaRef.current?.focus();
+    // The voice screen covers the composer, so the keyboard goes away when voice starts.
+    else if (voiceStatus === "listening" && document.activeElement instanceof HTMLElement) document.activeElement.blur();
   }, [voiceStatus]);
 
   useEffect(() => {

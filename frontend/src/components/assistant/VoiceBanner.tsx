@@ -21,6 +21,9 @@ export function VoiceBanner({
   return (
     <div
       role="status"
+      // A tap here keeps focus where it is. If the composer lost focus first, the tab bar would
+      // come back and move this banner out from under the finger before the tap completed.
+      onMouseDown={(e) => e.preventDefault()}
       className="mx-3 mb-1.5 flex shrink-0 items-center justify-between gap-1 rounded-control border border-stone bg-amber-soft py-0.5 pl-3 pr-1 text-[13px] text-ink dark:border-stone-dark dark:bg-amber-soft-dark dark:text-paper"
     >
       <span className="flex min-w-0 items-center gap-2">
