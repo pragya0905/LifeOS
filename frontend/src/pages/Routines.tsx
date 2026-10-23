@@ -5,12 +5,13 @@ import { useApi } from "../api/useApi";
 import { addDays, isValidDateStr, todayLocal } from "../lib/date";
 import { ALL_DAYS, byTimeOfDay, formatSchedule } from "../lib/weekdays";
 import { computeRoutineStreak, routineStreakWindowStart } from "../lib/routineStreak";
+import { findClashes, type ScheduledItem } from "../lib/timeline";
 import { Skeleton } from "../components/Skeleton";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icon";
 import { StreakBadge } from "../components/StreakBadge";
 import DayOfWeekPicker from "../components/DayOfWeekPicker";
-import type { RoutineCategory, RoutineStepLog, RoutineTemplate } from "../types";
+import type { Medication, RoutineCategory, RoutineStepLog, RoutineTemplate } from "../types";
 import { badge, card, errorText, input, label, mutedText, page, pageTitle, primaryButton, secondaryButton, sectionLabel } from "../components/ui";
 
 const CATEGORY_LABEL: Record<RoutineCategory, string> = {
@@ -135,6 +136,113 @@ function StepListEditor({ steps, onChange }: { steps: string[]; onChange: (steps
 }
 
 // Module-level (not nested in Routines) so React keeps element identity across re-renders.
+const REMINDER_LEAD_OPTIONS = [0, 5, 10, 15, 30];
+
+// Only sent once every visible step has a value — a half-filled list can't be told apart
+// from "no opinion on the rest", so it's safer to send nothing than to send gaps.
+function stepMinutesPayload(steps: string[], minutesDraft: string[]): { stepMinutes?: number[] } {
+  const minutes = steps.map((_, i) => minutesDraft[i]);
+  const allFilled = minutes.length > 0 && minutes.every((v) => v && Number(v) > 0);
+  return allFilled ? { stepMinutes: minutes.map(Number) } : {};
+}
+
+// The browser's offset is sent with the reminder so the server can work out the user's local
+// start time. Reminders only apply when a start time is set.
+function reminderPayload(remind: boolean, lead: number, timeOfDay: string) {
+  const on = remind && !!timeOfDay;
+  return on
+    ? { remindMe: true, reminderLeadMinutes: lead, timezoneOffsetMinutes: new Date().getTimezoneOffset() }
+    : { remindMe: false };
+}
+
+// Opt-in push reminder. Only offered once a start time is set, since that's when it fires.
+function ReminderControls({
+  hasTime,
+  remind,
+  onRemindChange,
+  lead,
+  onLeadChange,
+}: {
+  hasTime: boolean;
+  remind: boolean;
+  onRemindChange: (value: boolean) => void;
+  lead: number;
+  onLeadChange: (value: number) => void;
+}) {
+  if (!hasTime) {
+    return <p className="mb-2 text-xs text-ink-muted dark:text-mist-muted">Set a start time to get a reminder.</p>;
+  }
+  return (
+    <div className="mb-2 flex flex-wrap items-center gap-3">
+      <label className="flex min-h-10 items-center gap-2 text-sm text-ink dark:text-paper">
+        <input type="checkbox" checked={remind} onChange={(e) => onRemindChange(e.target.checked)} className="h-5 w-5" />
+        Remind me
+      </label>
+      {remind && (
+        <select value={lead} onChange={(e) => onLeadChange(Number(e.target.value))} aria-label="Reminder lead time" className={`min-h-10 ${input}`}>
+          {REMINDER_LEAD_OPTIONS.map((m) => (
+            <option key={m} value={m}>
+              {m === 0 ? "At start time" : `${m} min before`}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
+  );
+}
+
+// Per-step minutes, shown under the step list once there's more than a title to attach a
+// duration to. Kept separate from StepListEditor (which owns add/remove/reorder) — the
+// minutes array is only sent on save once every visible step has one, so a half-filled list
+// never overwrites a complete one with gaps.
+function StepMinutesEditor({
+  steps,
+  minutesDraft,
+  onChange,
+}: {
+  steps: string[];
+  minutesDraft: string[];
+  onChange: (next: string[]) => void;
+}) {
+  function setAt(i: number, value: string) {
+    const next = [...minutesDraft];
+    while (next.length <= i) next.push("");
+    next[i] = value;
+    onChange(next);
+  }
+  if (steps.length === 0) return null;
+  return (
+    <div className="mb-2">
+      <label className={label}>Minutes per step (optional — fill in every step to use this)</label>
+      <div className="flex flex-col gap-1">
+        {steps.map((step, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <span className="min-w-0 flex-1 truncate text-xs text-ink-muted dark:text-mist-muted">{step || `Step ${i + 1}`}</span>
+            <input
+              type="number"
+              min={1}
+              value={minutesDraft[i] ?? ""}
+              onChange={(e) => setAt(i, e.target.value)}
+              aria-label={`Minutes for step ${i + 1}`}
+              className={`w-16 ${input}`}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Soft warning only: saving is never blocked, the user may still want both.
+function ClashWarning({ clashes }: { clashes: ScheduledItem[] }) {
+  if (clashes.length === 0) return null;
+  return (
+    <p className="mb-2 text-xs text-amber-ink dark:text-amber-ink-dark">
+      ⚠ Overlaps {clashes.map((c) => `${c.name} (${c.timeOfDay})`).join(", ")}
+    </p>
+  );
+}
+
 function RoutineCard({
   routine,
   stepLogs,
@@ -147,6 +255,7 @@ function RoutineCard({
   onSkipRemaining,
   onDelete,
   onSave,
+  others,
 }: {
   routine: RoutineTemplate;
   stepLogs: Record<string, { status: RoutineStepLog["status"]; note?: string }>;
@@ -158,7 +267,8 @@ function RoutineCard({
   onMarkAllDone: (routine: RoutineTemplate) => void;
   onSkipRemaining: (routine: RoutineTemplate) => void;
   onDelete: (routineId: string) => void;
-  onSave: (routineId: string, patch: { name: string; category: string; steps: string[]; daysOfWeek: number[]; timeOfDay?: string; estimatedMinutes?: number }) => Promise<void>;
+  onSave: (routineId: string, patch: { name: string; category: string; steps: string[]; daysOfWeek: number[]; timeOfDay?: string; estimatedMinutes?: number; remindMe?: boolean; reminderLeadMinutes?: number; timezoneOffsetMinutes?: number; endTime?: string; stepMinutes?: number[] }) => Promise<void>;
+  others: ScheduledItem[];
 }) {
   const [editing, setEditing] = useState(false);
   const [nameDraft, setNameDraft] = useState(routine.name);
@@ -169,6 +279,14 @@ function RoutineCard({
   const [timeOfDayDraft, setTimeOfDayDraft] = useState(routine.timeOfDay ?? "");
   const [estimatedMinutesDraft, setEstimatedMinutesDraft] = useState(routine.estimatedMinutes !== undefined ? String(routine.estimatedMinutes) : "");
   const [savingEdit, setSavingEdit] = useState(false);
+  const [remindDraft, setRemindDraft] = useState(routine.remindMe ?? false);
+  const [leadDraft, setLeadDraft] = useState(routine.reminderLeadMinutes ?? 0);
+  const [endTimeDraft, setEndTimeDraft] = useState(routine.endTime ?? "");
+  const [stepMinutesDraft, setStepMinutesDraft] = useState<string[]>(routine.stepMinutes ? routine.stepMinutes.map(String) : []);
+  const editClashes = findClashes(
+    { id: routine.routineId, name: nameDraft, timeOfDay: timeOfDayDraft || undefined, estimatedMinutes: estimatedMinutesDraft ? Number(estimatedMinutesDraft) : undefined, daysOfWeek: daysDraft },
+    others,
+  );
 
   const doneCount = routine.steps.filter((_, index) => stepLogs[`${routine.routineId}#${index}`]?.status === "done").length;
   const pendingCount = routine.steps.filter((_, index) => stepLogs[`${routine.routineId}#${index}`] === undefined).length;
@@ -191,6 +309,9 @@ function RoutineCard({
         daysOfWeek: daysDraft.length === 7 ? [] : daysDraft,
         timeOfDay: timeOfDayDraft || undefined,
         estimatedMinutes: estimatedMinutesDraft ? Number(estimatedMinutesDraft) : undefined,
+        endTime: endTimeDraft || undefined,
+        ...stepMinutesPayload(cleanSteps, stepMinutesDraft),
+        ...reminderPayload(remindDraft, leadDraft, timeOfDayDraft),
       });
       setEditing(false);
     } finally {
@@ -238,7 +359,20 @@ function RoutineCard({
             <label className={label}>Takes about (min, optional)</label>
             <input type="number" min={1} value={estimatedMinutesDraft} onChange={(e) => setEstimatedMinutesDraft(e.target.value)} placeholder="e.g. 8" className={`w-24 ${input}`} />
           </div>
+          <div>
+            <label className={label}>Finish by (optional)</label>
+            <input type="time" value={endTimeDraft} onChange={(e) => setEndTimeDraft(e.target.value)} className={`w-32 ${input}`} />
+          </div>
         </div>
+        <StepMinutesEditor steps={cleanSteps} minutesDraft={stepMinutesDraft} onChange={setStepMinutesDraft} />
+        <ReminderControls
+          hasTime={!!timeOfDayDraft}
+          remind={remindDraft}
+          onRemindChange={setRemindDraft}
+          lead={leadDraft}
+          onLeadChange={setLeadDraft}
+        />
+        <ClashWarning clashes={editClashes} />
         <div className="flex gap-2">
           <button type="button" disabled={savingEdit || daysDraft.length === 0 || !categoryDraft || cleanSteps.length === 0} onClick={handleSaveEdit} className={`${secondaryButton} min-h-10 px-3 text-xs`}>
             {savingEdit ? "Saving..." : "Save"}
@@ -336,6 +470,8 @@ export default function Routines() {
   const { request } = useApi();
   const [searchParams, setSearchParams] = useSearchParams();
   const [routines, setRoutines] = useState<RoutineTemplate[]>([]);
+  // Medications that are still running count as scheduled items for the clash check.
+  const [medications, setMedications] = useState<Medication[]>([]);
   const [stepLogs, setStepLogs] = useState<Record<string, { status: RoutineStepLog["status"]; note?: string }>>({});
   const [rangeLogs, setRangeLogs] = useState<RoutineStepLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -363,6 +499,9 @@ export default function Routines() {
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>(ALL_DAYS);
   const [timeOfDay, setTimeOfDay] = useState("");
   const [estimatedMinutes, setEstimatedMinutes] = useState("");
+  const [endTime, setEndTime] = useState("");
+  const [remindMe, setRemindMe] = useState(false);
+  const [reminderLead, setReminderLead] = useState(0);
   const [saving, setSaving] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
@@ -375,13 +514,15 @@ export default function Routines() {
       setError(null);
       try {
         const windowStart = routineStreakWindowStart();
-        const [routinesData, logsData, rangeLogsData] = await Promise.all([
+        const [routinesData, logsData, rangeLogsData, medsData] = await Promise.all([
           request<{ routines: RoutineTemplate[] }>("/routines"),
           request<{ logs: RoutineStepLog[] }>(`/routine-logs/${selectedDate}`),
           request<{ logs: RoutineStepLog[] }>(`/routine-logs?from=${windowStart}&to=${realToday}`),
+          request<{ medications: Medication[] }>("/medications"),
         ]);
         if (ignore) return;
         setRoutines(routinesData.routines);
+        setMedications(medsData.medications.filter((m) => m.endDate >= realToday));
         const next: Record<string, { status: RoutineStepLog["status"]; note?: string }> = {};
         for (const log of logsData.logs) next[`${log.routineId}#${log.stepIndex}`] = { status: log.status, note: log.note };
         setStepLogs(next);
@@ -415,6 +556,19 @@ export default function Routines() {
 
   const cleanNewSteps = steps.map((s) => s.trim()).filter(Boolean);
 
+  function scheduleItems(excludeRoutineId?: string): ScheduledItem[] {
+    return [
+      ...routines
+        .filter((r) => r.routineId !== excludeRoutineId)
+        .map((r) => ({ id: `routine:${r.routineId}`, name: r.name, timeOfDay: r.timeOfDay, estimatedMinutes: r.estimatedMinutes, daysOfWeek: r.daysOfWeek })),
+      ...medications.map((m) => ({ id: `med:${m.medicationId}`, name: m.name, timeOfDay: m.timeOfDay, estimatedMinutes: m.estimatedMinutes, daysOfWeek: m.daysOfWeek })),
+    ];
+  }
+  const addClashes = findClashes(
+    { id: "new", name: "", timeOfDay: timeOfDay || undefined, estimatedMinutes: estimatedMinutes ? Number(estimatedMinutes) : undefined, daysOfWeek },
+    scheduleItems(),
+  );
+
   async function handleAdd(e: FormEvent) {
     e.preventDefault();
     const category = categorySelect === CUSTOM_CATEGORY_OPTION ? customCategoryDraft.trim() : categorySelect;
@@ -431,6 +585,8 @@ export default function Routines() {
           daysOfWeek: daysOfWeek.length === 7 ? [] : daysOfWeek,
           timeOfDay: timeOfDay || undefined,
           estimatedMinutes: estimatedMinutes ? Number(estimatedMinutes) : undefined,
+          endTime: endTime || undefined,
+          ...reminderPayload(remindMe, reminderLead, timeOfDay),
         }),
       });
       setRoutines((prev) => [routine, ...prev]);
@@ -439,6 +595,7 @@ export default function Routines() {
       setDaysOfWeek(ALL_DAYS);
       setTimeOfDay("");
       setEstimatedMinutes("");
+      setEndTime("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add routine");
     } finally {
@@ -462,7 +619,7 @@ export default function Routines() {
     }
   }
 
-  async function handleSaveEdit(routineId: string, patch: { name: string; category: string; steps: string[]; daysOfWeek: number[]; timeOfDay?: string; estimatedMinutes?: number }) {
+  async function handleSaveEdit(routineId: string, patch: { name: string; category: string; steps: string[]; daysOfWeek: number[]; timeOfDay?: string; estimatedMinutes?: number; remindMe?: boolean; reminderLeadMinutes?: number; timezoneOffsetMinutes?: number; endTime?: string; stepMinutes?: number[] }) {
     setError(null);
     try {
       const updated = await request<RoutineTemplate>(`/routines/${routineId}`, { method: "PATCH", body: JSON.stringify(patch) });
@@ -554,7 +711,13 @@ export default function Routines() {
             <label className={label}>Takes about (min, optional)</label>
             <input type="number" min={1} value={estimatedMinutes} onChange={(e) => setEstimatedMinutes(e.target.value)} placeholder="e.g. 8" className={`w-24 ${input}`} />
           </div>
+          <div>
+            <label className={label}>Finish by (optional)</label>
+            <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className={`w-32 ${input}`} />
+          </div>
         </div>
+        <ReminderControls hasTime={!!timeOfDay} remind={remindMe} onRemindChange={setRemindMe} lead={reminderLead} onLeadChange={setReminderLead} />
+        <ClashWarning clashes={addClashes} />
         <button
           type="submit"
           disabled={saving || daysOfWeek.length === 0 || cleanNewSteps.length === 0 || (categorySelect === CUSTOM_CATEGORY_OPTION && !customCategoryDraft.trim())}
@@ -610,6 +773,7 @@ export default function Routines() {
               onSkipRemaining={skipRemaining}
               onDelete={handleDelete}
               onSave={handleSaveEdit}
+              others={scheduleItems(routine.routineId)}
             />
           ))}
         </ul>

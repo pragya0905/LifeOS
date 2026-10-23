@@ -18,6 +18,10 @@ export interface Task {
   userId: string;
   taskId: string;
   title: string;
+  // "protected" marks time set aside (deep work, commute) rather than a task to tick off.
+  blockType?: "task" | "protected";
+  // Push reminder fires this many minutes before dueAtUtc instead of exactly at it.
+  reminderLeadMinutes?: number;
   description?: string;
   dueDate?: string;
   dueTime?: string;
@@ -87,6 +91,8 @@ export interface HabitLog {
   unit?: HabitUnit;
   source: "manual" | "ai-journal";
   note?: string;
+  // "HH:MM" the activity started — only meaningful for habitType "exercise", optional.
+  startTime?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -173,6 +179,18 @@ export interface RoutineTemplate {
   timeOfDay?: string;
   // How long the whole routine takes to complete, in minutes.
   estimatedMinutes?: number;
+  // Optional "HH:MM" the routine should finish by; the timeline derives one when absent.
+  endTime?: string;
+  // Optional whole-minute duration per step, same order as `steps`.
+  stepMinutes?: number[];
+  // Opt-in push reminder at the start time, `reminderLeadMinutes` early.
+  remindMe?: boolean;
+  reminderLeadMinutes?: number;
+  timezoneOffsetMinutes?: number;
+  lastReminderSentDate?: string;
+  // Duration learning: ISO instants of the most recent Start tap and most recent Finished tap.
+  lastStartedAt?: string;
+  lastCompletedAt?: string;
   createdAt: string;
 }
 
