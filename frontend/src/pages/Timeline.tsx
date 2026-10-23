@@ -33,23 +33,26 @@ import type { HabitLog, LogEntry, Medication, MealPlanSlot, MedicationLog, Medic
 // and only takes a second row when it overlaps another in time. Colour codes the kind.
 
 // `dot` fills a small legend swatch (no text sits on it, so a saturated fill reads fine).
-// `border` is a left-rule accent on an otherwise neutral block — the same left-rule-on-card
-// pattern as TodayNextUp, not a solid fill — because white text on amber/bloom/sleep's
-// mid-lightness colors falls well under WCAG's 4.5:1 minimum for small text; ink-coloured
-// text on a neutral card never has that problem, in either theme.
-const LANES: { kind: TimelineKind; label: string; dot: string; border: string }[] = [
-  { kind: "sleep", label: "Sleep", dot: "bg-[#7a6fb0]", border: "border-l-[#7a6fb0]" },
-  { kind: "routine", label: "Routines", dot: "bg-routine", border: "border-l-routine" },
-  { kind: "med", label: "Meds", dot: "bg-medication", border: "border-l-medication" },
-  { kind: "meal", label: "Meals", dot: "bg-[#c26a8f]", border: "border-l-[#c26a8f]" },
-  { kind: "task", label: "Tasks", dot: "bg-amber", border: "border-l-amber" },
-  { kind: "workout", label: "Workouts", dot: "bg-success", border: "border-l-success" },
-  { kind: "call", label: "Calls", dot: "bg-slate", border: "border-l-slate" },
+// `border` is a left-rule accent, `bg` a soft tint behind the whole block — the same
+// soft-background + ink-text pairing already used for badges and priority pills app-wide
+// (e.g. urgency.ts's URGENCY_BADGE_CLASS), not a solid fill, because white text on
+// amber/bloom/sleep's mid-lightness colors falls well under WCAG's 4.5:1 minimum for small
+// text. A left border alone read as barely-there on short blocks, so the tint carries most
+// of the at-a-glance differentiation; ink/paper text stays legible against any of them.
+const LANES: { kind: TimelineKind; label: string; dot: string; border: string; bg: string }[] = [
+  { kind: "sleep", label: "Sleep", dot: "bg-[#7a6fb0]", border: "border-l-[#7a6fb0]", bg: "bg-[#7a6fb0]/20 dark:bg-[#7a6fb0]/30" },
+  { kind: "routine", label: "Routines", dot: "bg-routine", border: "border-l-routine", bg: "bg-routine-soft dark:bg-routine-soft-dark" },
+  { kind: "med", label: "Meds", dot: "bg-medication", border: "border-l-medication", bg: "bg-medication-soft dark:bg-medication-soft-dark" },
+  { kind: "meal", label: "Meals", dot: "bg-[#c26a8f]", border: "border-l-[#c26a8f]", bg: "bg-[#c26a8f]/20 dark:bg-[#c26a8f]/30" },
+  { kind: "task", label: "Tasks", dot: "bg-amber", border: "border-l-amber", bg: "bg-amber-soft dark:bg-amber-soft-dark" },
+  { kind: "workout", label: "Workouts", dot: "bg-success", border: "border-l-success", bg: "bg-success-soft dark:bg-success-soft-dark" },
+  { kind: "call", label: "Calls", dot: "bg-slate", border: "border-l-slate", bg: "bg-slate-soft dark:bg-slate-soft-dark" },
 ];
 
-// A protected task (deep work, commute — time set aside, not a to-do) gets its own accent so
-// it reads differently from an ordinary task even though both are Task records underneath.
+// A protected task (deep work, commute — time set aside, not a to-do) gets its own accent —
+// deliberately the neutral surface tone, not a category colour, since it isn't one.
 const PROTECTED_BORDER = "border-l-ink-muted dark:border-l-mist-muted";
+const PROTECTED_BG = "bg-stone dark:bg-stone-dark";
 
 // Static background bands so morning, afternoon, evening and night read at a glance.
 const ZONES: { fromHour: number; toHour: number; color: string }[] = [
@@ -69,9 +72,10 @@ const SUB_ROW_PX = 58;
 const WEEKDAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const CYCLE_HINT_KEY = "lifeos.timeline.cycleHints";
 
-function colorFor(block: TimelineBlock): string {
-  if (block.protected) return PROTECTED_BORDER;
-  return LANES.find((l) => l.kind === block.kind)?.border ?? "border-l-stone";
+function colorFor(block: TimelineBlock): { border: string; bg: string } {
+  if (block.protected) return { border: PROTECTED_BORDER, bg: PROTECTED_BG };
+  const lane = LANES.find((l) => l.kind === block.kind);
+  return { border: lane?.border ?? "border-l-stone", bg: lane?.bg ?? "bg-stone/20 dark:bg-stone-dark/40" };
 }
 
 // Every horizontal position is a percentage of the full-day width, so a zoomed chart is just
@@ -848,7 +852,7 @@ function BlockButton({
   onSelect,
 }: {
   block: TimelineBlock;
-  color: string;
+  color: { border: string; bg: string };
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -857,7 +861,7 @@ function BlockButton({
       type="button"
       onClick={onSelect}
       aria-pressed={selected}
-      className={`absolute z-10 overflow-hidden rounded-control border border-l-4 border-stone bg-paper-card px-1.5 py-1 text-left leading-tight shadow-sm dark:border-stone-dark dark:bg-ink-bg-card ${color} ${selected ? "ring-2 ring-bloom" : ""}`}
+      className={`absolute z-10 overflow-hidden rounded-control border border-l-4 border-stone px-1.5 py-1 text-left leading-tight shadow-sm dark:border-stone-dark ${color.bg} ${color.border} ${selected ? "ring-2 ring-bloom" : ""}`}
       style={{ left: `${pctOfDay(block.startMin)}%`, width: `${pctOfDay(block.endMin - block.startMin)}%`, top: block.lane * SUB_ROW_PX + 22, height: SUB_ROW_PX - 6, minWidth: 44 }}
     >
       <span className="block truncate text-xs font-medium text-ink dark:text-paper">{block.title}</span>
@@ -877,7 +881,7 @@ function BlockButton({
 function SleepBlock({ block }: { block: TimelineBlock }) {
   return (
     <div
-      className="absolute z-10 overflow-hidden rounded-control border border-l-4 border-stone border-l-[#7a6fb0] bg-paper-card px-1.5 py-1 leading-tight shadow-sm dark:border-stone-dark dark:border-l-[#7a6fb0] dark:bg-ink-bg-card"
+      className="absolute z-10 overflow-hidden rounded-control border border-l-4 border-stone border-l-[#7a6fb0] bg-[#7a6fb0]/20 px-1.5 py-1 leading-tight shadow-sm dark:border-stone-dark dark:border-l-[#7a6fb0] dark:bg-[#7a6fb0]/30"
       style={{ left: `${pctOfDay(block.startMin)}%`, width: `${pctOfDay(block.endMin - block.startMin)}%`, top: block.lane * SUB_ROW_PX + 6, height: SUB_ROW_PX - 12, minWidth: 44 }}
     >
       <span className="block truncate text-xs font-medium text-ink dark:text-paper">{block.title}</span>
