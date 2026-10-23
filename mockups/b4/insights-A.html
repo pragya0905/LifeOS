@@ -1,0 +1,29 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=412">
+<title>Meal Plan A</title>
+<style>
+:root{--paper:#191320;--card:#221a2b;--ink:#f3eef0;--muted:#b3a6ba;--stone:#332a3b;--bloom:#ff6f5e;--amber:#e8a33d}
+*{box-sizing:border-box}body{margin:0;background:#0f0b14;font-family:Inter,system-ui,sans-serif;color:var(--ink)}
+.frame{width:412px;min-height:860px;margin:0 auto;background:var(--paper);padding:16px;overflow:hidden}
+h1{font-family:"Bricolage Grotesque",system-ui;font-size:26px;margin:4px 0 12px}
+.label{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+.card{background:var(--card);border:1px solid var(--stone);border-radius:14px;padding:12px}
+.rule{border-left:3px solid var(--bloom);padding-left:12px}
+.btn{min-height:40px;min-width:40px;border-radius:999px;border:1px solid var(--stone);background:var(--card);color:var(--ink);font:inherit;padding:0 14px}
+.btn.on{background:var(--bloom);border-color:var(--bloom);color:#191320}
+.row{display:flex;gap:8px;align-items:center}
+.grow{flex:1}
+.input{width:100%;min-height:40px;border-radius:10px;border:1px solid var(--stone);background:#191320;color:var(--ink);padding:8px 10px;font:inherit;font-size:15px}
+.meal{display:grid;grid-template-columns:86px 1fr;gap:10px;align-items:start;padding:8px 0;border-top:1px solid var(--stone)}
+.meal:first-child{border-top:0}
+.mlabel{font-size:13px;color:var(--muted);padding-top:10px}
+.num{font-variant-numeric:tabular-nums}
+.today{color:var(--bloom)}
+.note{font-size:12px;color:var(--muted);margin-top:14px;line-height:1.4}
+.tag{font-size:11px;color:var(--amber);border:1px solid var(--amber);border-radius:999px;padding:2px 8px}
+</style></head><body><div class="frame"><h1>Insights</h1>
+<div class="row"><button class="btn on grow">Last 30 days</button><button class="btn grow">Weekly averages</button></div>
+<div class="label">Trends</div>
+<div class="card"><div class="meal" style="grid-template-columns:1fr"><div class="row"><div class="grow" style="font-size:14px">Water</div><div class="num" style="font-size:13px;color:#b3a6ba">2.1 L avg</div></div><svg viewBox="0 0 360 80" width="100%" height="80" preserveAspectRatio="none"><polyline fill="none" stroke="#ff6f5e" stroke-width="2" points="0,60 40,50 80,55 120,30 160,40 200,20 240,34 280,18 320,26 360,12"/></svg></div><div class="meal" style="grid-template-columns:1fr"><div class="row"><div class="grow" style="font-size:14px">Exercise</div><div class="num" style="font-size:13px;color:#b3a6ba">24 min avg</div></div><svg viewBox="0 0 360 80" width="100%" height="80" preserveAspectRatio="none"><polyline fill="none" stroke="#ff6f5e" stroke-width="2" points="0,60 40,50 80,55 120,30 160,40 200,20 240,34 280,18 320,26 360,12"/></svg></div><div class="meal" style="grid-template-columns:1fr"><div class="row"><div class="grow" style="font-size:14px">Steps</div><div class="num" style="font-size:13px;color:#b3a6ba">7,240 avg</div></div><svg viewBox="0 0 360 80" width="100%" height="80" preserveAspectRatio="none"><polyline fill="none" stroke="#ff6f5e" stroke-width="2" points="0,60 40,50 80,55 120,30 160,40 200,20 240,34 280,18 320,26 360,12"/></svg></div><div class="meal" style="grid-template-columns:1fr"><div class="row"><div class="grow" style="font-size:14px">Mood</div><div class="num" style="font-size:13px;color:#b3a6ba">3.6 / 5</div></div><svg viewBox="0 0 360 80" width="100%" height="80" preserveAspectRatio="none"><polyline fill="none" stroke="#ff6f5e" stroke-width="2" points="0,60 40,50 80,55 120,30 160,40 200,20 240,34 280,18 320,26 360,12"/></svg></div><div class="meal" style="grid-template-columns:1fr"><div class="row"><div class="grow" style="font-size:14px">Spending</div><div class="num" style="font-size:13px;color:#b3a6ba">₹1,420 / day</div></div><svg viewBox="0 0 360 80" width="100%" height="80" preserveAspectRatio="none"><polyline fill="none" stroke="#ff6f5e" stroke-width="2" points="0,60 40,50 80,55 120,30 160,40 200,20 240,34 280,18 320,26 360,12"/></svg></div></div>
+<div class="label">Your progress</div>
+<div class="card rule"><div class="meal" style="grid-template-columns:1fr"><div>Read 12 books</div><div class="note">33% done</div></div><div class="meal" style="grid-template-columns:1fr"><div>Visit Japan, falling behind</div><div class="note" style="color:#ff6f5e">Behind pace</div></div></div>
+<p class="note">Option A: one Daily / Weekly switch over one stack of charts. Plain rows, no stat tiles. Static mockup, 412px, dark. Pick A or B.</p></div></body></html>
