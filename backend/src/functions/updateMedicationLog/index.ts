@@ -3,7 +3,7 @@ import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb } from "../../common/dynamo";
 import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
-import type { MedicationLogStatus } from "../../common/types";
+import type { Medication, MedicationLogStatus } from "../../common/types";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const STATUSES: MedicationLogStatus[] = ["taken", "missed", "skipped"];
@@ -83,5 +83,7 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     }),
   );
 
-  return jsonResponse(200, result.Attributes);
+  // medicationName is the medication's own name, so the chat can show which one was logged. Additive key.
+  const medicationName = (medication.Item as Medication).name;
+  return jsonResponse(200, { ...result.Attributes, medicationName });
 };

@@ -106,7 +106,7 @@ export function summarizeToolResult(
       return {
         itemType: "routineStep",
         id: str(d.dateRoutineStep),
-        title: "Routine step",
+        title: str(d.stepName) ?? "Routine step",
         fields: { status: capitalize(status.replace("_", " ")) },
       };
     }
@@ -117,7 +117,7 @@ export function summarizeToolResult(
       return {
         itemType: "medicationLog",
         id: str(d.dateMedicationId),
-        title: "Medication",
+        title: str(d.medicationName) ?? "Medication",
         fields: { status: capitalize(status) },
       };
     }

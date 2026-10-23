@@ -93,5 +93,7 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     }),
   );
 
-  return jsonResponse(200, result.Attributes);
+  // stepName is the step's own text, so the chat can show which step was logged. Additive key.
+  const stepName = (routine.Item as RoutineTemplate).steps[stepIndex];
+  return jsonResponse(200, { ...result.Attributes, stepName });
 };

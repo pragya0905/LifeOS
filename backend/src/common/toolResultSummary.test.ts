@@ -125,3 +125,25 @@ describe("summarizeToolResult", () => {
     expect(summarizeToolResult("create_task", {}, "not json")).toBeUndefined();
   });
 });
+
+describe("summarizeToolResult names in log results", () => {
+  it("titles a routine step log with the step's own text", () => {
+    const content = JSON.stringify({ dateRoutineStep: "2026-10-23#r1#1", status: "done", stepName: "Toner" });
+    expect(summarizeToolResult("log_routine_step", {}, content)).toMatchObject({ title: "Toner" });
+  });
+
+  it("falls back to a generic routine step title when no name is returned", () => {
+    const content = JSON.stringify({ dateRoutineStep: "2026-10-23#r1#1", status: "done" });
+    expect(summarizeToolResult("log_routine_step", {}, content)).toMatchObject({ title: "Routine step" });
+  });
+
+  it("titles a medication log with the medication's own name", () => {
+    const content = JSON.stringify({ dateMedicationId: "2026-10-23#m1", status: "taken", medicationName: "Vitamin D" });
+    expect(summarizeToolResult("log_medication", {}, content)).toMatchObject({ title: "Vitamin D" });
+  });
+
+  it("falls back to a generic medication title when no name is returned", () => {
+    const content = JSON.stringify({ dateMedicationId: "2026-10-23#m1", status: "taken" });
+    expect(summarizeToolResult("log_medication", {}, content)).toMatchObject({ title: "Medication" });
+  });
+});
