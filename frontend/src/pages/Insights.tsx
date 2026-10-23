@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useApi } from "../api/useApi";
-import LineChart from "../components/LineChart";
+import LineChart, { type LineChartPoint } from "../components/LineChart";
 import WeightTrend from "../components/WeightTrend";
 import { StreakBadge } from "../components/StreakBadge";
 import { toLocalDateStr } from "../lib/date";
@@ -22,6 +22,16 @@ import {
 type Period = "day" | "week";
 
 const TREND_DAYS = 14;
+
+// Option B: one chart at a time, chosen by chip, with its own daily / weekly switch.
+type TrendMetric = "water" | "exercise" | "steps" | "mood" | "spending";
+const TREND_METRICS: { key: TrendMetric; label: string }[] = [
+  { key: "water", label: "Water" },
+  { key: "exercise", label: "Exercise" },
+  { key: "steps", label: "Steps" },
+  { key: "mood", label: "Mood" },
+  { key: "spending", label: "Spending" },
+];
 const WEEKLY_WEEKS = 8;
 const WEEKLY_SPAN_DAYS = WEEKLY_WEEKS * 7;
 
@@ -75,6 +85,8 @@ export default function Insights() {
   const [categoryBreakdown, setCategoryBreakdown] = useState<{ category: Expense["category"]; total: number }[]>([]);
 
   const [progressSummary, setProgressSummary] = useState<ProgressSummary | null>(null);
+  const [trendMetric, setTrendMetric] = useState<TrendMetric>("water");
+  const [trendRange, setTrendRange] = useState<"daily" | "weekly">("daily");
 
   useEffect(() => {
     let ignore = false;
@@ -192,6 +204,34 @@ export default function Insights() {
     }
   }
 
+  const weekly = trendRange === "weekly";
+  const trendChart: {
+    points: LineChartPoint[];
+    color?: string;
+    format: (v: number) => string;
+  } =
+    trendMetric === "water"
+      ? { points: weekly ? waterWeekly : waterTrend, format: (v) => `${(v / 1000).toFixed(1)}L` }
+      : trendMetric === "exercise"
+        ? {
+            points: weekly ? exerciseWeekly : exerciseTrend,
+            color: "stroke-alert",
+            format: (v) => (weekly ? `${v.toFixed(0)}min` : `${v}min`),
+          }
+        : trendMetric === "steps"
+          ? {
+              points: weekly ? stepsWeekly : stepsTrend,
+              color: "stroke-amber",
+              format: (v) => (weekly ? Math.round(v).toLocaleString() : v.toLocaleString()),
+            }
+          : trendMetric === "mood"
+            ? {
+                points: weekly ? moodWeekly : moodTrend,
+                color: "stroke-amber",
+                format: (v) => (weekly ? `${v.toFixed(1)}/5` : `${v}/5`),
+              }
+            : { points: weekly ? spendingWeekly : spendingTrend, color: "stroke-bloom", format: formatINR };
+
   return (
     <div className={page}>
       <h1 className={pageTitle}>Insights</h1>
@@ -200,96 +240,45 @@ export default function Insights() {
         notification with your weekly summary automatically, roughly once every 7 days.
       </p>
 
-      {!trendLoading && (waterTrend.length > 0 || exerciseTrend.length > 0 || stepsTrend.length > 0) && (
-        <div className={`mb-6 flex flex-col gap-4 sm:flex-row ${card}`}>
-          {waterTrend.length > 0 && (
-            <div className="flex-1">
-              <h2 className={`mb-2 ${sectionLabel}`}>Water ({TREND_DAYS}d)</h2>
-              <LineChart points={waterTrend} formatValue={(v) => `${(v / 1000).toFixed(1)}L`} />
-            </div>
-          )}
-          {exerciseTrend.length > 0 && (
-            <div className="flex-1">
-              <h2 className={`mb-2 ${sectionLabel}`}>Exercise ({TREND_DAYS}d)</h2>
-              <LineChart points={exerciseTrend} color="stroke-alert" formatValue={(v) => `${v}min`} />
-            </div>
-          )}
-          {stepsTrend.length > 0 && (
-            <div className="flex-1">
-              <h2 className={`mb-2 ${sectionLabel}`}>Steps ({TREND_DAYS}d)</h2>
-              <LineChart points={stepsTrend} color="stroke-amber" formatValue={(v) => v.toLocaleString()} />
-            </div>
+      {!trendLoading && (
+        <div className={`mb-6 ${card}`}>
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {TREND_METRICS.map((m) => (
+              <button
+                key={m.key}
+                type="button"
+                onClick={() => setTrendMetric(m.key)}
+                className={`${pillButton} min-h-10 px-3 ${trendMetric === m.key ? pillButtonDone : pillButtonInactive}`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+          <div className="mb-3 flex gap-1.5">
+            <button
+              type="button"
+              onClick={() => setTrendRange("daily")}
+              className={`${pillButton} min-h-10 px-3 ${trendRange === "daily" ? pillButtonDone : pillButtonInactive}`}
+            >
+              Last {TREND_DAYS} days
+            </button>
+            <button
+              type="button"
+              onClick={() => setTrendRange("weekly")}
+              className={`${pillButton} min-h-10 px-3 ${trendRange === "weekly" ? pillButtonDone : pillButtonInactive}`}
+            >
+              Weekly average
+            </button>
+          </div>
+          {trendChart.points.length > 0 ? (
+            <LineChart points={trendChart.points} color={trendChart.color} formatValue={trendChart.format} />
+          ) : (
+            <p className={mutedText}>No data for this yet.</p>
           )}
         </div>
       )}
 
       {!trendLoading && <WeightTrend entries={weightEntries} />}
-
-      {!trendLoading && (moodTrend.length > 0 || spendingTrend.some((p) => p.value > 0)) && (
-        <div className={`mb-6 flex flex-col gap-4 sm:flex-row ${card}`}>
-          {moodTrend.length > 0 && (
-            <div className="flex-1">
-              <h2 className={`mb-2 ${sectionLabel}`}>Mood ({TREND_DAYS}d)</h2>
-              <LineChart points={moodTrend} color="stroke-amber" formatValue={(v) => `${v}/5`} />
-            </div>
-          )}
-          {spendingTrend.some((p) => p.value > 0) && (
-            <div className="flex-1">
-              <h2 className={`mb-2 ${sectionLabel}`}>Spending ({TREND_DAYS}d)</h2>
-              <LineChart points={spendingTrend} color="stroke-bloom" formatValue={formatINR} />
-            </div>
-          )}
-        </div>
-      )}
-
-      {!trendLoading &&
-        (waterWeekly.some((p) => p.value > 0) ||
-          exerciseWeekly.some((p) => p.value > 0) ||
-          stepsWeekly.some((p) => p.value > 0)) && (
-          <div className={`mb-6 ${card}`}>
-            <p className={`mb-3 ${mutedText}`}>Weekly averages over the last {WEEKLY_WEEKS} weeks.</p>
-            <div className="flex flex-col gap-4 sm:flex-row">
-              {waterWeekly.some((p) => p.value > 0) && (
-                <div className="flex-1">
-                  <h2 className={`mb-2 ${sectionLabel}`}>Water (weekly avg)</h2>
-                  <LineChart points={waterWeekly} formatValue={(v) => `${(v / 1000).toFixed(1)}L`} />
-                </div>
-              )}
-              {exerciseWeekly.some((p) => p.value > 0) && (
-                <div className="flex-1">
-                  <h2 className={`mb-2 ${sectionLabel}`}>Exercise (weekly avg)</h2>
-                  <LineChart points={exerciseWeekly} color="stroke-alert" formatValue={(v) => `${v.toFixed(0)}min`} />
-                </div>
-              )}
-              {stepsWeekly.some((p) => p.value > 0) && (
-                <div className="flex-1">
-                  <h2 className={`mb-2 ${sectionLabel}`}>Steps (weekly avg)</h2>
-                  <LineChart points={stepsWeekly} color="stroke-amber" formatValue={(v) => Math.round(v).toLocaleString()} />
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-      {!trendLoading && (moodWeekly.some((p) => p.value > 0) || spendingWeekly.some((p) => p.value > 0)) && (
-        <div className={`mb-6 ${card}`}>
-          <p className={`mb-3 ${mutedText}`}>Weekly {moodWeekly.some((p) => p.value > 0) ? "average / " : ""}total over the last {WEEKLY_WEEKS} weeks.</p>
-          <div className="flex flex-col gap-4 sm:flex-row">
-            {moodWeekly.some((p) => p.value > 0) && (
-              <div className="flex-1">
-                <h2 className={`mb-2 ${sectionLabel}`}>Mood (weekly avg)</h2>
-                <LineChart points={moodWeekly} color="stroke-amber" formatValue={(v) => `${v.toFixed(1)}/5`} />
-              </div>
-            )}
-            {spendingWeekly.some((p) => p.value > 0) && (
-              <div className="flex-1">
-                <h2 className={`mb-2 ${sectionLabel}`}>Spending (weekly total)</h2>
-                <LineChart points={spendingWeekly} color="stroke-bloom" formatValue={formatINR} />
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {categoryBreakdown.length > 0 && (
         <div className={`mb-6 ${card}`}>
