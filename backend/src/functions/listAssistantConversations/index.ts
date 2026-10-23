@@ -15,6 +15,8 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
       TableName: process.env.ASSISTANT_CONVERSATIONS_TABLE_NAME,
       KeyConditionExpression: "userId = :userId",
       ExpressionAttributeValues: { ":userId": userId },
+      // Strongly consistent so a conversation that just got its first reply shows up in the list.
+      ConsistentRead: true,
     }),
   );
   const items = (result.Items ?? []) as AssistantConversationTurn[];

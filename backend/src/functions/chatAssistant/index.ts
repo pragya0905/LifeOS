@@ -10,6 +10,7 @@ import { EXPENSE_CATEGORIES } from "../../common/expenseCategories";
 import { computeProgressSummary, progressFractionForWish, type WishWithProgress } from "../../common/progressSummary";
 import { isMedicationActiveOnDate } from "../../common/medications";
 import { geocodeLocation, fetchWeather } from "../../common/weather";
+import { conversationTurnsQuery } from "../../common/assistantHistory";
 import { summarizeToolResult } from "../../common/toolResultSummary";
 import { checkAttachmentTotalSize, MAX_IMAGE_BYTES } from "../../common/attachmentLimits";
 import type {
@@ -1626,13 +1627,7 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
       typeof body.conversationId === "string" && body.conversationId ? body.conversationId : randomUUID();
 
     const [historyResult, memoryResult, goalsContext, profileResult] = await Promise.all([
-      ddb.send(
-        new QueryCommand({
-          TableName: process.env.ASSISTANT_CONVERSATIONS_TABLE_NAME,
-          KeyConditionExpression: "userId = :userId AND begins_with(conversationTurn, :prefix)",
-          ExpressionAttributeValues: { ":userId": userId, ":prefix": `${conversationId}#` },
-        }),
-      ),
+      ddb.send(new QueryCommand(conversationTurnsQuery(userId, conversationId))),
       // Small table, no pagination concern at personal scale — every remembered fact is loaded
       // into every conversation's system prompt.
       ddb.send(
