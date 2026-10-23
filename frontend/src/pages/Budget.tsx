@@ -89,7 +89,7 @@ function CategoryBudgetCard({
         <button
           type="button"
           onClick={() => setEditing(true)}
-          className={`${secondaryButton} px-2 py-1 text-xs`}
+          className={`${secondaryButton} min-h-10 px-2 py-1 text-xs`}
         >
           Set budget
         </button>
@@ -130,7 +130,7 @@ function CategoryBudgetCard({
               onSave(n);
               setEditing(false);
             }}
-            className={`${secondaryButton} px-2 py-1 text-xs`}
+            className={`${secondaryButton} min-h-10 px-2 py-1 text-xs`}
           >
             Save
           </button>
@@ -140,7 +140,7 @@ function CategoryBudgetCard({
               setEditing(false);
               setDraftError(null);
             }}
-            className={`${secondaryButton} px-2 py-1 text-xs`}
+            className={`${secondaryButton} min-h-10 px-2 py-1 text-xs`}
           >
             Cancel
           </button>
@@ -162,10 +162,10 @@ function CategoryBudgetCard({
           {EXPENSE_CATEGORY_EMOJI[category]} {EXPENSE_CATEGORY_LABEL[category]}
         </p>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={() => setEditing(true)} className="text-xs text-bloom hover:underline">
+          <button type="button" onClick={() => setEditing(true)} className="inline-flex min-h-10 items-center text-xs text-bloom hover:underline">
             Edit
           </button>
-          <button type="button" onClick={onDelete} className="text-xs text-alert hover:underline">
+          <button type="button" onClick={onDelete} className="inline-flex min-h-10 items-center text-xs text-alert hover:underline">
             Remove
           </button>
         </div>
@@ -350,7 +350,7 @@ export default function BudgetPage() {
   const overallFraction = monthlyBudget ? totalSpent / monthlyBudget : 0;
 
   return (
-    <div className={page}>
+    <div className={`${page} tabular-nums`}>
       <h1 className={pageTitle}>💰 Budget</h1>
 
       <div className={`mb-6 flex items-start justify-between gap-4 ${card}`}>
@@ -388,7 +388,7 @@ export default function BudgetPage() {
                 setMonthlyBudgetDraft(String(monthlyBudget));
                 setEditingMonthlyBudget(true);
               }}
-              className="text-xs text-bloom hover:underline"
+              className="inline-flex min-h-10 items-center text-xs text-bloom hover:underline"
             >
               Edit
             </button>
@@ -408,7 +408,7 @@ export default function BudgetPage() {
               }}
               className={`w-32 ${input}`}
             />
-            <button type="button" onClick={handleSaveMonthlyBudget} className={`${secondaryButton} px-2 py-1 text-xs`}>
+            <button type="button" onClick={handleSaveMonthlyBudget} className={`${secondaryButton} min-h-10 px-2 py-1 text-xs`}>
               Save
             </button>
             {monthlyBudget !== null && (
@@ -418,7 +418,7 @@ export default function BudgetPage() {
                   setEditingMonthlyBudget(false);
                   setMonthlyBudgetError(null);
                 }}
-                className={`${secondaryButton} px-2 py-1 text-xs`}
+                className={`${secondaryButton} min-h-10 px-2 py-1 text-xs`}
               >
                 Cancel
               </button>
@@ -601,7 +601,7 @@ export default function BudgetPage() {
               <button
                 type="button"
                 onClick={() => handleDeleteExpense(expense)}
-                className={`${secondaryButton} px-2 py-1 text-xs`}
+                className={`${secondaryButton} min-h-10 px-2 py-1 text-xs`}
               >
                 Delete
               </button>
