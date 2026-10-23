@@ -1,47 +1,61 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Check, ChevronLeft, ChevronRight, Minus, Plus } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Clock, Minus, Plus } from "lucide-react";
 import { useApi } from "../api/useApi";
+import { Icon } from "../components/Icon";
 import { MedicationStatusButtons } from "../components/MedicationStatusButtons";
 import { useToast } from "../components/Toast";
-import { Icon } from "../components/Icon";
-import { addDays, isValidDateStr, todayLocal } from "../lib/date";
+import { mutedText, pageTitle, sectionLabel } from "../components/ui";
+import { addDays, computeDueAtUtc, isValidDateStr, todayLocal } from "../lib/date";
+import { getMoonEventsInRange, MOON_EVENT_LABEL } from "../lib/moonPhase";
 import { medicationStatusLabel, routineStatusLabel } from "../lib/statusDisplay";
 import {
   assignLanes,
+  bestFitGap,
   buildTimeline,
+  cycleHintFor,
   DAY_MINUTES,
   findFreeGaps,
   findOverlaps,
   formatDuration,
   totalsByKind,
   viewportFor,
+  weekDates,
   type TimelineBlock,
   type TimelineKind,
   type TimelineSource,
   type UnscheduledItem,
 } from "../lib/timeline";
-import type { LogEntry, MedicationLog, MedicationLogStatus, Medication, RoutineStepLog, RoutineTemplate, Task } from "../types";
-import { mutedText, pageTitle, sectionLabel } from "../components/ui";
+import type { LogEntry, Medication, MealPlanSlot, MedicationLog, MedicationLogStatus, RoutineStepLog, RoutineTemplate, Task } from "../types";
 
-// Horizontal 24h lanes (Option B of mockups/b5/timeline-B.html): one lane per kind, swipe
-// sideways when zoomed, the coral line marks "now". Overlaps inside a kind stack in sub-rows.
+// Shared horizontal line (see mockups/b5/timeline-B.html): every visible block sits on one line
+// and only takes a second row when it overlaps another in time. Colour codes the kind.
 
 const LANES: { kind: TimelineKind; label: string; color: string }[] = [
   { kind: "sleep", label: "Sleep", color: "bg-[#7a6fb0]" },
   { kind: "routine", label: "Routines", color: "bg-routine" },
   { kind: "med", label: "Meds", color: "bg-medication" },
+  { kind: "meal", label: "Meals", color: "bg-[#c26a8f]" },
   { kind: "task", label: "Tasks", color: "bg-amber" },
+];
+
+// Static background bands so morning, afternoon, evening and night read at a glance.
+const ZONES: { fromHour: number; toHour: number; color: string }[] = [
+  { fromHour: 0, toHour: 6, color: "bg-stone/30" },
+  { fromHour: 6, toHour: 12, color: "bg-amber/10" },
+  { fromHour: 12, toHour: 18, color: "bg-bloom/10" },
+  { fromHour: 18, toHour: 24, color: "bg-routine/10" },
 ];
 
 const ZOOM_LEVELS = [24, 6, 2] as const;
 type Zoom = (typeof ZOOM_LEVELS)[number];
 
-// Fixed scale per hour, so the day is wider than the phone and scrolls sideways. Each zoom
-// step is a bigger scale; the 24h overview is ~1500px wide, enough for readable block labels.
+// Fixed scale per hour, so the day is wider than the phone and scrolls sideways.
 const PX_PER_HOUR: Record<Zoom, number> = { 24: 64, 6: 160, 2: 320 };
 
-const SUB_ROW_PX = 54;
+const SUB_ROW_PX = 58;
+const WEEKDAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const CYCLE_HINT_KEY = "lifeos.timeline.cycleHints";
 
 function colorFor(kind: TimelineKind): string {
   return LANES.find((l) => l.kind === kind)?.color ?? "bg-stone";
@@ -64,11 +78,21 @@ function hhmm(min: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+function readCycleHintsOn(): boolean {
+  try {
+    return localStorage.getItem(CYCLE_HINT_KEY) === "on";
+  } catch {
+    return false;
+  }
+}
+
 interface TimelineData {
   routines: RoutineTemplate[];
   medications: Medication[];
   tasks: Task[];
   sleep: LogEntry[];
+  cycle: LogEntry[];
+  meals: MealPlanSlot[];
   routineLogs: RoutineStepLog[];
   medicationLogs: MedicationLog[];
 }
@@ -82,14 +106,14 @@ export default function Timeline() {
   const dateParam = searchParams.get("date");
   const selectedDate = dateParam && isValidDateStr(dateParam) ? dateParam : realToday;
   const isToday = selectedDate === realToday;
-  const dateObj = new Date(`${selectedDate}T00:00:00`);
 
   const [data, setData] = useState<TimelineData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [zoom, setZoom] = useState<Zoom>(24);
-  const [filters, setFilters] = useState<Record<TimelineKind, boolean>>({ sleep: true, routine: true, med: true, task: true });
+  const [filters, setFilters] = useState<Record<TimelineKind, boolean>>({ sleep: true, routine: true, med: true, meal: true, task: true });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [now, setNow] = useState<number>(() => nowMinutes());
+  const [cycleHintsOn, setCycleHintsOn] = useState<boolean>(readCycleHintsOn);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -112,15 +136,19 @@ export default function Timeline() {
       request<{ medications: Medication[] }>("/medications", { signal }),
       request<{ tasks: Task[] }>("/tasks", { signal }),
       request<{ entries: LogEntry[] }>(`/logs?logType=sleep&from=${selectedDate}&to=${selectedDate}`, { signal }),
+      request<{ entries: LogEntry[] }>("/logs?logType=cycle", { signal }),
+      request<{ slots: MealPlanSlot[] }>(`/meal-plan?from=${selectedDate}&to=${selectedDate}`, { signal }),
       request<{ logs: RoutineStepLog[] }>(`/routine-logs/${selectedDate}`, { signal }),
       request<{ logs: MedicationLog[] }>(`/medication-logs/${selectedDate}`, { signal }),
     ])
-      .then(([routines, medications, tasks, sleep, routineLogs, medicationLogs]) => {
+      .then(([routines, medications, tasks, sleep, cycle, meals, routineLogs, medicationLogs]) => {
         setData({
           routines: routines.routines,
           medications: medications.medications,
           tasks: tasks.tasks,
           sleep: sleep.entries,
+          cycle: cycle.entries,
+          meals: meals.slots,
           routineLogs: routineLogs.logs,
           medicationLogs: medicationLogs.logs,
         });
@@ -134,9 +162,10 @@ export default function Timeline() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate]);
 
-  const built = useMemo(() => {
+  // Everything the layout needs, derived from the fetched data.
+  const source = useMemo<TimelineSource | null>(() => {
     if (!data) return null;
-    const source: TimelineSource = {
+    return {
       routines: data.routines,
       medications: data.medications,
       tasks: data.tasks.map((t) => ({ taskId: t.taskId, title: t.title, dueDate: t.dueDate, dueTime: t.dueTime, scheduleTime: t.scheduleTime, estimatedHours: t.estimatedHours, status: t.status })),
@@ -145,24 +174,62 @@ export default function Timeline() {
         bedTime: typeof e.data.bedTime === "string" ? e.data.bedTime : undefined,
         wakeTime: typeof e.data.wakeTime === "string" ? e.data.wakeTime : undefined,
       })),
+      meals: data.meals.map((m) => ({ mealType: m.mealType, text: m.text })),
     };
-    return buildTimeline(source, dateObj, selectedDate);
-    // dateObj is derived from selectedDate; depending on the string avoids rebuilding every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, selectedDate]);
+  }, [data]);
 
-  const visibleBlocks = useMemo(() => (built ? built.blocks.filter((b) => filters[b.kind]) : []), [built, filters]);
+  const built = useMemo(() => (source ? buildTimeline(source, new Date(`${selectedDate}T00:00:00`), selectedDate) : null), [source, selectedDate]);
+
+  // Plain-text status per block, so each block says Done / Taken / Skipped as well as its colour.
+  const statusById = useMemo(() => {
+    const out: Record<string, string> = {};
+    if (!data) return out;
+    for (const m of data.medications) {
+      const log = data.medicationLogs.find((l) => l.medicationId === m.medicationId);
+      if (log) out[`med:${m.medicationId}`] = medicationStatusLabel(log.status, log.note);
+    }
+    for (const r of data.routines) {
+      const logs = data.routineLogs.filter((l) => l.routineId === r.routineId);
+      if (r.steps.length > 0 && logs.length > 0) {
+        const done = logs.filter((l) => l.status === "done").length;
+        out[`routine:${r.routineId}`] = `${done} of ${r.steps.length} done`;
+      }
+    }
+    for (const t of data.tasks) if (t.status === "done") out[`task:${t.taskId}`] = "✓ Done";
+    return out;
+  }, [data]);
+
+  const blocks = useMemo<TimelineBlock[]>(() => (built ? built.blocks.map((b) => ({ ...b, status: statusById[b.id] })) : []), [built, statusById]);
+  const unscheduled = built?.unscheduled ?? [];
+  const visibleBlocks = useMemo(() => blocks.filter((b) => filters[b.kind]), [blocks, filters]);
   // Re-packed over only the visible blocks, so hiding a kind never leaves an empty row behind.
   const packed = useMemo(() => assignLanes(visibleBlocks.map((b) => ({ ...b }))), [visibleBlocks]);
   const packedRows = Math.max(1, ...packed.map((b) => b.lane + 1));
   const expanded = packed.find((b) => b.id === selectedId);
-  const totals = useMemo(() => totalsByKind(built?.blocks ?? []), [built]);
-  const gaps = useMemo(() => findFreeGaps(built?.blocks ?? []), [built]);
-  const overlaps = useMemo(() => findOverlaps(built?.blocks ?? []), [built]);
 
-  // Zoomed views centre on "now" for today, and on midday for any other date.
+  const totals = useMemo(() => totalsByKind(blocks), [blocks]);
+  const gaps = useMemo(() => findFreeGaps(blocks), [blocks]);
+  const overlaps = useMemo(() => findOverlaps(blocks), [blocks]);
+
+  // Week strip: routines, meds and tasks per day. Sleep and meals are only fetched for the
+  // viewed day, so they're left out of the other days' counts.
+  const weekCounts = useMemo(() => {
+    if (!source) return [];
+    const planned = { ...source, sleep: [], meals: [] };
+    return weekDates(selectedDate).map((d) => {
+      const r = buildTimeline(planned, new Date(`${d}T00:00:00`), d);
+      return { date: d, count: r.blocks.length + r.unscheduled.length };
+    });
+  }, [source, selectedDate]);
+
+  const moonToday = useMemo(() => {
+    const start = new Date(`${selectedDate}T00:00:00`);
+    return getMoonEventsInRange(start, new Date(start.getTime() + 24 * 60 * 60 * 1000)).get(selectedDate);
+  }, [selectedDate]);
+
+  const cycleHint = data && cycleHintsOn ? cycleHintFor(data.cycle, selectedDate) : null;
+
   const vp = viewportFor(zoom, isToday ? now : 12 * 60);
-  const spanMin = vp.endMin - vp.startMin;
   const innerWidthPx = PX_PER_HOUR[zoom] * 24;
 
   // Bring the zoomed window into view when the zoom level or date changes. Not tied to the
@@ -175,6 +242,8 @@ export default function Timeline() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoom, selectedDate]);
 
+  const showNow = isToday;
+
   function goToDate(next: string) {
     setSelectedId(null);
     setSearchParams(next === realToday ? {} : { date: next });
@@ -182,6 +251,18 @@ export default function Timeline() {
 
   function toggleFilter(kind: TimelineKind) {
     setFilters((prev) => ({ ...prev, [kind]: !prev[kind] }));
+  }
+
+  function toggleCycleHints() {
+    setCycleHintsOn((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(CYCLE_HINT_KEY, next ? "on" : "off");
+      } catch {
+        // Storage can be blocked; the toggle still works for this visit.
+      }
+      return next;
+    });
   }
 
   // ---- Status mutations (optimistic, Undo toast, rollback on failure) ----
@@ -291,12 +372,59 @@ export default function Timeline() {
     });
   }
 
-  function stepStatus(routineId: string, stepIndex: number) {
-    return data?.routineLogs.find((l) => l.routineId === routineId && l.stepIndex === stepIndex);
+  // ---- Moving things in time (visible Move control; no drag) ----
+
+  async function moveRoutine(routine: RoutineTemplate, time: string) {
+    if (!data) return;
+    const snapshot = data;
+    const previous = routine.timeOfDay;
+    setData({ ...data, routines: data.routines.map((r) => (r.routineId === routine.routineId ? { ...r, timeOfDay: time } : r)) });
+    try {
+      const saved = await request<RoutineTemplate>(`/routines/${routine.routineId}`, { method: "PATCH", body: JSON.stringify({ timeOfDay: time }) });
+      setData((prev) => prev && { ...prev, routines: prev.routines.map((r) => (r.routineId === saved.routineId ? saved : r)) });
+    } catch {
+      setData(snapshot);
+      showToast("Something went wrong — that change wasn't saved");
+      return;
+    }
+    showToast(`${routine.name} moved to ${time}`, {
+      undo: previous
+        ? () => {
+            request<RoutineTemplate>(`/routines/${routine.routineId}`, { method: "PATCH", body: JSON.stringify({ timeOfDay: previous }) })
+              .then((reverted) => setData((prev) => prev && { ...prev, routines: prev.routines.map((r) => (r.routineId === reverted.routineId ? reverted : r)) }))
+              .catch(() => {});
+          }
+        : undefined,
+    });
   }
 
-  const nowPct = ((now - vp.startMin) / spanMin) * 100;
-  const showNow = isToday && nowPct >= 0 && nowPct <= 100;
+  // Shared by Move (a task already has a time) and Fit this task (a task with no time yet).
+  async function setTaskTime(task: Task, time: string, successMessage: string) {
+    if (!data) return;
+    const snapshot = data;
+    const previous = { dueTime: task.dueTime, dueAtUtc: task.dueAtUtc };
+    const dueAtUtc = task.dueDate ? computeDueAtUtc(task.dueDate, time) : undefined;
+    setData({ ...data, tasks: data.tasks.map((t) => (t.taskId === task.taskId ? { ...t, dueTime: time, dueAtUtc } : t)) });
+    try {
+      const saved = await request<Task>(`/tasks/${task.taskId}`, { method: "PATCH", body: JSON.stringify({ dueTime: time, dueAtUtc }) });
+      setData((prev) => prev && { ...prev, tasks: prev.tasks.map((t) => (t.taskId === saved.taskId ? saved : t)) });
+    } catch {
+      setData(snapshot);
+      showToast("Something went wrong — that change wasn't saved");
+      return;
+    }
+    showToast(successMessage, {
+      undo: previous.dueTime
+        ? () => {
+            request<Task>(`/tasks/${task.taskId}`, { method: "PATCH", body: JSON.stringify(previous) })
+              .then((reverted) => setData((prev) => prev && { ...prev, tasks: prev.tasks.map((t) => (t.taskId === reverted.taskId ? reverted : t)) }))
+              .catch(() => {});
+          }
+        : undefined,
+    });
+  }
+
+  const taskById = (id: string) => data?.tasks.find((t) => t.taskId === id);
 
   return (
     <div className="mx-auto mt-6 w-full max-w-2xl px-4 pb-24">
@@ -322,6 +450,29 @@ export default function Timeline() {
         )}
       </div>
 
+      {weekCounts.length > 0 && (
+        <div className="mt-3 grid grid-cols-7 gap-1">
+          {weekCounts.map(({ date, count }, i) => {
+            const isSelected = date === selectedDate;
+            return (
+              <button
+                key={date}
+                type="button"
+                onClick={() => goToDate(date)}
+                aria-pressed={isSelected}
+                aria-label={`${WEEKDAY_SHORT[i]} ${date}, ${count} planned`}
+                className={`flex min-h-12 flex-col items-center justify-center rounded-control border text-[11px] tabular-nums ${isSelected ? "border-bloom bg-bloom text-paper-card" : "border-stone dark:border-stone-dark"} ${date === realToday && !isSelected ? "font-semibold text-bloom" : ""}`}
+              >
+                <span>
+                  {WEEKDAY_SHORT[i]} {Number(date.slice(8))}
+                </span>
+                <span className="opacity-80">{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <div className="mt-3 flex flex-wrap gap-2">
         {LANES.map(({ kind, label, color }) => (
           <button
@@ -343,8 +494,21 @@ export default function Timeline() {
       {built && (
         <>
           <p className="mt-4 text-sm tabular-nums text-ink dark:text-paper">
-            Sleep {formatDuration(totals.sleep)} · Routines {formatDuration(totals.routine)} · Meds {formatDuration(totals.med)} · Tasks {formatDuration(totals.task)}
+            Sleep {formatDuration(totals.sleep)} · Routines {formatDuration(totals.routine)} · Meds {formatDuration(totals.med)} · Meals {formatDuration(totals.meal)} · Tasks {formatDuration(totals.task)}
           </p>
+
+          {moonToday && <p className="mt-1 text-sm text-ink-muted dark:text-mist-muted">{MOON_EVENT_LABEL[moonToday]} today</p>}
+
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button type="button" aria-pressed={cycleHintsOn} onClick={toggleCycleHints} className={`min-h-10 rounded-full border px-3 text-xs font-medium ${cycleHintsOn ? "border-bloom bg-bloom text-paper-card" : "border-stone text-ink-muted dark:border-stone-dark dark:text-mist-muted"}`}>
+              Cycle hints {cycleHintsOn ? "on" : "off"}
+            </button>
+          </div>
+          {cycleHint && (
+            <p className="mt-2 rounded-control border-l-[3px] border-bloom bg-paper-card px-3 py-2 text-sm text-ink dark:bg-ink-bg-card dark:text-paper">
+              {cycleHint} <span className="text-xs text-ink-muted dark:text-mist-muted">(estimate)</span>
+            </p>
+          )}
 
           <div className="mt-3 flex items-center gap-2">
             <span className={sectionLabel}>Zoom</span>
@@ -364,14 +528,21 @@ export default function Timeline() {
           <div ref={scrollRef} className="mt-3 overflow-x-auto rounded-control border border-stone dark:border-stone-dark" aria-label="24-hour timeline">
             <div className="relative" style={{ width: `${innerWidthPx}px` }}>
               <div className="relative h-7 border-b border-stone text-[11px] tabular-nums text-ink-muted dark:border-stone-dark dark:text-mist-muted">
-                {Array.from({ length: 25 }, (_, h) => h)
-                  .filter((h) => h < 24)
-                  .map((h) => (
-                    <span key={h} className="absolute top-1 -translate-x-1/2" style={{ left: `${pctOfDay(h * 60)}%` }}>
-                      {String(h).padStart(2, "0")}
-                    </span>
-                  ))}
+                {Array.from({ length: 24 }, (_, h) => (
+                  <span key={h} className="absolute top-1 -translate-x-1/2" style={{ left: `${pctOfDay(h * 60)}%` }}>
+                    {String(h).padStart(2, "0")}
+                  </span>
+                ))}
               </div>
+
+              {ZONES.map((z) => (
+                <div
+                  key={z.fromHour}
+                  aria-hidden="true"
+                  className={`pointer-events-none absolute bottom-0 top-7 ${z.color}`}
+                  style={{ left: `${pctOfDay(z.fromHour * 60)}%`, width: `${pctOfDay((z.toHour - z.fromHour) * 60)}%` }}
+                />
+              ))}
 
               {/* One shared line: blocks sit side by side until two of them overlap in time, and only then take a second row. */}
               <div className="relative border-b border-stone dark:border-stone-dark">
@@ -389,7 +560,9 @@ export default function Timeline() {
                       onMed={setMedStatus}
                       onTask={setTaskDone}
                       onRoutineStep={setRoutineStepStatus}
-                      stepStatus={stepStatus}
+                      stepStatus={(routineId, stepIndex) => data?.routineLogs.find((l) => l.routineId === routineId && l.stepIndex === stepIndex)}
+                      onMoveRoutine={moveRoutine}
+                      onMoveTask={(task, time) => setTaskTime(task, time, `"${task.title}" moved to ${time}`)}
                     />
                   </div>
                 )}
@@ -428,8 +601,13 @@ export default function Timeline() {
           )}
 
           <div className={`mt-6 ${sectionLabel}`}>Unscheduled</div>
-          <UnscheduledList items={built.unscheduled} />
-          {built.unscheduled.length > 0 && (
+          <UnscheduledList
+            items={unscheduled}
+            gaps={gaps}
+            taskFor={taskById}
+            onPlace={(task, startMin) => setTaskTime(task, hhmm(startMin), `"${task.title}" placed at ${hhmm(startMin)}`)}
+          />
+          {unscheduled.length > 0 && (
             <p className="mt-2 text-xs text-ink-muted dark:text-mist-muted">
               These have no time or duration, so they aren't placed on the chart. Add one on the <Link to="/routines" className="text-bloom underline">Routines</Link> or <Link to="/tasks" className="text-bloom underline">Tasks</Link> page.
             </p>
@@ -456,14 +634,64 @@ function BlockButton({
       type="button"
       onClick={onSelect}
       aria-pressed={selected}
-      className={`absolute z-10 overflow-hidden rounded-control border px-1.5 py-1 text-left text-xs leading-tight text-paper-card ${color} ${selected ? "border-ink ring-2 ring-bloom dark:border-paper" : "border-transparent"}`}
+      className={`absolute z-10 overflow-hidden rounded-control border px-1.5 py-1 text-left leading-tight text-paper-card ${color} ${selected ? "border-ink ring-2 ring-bloom dark:border-paper" : "border-transparent"}`}
       style={{ left: `${pctOfDay(block.startMin)}%`, width: `${pctOfDay(block.endMin - block.startMin)}%`, top: block.lane * SUB_ROW_PX + 22, height: SUB_ROW_PX - 6, minWidth: 44 }}
     >
-      <span className="block truncate font-medium">{block.title}</span>
-      <span className="block tabular-nums opacity-90">
+      <span className="block truncate text-xs font-medium">{block.title}</span>
+      <span className="block text-[11px] tabular-nums opacity-90">
         {hhmm(block.startMin)}–{hhmm(block.endMin)}
       </span>
+      {block.status && <span className="block truncate text-[11px] opacity-90">{block.status}</span>}
     </button>
+  );
+}
+
+// Move: a visible button that reveals a time picker. Used instead of drag so it works on touch
+// without long-press, and so the change is explicit.
+function MoveControl({ current, onSave }: { current?: string; onSave: (time: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [time, setTime] = useState(current ?? "");
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setTime(current ?? "");
+          setOpen(true);
+        }}
+        className="flex min-h-10 w-full items-center justify-center gap-2 rounded-control border border-stone text-sm font-medium dark:border-stone-dark"
+      >
+        <Icon icon={Clock} size={14} />
+        Move
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      <input
+        type="time"
+        value={time}
+        onChange={(e) => setTime(e.target.value)}
+        aria-label="New time"
+        className="min-h-10 flex-1 rounded-control border border-stone bg-paper-card px-2 text-sm tabular-nums dark:border-stone-dark dark:bg-ink-bg-card"
+      />
+      <button
+        type="button"
+        disabled={!time || time === current}
+        onClick={() => {
+          onSave(time);
+          setOpen(false);
+        }}
+        className="min-h-10 rounded-control bg-bloom px-3 text-xs font-medium text-paper-card disabled:opacity-50"
+      >
+        Save time
+      </button>
+      <button type="button" onClick={() => setOpen(false)} className="min-h-10 rounded-control border border-stone px-3 text-xs dark:border-stone-dark">
+        Cancel
+      </button>
+    </div>
   );
 }
 
@@ -475,6 +703,8 @@ function SelectedPanel({
   onTask,
   onRoutineStep,
   stepStatus,
+  onMoveRoutine,
+  onMoveTask,
 }: {
   block: TimelineBlock;
   data: TimelineData;
@@ -483,27 +713,24 @@ function SelectedPanel({
   onTask: (task: Task) => void;
   onRoutineStep: (routine: RoutineTemplate, stepIndex: number, status: RoutineStepLog["status"], note?: string) => void;
   stepStatus: (routineId: string, stepIndex: number) => RoutineStepLog | undefined;
+  onMoveRoutine: (routine: RoutineTemplate, time: string) => void;
+  onMoveTask: (task: Task, time: string) => void;
 }) {
   const header = (
     <p className="text-sm font-medium text-ink dark:text-paper">
       {block.title} <span className="tabular-nums text-ink-muted dark:text-mist-muted">{hhmm(block.startMin)}–{hhmm(block.endMin)}</span>
     </p>
   );
+  const shell = "rounded-control border border-stone bg-paper-card p-3 dark:border-stone-dark dark:bg-ink-bg-card";
 
   if (block.kind === "med") {
     const medId = block.id.replace(/^med:/, "");
     const log = data.medicationLogs.find((l) => l.medicationId === medId);
     return (
-      <div className="rounded-control border border-stone bg-paper-card p-3 dark:border-stone-dark dark:bg-ink-bg-card">
+      <div className={shell}>
         {header}
         <div className="mt-2">
-          <MedicationStatusButtons
-            status={log?.status ?? null}
-            note={log?.note}
-            pending={false}
-            showAddNote={selectedDate <= todayLocal()}
-            onSetStatus={(status, note) => onMed(medId, status, note)}
-          />
+          <MedicationStatusButtons status={log?.status ?? null} note={log?.note} pending={false} showAddNote={selectedDate <= todayLocal()} onSetStatus={(status, note) => onMed(medId, status, note)} />
         </div>
       </div>
     );
@@ -515,18 +742,21 @@ function SelectedPanel({
     if (!task) return null;
     const isDone = task.status === "done";
     return (
-      <div className="rounded-control border border-stone bg-paper-card p-3 dark:border-stone-dark dark:bg-ink-bg-card">
+      <div className={shell}>
         {header}
-        <button
-          type="button"
-          onClick={() => onTask(task)}
-          disabled={isDone}
-          className="mt-2 flex min-h-10 w-full items-center justify-center gap-2 rounded-control border border-stone text-sm font-medium disabled:opacity-60 dark:border-stone-dark"
-          aria-pressed={isDone}
-        >
-          {isDone && <Icon icon={Check} size={14} />}
-          {isDone ? "Done" : "Mark done"}
-        </button>
+        <div className="mt-2 flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => onTask(task)}
+            disabled={isDone}
+            aria-pressed={isDone}
+            className="flex min-h-10 w-full items-center justify-center gap-2 rounded-control border border-stone text-sm font-medium disabled:opacity-60 dark:border-stone-dark"
+          >
+            {isDone && <Icon icon={Check} size={14} />}
+            {isDone ? "Done" : "Mark done"}
+          </button>
+          {task.dueDate && <MoveControl current={task.dueTime} onSave={(time) => onMoveTask(task, time)} />}
+        </div>
       </div>
     );
   }
@@ -536,7 +766,7 @@ function SelectedPanel({
     const routine = data.routines.find((r) => r.routineId === routineId);
     if (!routine) return null;
     return (
-      <div className="rounded-control border border-stone bg-paper-card p-3 dark:border-stone-dark dark:bg-ink-bg-card">
+      <div className={shell}>
         {header}
         <ul className="mt-2 space-y-2">
           {routine.steps.map((step, i) => {
@@ -553,12 +783,24 @@ function SelectedPanel({
             );
           })}
         </ul>
+        <div className="mt-3">
+          <MoveControl current={routine.timeOfDay} onSave={(time) => onMoveRoutine(routine, time)} />
+        </div>
+      </div>
+    );
+  }
+
+  if (block.kind === "meal") {
+    return (
+      <div className={shell}>
+        {header}
+        <p className="mt-1 text-xs text-ink-muted dark:text-mist-muted">Meal times are placed at a standard slot. Edit the plan on the Meal Plan page.</p>
       </div>
     );
   }
 
   // Sleep: read-only here; it's logged from the Today screen.
-  return <div className="rounded-control border border-stone bg-paper-card p-3 dark:border-stone-dark dark:bg-ink-bg-card">{header}</div>;
+  return <div className={shell}>{header}</div>;
 }
 
 function StepButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
@@ -574,16 +816,69 @@ function StepButton({ active, label, onClick }: { active: boolean; label: string
   );
 }
 
-function UnscheduledList({ items }: { items: UnscheduledItem[] }) {
+// Fit this task: finds the tightest free gap that holds the task's estimate, then places it at
+// the gap's start. Only tasks with an estimate can be fitted; the rest say what's missing.
+function UnscheduledList({
+  items,
+  gaps,
+  taskFor,
+  onPlace,
+}: {
+  items: UnscheduledItem[];
+  gaps: { startMin: number; endMin: number }[];
+  taskFor: (id: string) => Task | undefined;
+  onPlace: (task: Task, startMin: number) => void;
+}) {
+  const [fitId, setFitId] = useState<string | null>(null);
+
   if (items.length === 0) return <p className={mutedText}>Everything has a time.</p>;
+
   return (
     <ul className="divide-y divide-stone rounded-control border border-stone dark:divide-stone-dark dark:border-stone-dark">
-      {items.map((item) => (
-        <li key={item.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
-          <span className="break-words text-ink dark:text-paper">{item.title}</span>
-          <span className="shrink-0 text-xs text-ink-muted dark:text-mist-muted">{item.reason}</span>
-        </li>
-      ))}
+      {items.map((item) => {
+        const task = item.kind === "task" ? taskFor(item.id.replace(/^task:/, "")) : undefined;
+        const canFit = !!task && item.reason === "no time set" && task.estimatedHours !== undefined;
+        const minutes = canFit && task ? Math.round((task.estimatedHours ?? 0) * 60) : 0;
+        const best = canFit ? bestFitGap(gaps, minutes) : undefined;
+        const open = fitId === item.id;
+        return (
+          <li key={item.id} className="px-3 py-2 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <span className="break-words text-ink dark:text-paper">{item.title}</span>
+              <span className="shrink-0 text-xs text-ink-muted dark:text-mist-muted">{item.reason}</span>
+            </div>
+            {canFit && !open && (
+              <button type="button" onClick={() => setFitId(item.id)} className="mt-2 min-h-10 rounded-control border border-stone px-3 text-xs font-medium dark:border-stone-dark">
+                Fit this task
+              </button>
+            )}
+            {canFit && open && (
+              <div className="mt-2 space-y-2">
+                {best && task ? (
+                  <>
+                    <p className="text-xs text-ink-muted dark:text-mist-muted">
+                      Best fit {hhmm(best.startMin)}–{hhmm(best.endMin)} ({formatDuration(best.endMin - best.startMin)} free) for {formatDuration(minutes)}
+                    </p>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => onPlace(task, best.startMin)} className="min-h-10 flex-1 rounded-control bg-bloom text-xs font-medium text-paper-card">
+                        Place at {hhmm(best.startMin)}
+                      </button>
+                      <button type="button" onClick={() => setFitId(null)} className="min-h-10 rounded-control border border-stone px-3 text-xs dark:border-stone-dark">
+                        Close
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-xs text-ink-muted dark:text-mist-muted">No free gap is long enough for {formatDuration(minutes)}.</p>
+                )}
+              </div>
+            )}
+            {item.kind === "task" && item.reason === "no time set" && task && task.estimatedHours === undefined && (
+              <p className="mt-1 text-xs text-ink-muted dark:text-mist-muted">Add an estimate on the Tasks page to fit it.</p>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }

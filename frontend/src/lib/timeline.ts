@@ -1,11 +1,19 @@
 import { appliesOnDate } from "./weekdays";
+import { addDays } from "./date";
+import { computeAvgPeriodDays, estimatePhase, predictNextCycle } from "./cyclePhase";
+import type { LogEntry } from "../types";
 
 // Pure layout logic for the 24h timeline page. Everything here works in minutes-from-midnight
 // on a single local calendar date, so it can be tested without a DOM or a network.
 
 export const DAY_MINUTES = 24 * 60;
 
-export type TimelineKind = "sleep" | "routine" | "med" | "task";
+export type TimelineKind = "sleep" | "routine" | "med" | "meal" | "task";
+
+// Meals have no clock time in the meal plan, so each slot sits at a fixed nominal time.
+// These are display placement only; nothing is stored, and the real plan is unchanged.
+export const MEAL_NOMINAL_MIN: Record<string, number> = { breakfast: 8 * 60, lunch: 13 * 60, snack: 16 * 60, dinner: 19 * 60 };
+export const MEAL_DURATION_MIN = 30;
 
 export interface TimelineBlock {
   id: string;
@@ -15,6 +23,8 @@ export interface TimelineBlock {
   endMin: number;
   // Lane index assigned by assignLanes(); blocks that overlap in time get different lanes.
   lane: number;
+  // Plain-text status shown on the block, e.g. "✓ Done". Filled in by the page from logs.
+  status?: string;
   // Whether this block's end wraps past midnight (sleep only). The page draws the
   // continuation on the same day as a separate segment with `continuesFromPrevious`.
   continuesFromPrevious?: boolean;
@@ -33,6 +43,8 @@ export interface TimelineSource {
   tasks: { taskId: string; title: string; dueDate?: string; dueTime?: string; scheduleTime?: string; estimatedHours?: number; status: string }[];
   // Sleep logs for the date, as stored: bedTime/wakeTime are "HH:MM" and either may be missing.
   sleep: { logId: string; bedTime?: string; wakeTime?: string }[];
+  // Meal plan slots for the date. Only the text and slot name matter here.
+  meals: { mealType: string; text: string }[];
 }
 
 // "HH:MM" -> minutes from midnight. Returns undefined for anything malformed rather than
@@ -71,6 +83,12 @@ export function buildTimeline(
     const start = t.dueTime ?? t.scheduleTime;
     const duration = t.estimatedHours != null ? Math.round(t.estimatedHours * 60) : undefined;
     pushTimed(blocks, unscheduled, { id: `task:${t.taskId}`, kind: "task", title: t.title, start, duration });
+  }
+
+  for (const m of source.meals) {
+    const start = MEAL_NOMINAL_MIN[m.mealType];
+    if (start === undefined || !m.text.trim()) continue;
+    blocks.push({ id: `meal:${m.mealType}`, kind: "meal", title: m.text.trim(), startMin: start, endMin: start + MEAL_DURATION_MIN, lane: 0 });
   }
 
   for (const s of source.sleep) {
@@ -160,7 +178,7 @@ export function findOverlaps(blocks: TimelineBlock[]): [TimelineBlock, TimelineB
 // Total minutes per kind, for the plain-text totals line. Sleep counts both segments of an
 // overnight block once, because the two segments together are one night.
 export function totalsByKind(blocks: TimelineBlock[]): Record<TimelineKind, number> {
-  const totals: Record<TimelineKind, number> = { sleep: 0, routine: 0, med: 0, task: 0 };
+  const totals: Record<TimelineKind, number> = { sleep: 0, routine: 0, med: 0, meal: 0, task: 0 };
   for (const b of blocks) totals[b.kind] += b.endMin - b.startMin;
   return totals;
 }
@@ -182,4 +200,47 @@ export function viewportFor(zoomHours: number, centreMin: number): { startMin: n
   if (startMin < 0) startMin = 0;
   if (startMin + spanMin > DAY_MINUTES) startMin = DAY_MINUTES - spanMin;
   return { startMin, endMin: startMin + spanMin };
+}
+
+// Tightest free gap that still fits `durationMin`, so a short task doesn't eat a long open
+// stretch. Returns undefined when nothing fits.
+export function bestFitGap(gaps: { startMin: number; endMin: number }[], durationMin: number): { startMin: number; endMin: number } | undefined {
+  let best: { startMin: number; endMin: number } | undefined;
+  for (const g of gaps) {
+    const length = g.endMin - g.startMin;
+    if (length < durationMin) continue;
+    if (!best || length < best.endMin - best.startMin) best = g;
+  }
+  return best;
+}
+
+// Monday..Sunday of the week containing `dateStr`, as YYYY-MM-DD strings.
+export function weekDates(dateStr: string): string[] {
+  const d = new Date(`${dateStr}T00:00:00`);
+  const mondayOffset = (d.getDay() + 6) % 7;
+  const monday = addDays(dateStr, -mondayOffset);
+  return Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+}
+
+const CYCLE_HINT: Record<string, string> = {
+  Menstrual: "Period days are often lower energy. A lighter schedule may feel kinder.",
+  Follicular: "Energy often rises through this stretch, a good time for bigger tasks.",
+  Ovulation: "Around your estimated fertile window. Keep a little buffer between blocks.",
+  Luteal: "Later in the cycle, energy can dip. Leaving some space in the afternoon can help.",
+};
+
+// A gentle, estimated note for the day based on logged period starts. Returns null when there
+// isn't enough logged history to estimate, so the page shows nothing rather than a guess.
+export function cycleHintFor(entries: LogEntry[], dateStr: string): string | null {
+  const { avgCycleDays } = predictNextCycle(entries);
+  const avgPeriodDays = computeAvgPeriodDays(entries);
+  if (!avgCycleDays || !avgPeriodDays) return null;
+  const lastStart = entries
+    .filter((e) => e.data.event === "period_start" && e.date <= dateStr)
+    .map((e) => e.date)
+    .sort()
+    .pop();
+  if (!lastStart) return null;
+  const { phase } = estimatePhase(dateStr, lastStart, avgCycleDays, avgPeriodDays);
+  return CYCLE_HINT[phase] ?? null;
 }

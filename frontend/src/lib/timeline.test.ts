@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
+import type { LogEntry } from "../types";
 import {
   assignLanes,
+  bestFitGap,
   buildTimeline,
+  cycleHintFor,
   findFreeGaps,
   findOverlaps,
   formatDuration,
   parseHm,
   totalsByKind,
   viewportFor,
+  weekDates,
   type TimelineBlock,
   type TimelineSource,
 } from "./timeline";
@@ -17,7 +21,7 @@ const FRIDAY = new Date("2026-10-23T00:00:00");
 const DATE = "2026-10-23";
 
 function source(partial: Partial<TimelineSource> = {}): TimelineSource {
-  return { routines: [], medications: [], tasks: [], sleep: [], ...partial };
+  return { routines: [], medications: [], tasks: [], sleep: [], meals: [], ...partial };
 }
 
 function block(id: string, startMin: number, endMin: number): TimelineBlock {
@@ -185,7 +189,7 @@ describe("totalsByKind and formatDuration", () => {
       { ...block("r", 390, 430), kind: "routine" },
       { ...block("t", 600, 720), kind: "task" },
     ]);
-    expect(totals).toEqual({ sleep: 390, routine: 40, med: 0, task: 120 });
+    expect(totals).toEqual({ sleep: 390, routine: 40, med: 0, meal: 0, task: 120 });
   });
 
   it("formats minutes into compact hour and minute text", () => {
@@ -207,5 +211,71 @@ describe("viewportFor", () => {
   it("clamps a zoomed window to the start and end of the day", () => {
     expect(viewportFor(2, 10)).toEqual({ startMin: 0, endMin: 120 });
     expect(viewportFor(2, 1430)).toEqual({ startMin: 1320, endMin: 1440 });
+  });
+});
+
+describe("meals", () => {
+  it("places each meal at its nominal time, skipping empty slots", () => {
+    const { blocks } = buildTimeline(
+      source({
+        meals: [
+          { mealType: "breakfast", text: "Oats" },
+          { mealType: "lunch", text: "   " },
+          { mealType: "dinner", text: "Dal and rice" },
+        ],
+      }),
+      FRIDAY,
+      DATE,
+    );
+    expect(blocks.map((b) => [b.kind, b.title, b.startMin, b.endMin])).toEqual([
+      ["meal", "Oats", 480, 510],
+      ["meal", "Dal and rice", 1140, 1170],
+    ]);
+  });
+});
+
+describe("bestFitGap", () => {
+  it("picks the tightest gap that still fits", () => {
+    const gaps = [
+      { startMin: 0, endMin: 300 },
+      { startMin: 400, endMin: 480 },
+      { startMin: 600, endMin: 1440 },
+    ];
+    expect(bestFitGap(gaps, 60)).toEqual({ startMin: 400, endMin: 480 });
+  });
+
+  it("returns undefined when nothing fits", () => {
+    expect(bestFitGap([{ startMin: 0, endMin: 30 }], 45)).toBeUndefined();
+  });
+});
+
+describe("weekDates", () => {
+  it("returns Monday to Sunday for a Friday", () => {
+    expect(weekDates("2026-10-23")).toEqual([
+      "2026-10-19",
+      "2026-10-20",
+      "2026-10-21",
+      "2026-10-22",
+      "2026-10-23",
+      "2026-10-24",
+      "2026-10-25",
+    ]);
+  });
+
+  it("starts on the same Monday when the date is a Sunday", () => {
+    expect(weekDates("2026-10-25")[0]).toBe("2026-10-19");
+  });
+});
+
+describe("cycleHintFor", () => {
+  const cycleEntry = (date: string, event: string) => ({ date, data: { event }, logId: date, logType: "cycle", userId: "u", source: "manual", createdAt: "", updatedAt: "" }) as unknown as LogEntry;
+
+  it("returns null without enough logged history to estimate", () => {
+    expect(cycleHintFor([cycleEntry("2026-09-01", "period_start")], DATE)).toBeNull();
+  });
+
+  it("returns a hint once two cycles are logged", () => {
+    const entries = [cycleEntry("2026-08-01", "period_start"), cycleEntry("2026-08-05", "period_end"), cycleEntry("2026-09-01", "period_start"), cycleEntry("2026-09-05", "period_end")];
+    expect(cycleHintFor(entries, DATE)).toEqual(expect.any(String));
   });
 });
