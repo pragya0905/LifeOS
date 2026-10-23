@@ -53,8 +53,6 @@ const MOOD_EMOJI: Record<number, string> = {
   5: "😄",
 };
 
-const ENTRY_TRUNCATE_LENGTH = 280;
-
 export default function Journal() {
   const { request } = useApi();
   const [entries, setEntries] = useState<JournalEntry[]>([]);
@@ -71,7 +69,6 @@ export default function Journal() {
   const [mood, setMood] = useState<number | null>(null);
   const [savingMood, setSavingMood] = useState(false);
   const [moodByDate, setMoodByDate] = useState<Record<string, number>>({});
-  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
 
   const baseTextRef = useRef("");
 
@@ -201,15 +198,6 @@ export default function Journal() {
 
   function insertPrompt(prompt: string) {
     setText((prev) => joinText(prev, prompt));
-  }
-
-  function toggleExpanded(entryDate: string) {
-    setExpandedDates((prev) => {
-      const next = new Set(prev);
-      if (next.has(entryDate)) next.delete(entryDate);
-      else next.add(entryDate);
-      return next;
-    });
   }
 
   function editEntry(entryDate: string) {
@@ -371,10 +359,6 @@ export default function Journal() {
         <ul className="flex flex-col gap-3">
           {filteredEntries.map((entry) => {
             const entryMood = moodByDate[entry.date];
-            const isLong = entry.text.length > ENTRY_TRUNCATE_LENGTH;
-            const isExpanded = expandedDates.has(entry.date);
-            const displayText =
-              isLong && !isExpanded ? `${entry.text.slice(0, ENTRY_TRUNCATE_LENGTH).trimEnd()}…` : entry.text;
             return (
               <li key={entry.date} className={card}>
                 <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
@@ -398,16 +382,8 @@ export default function Journal() {
                   {entry.updatedAt !== entry.createdAt &&
                     ` · edited ${new Date(entry.updatedAt).toLocaleString()}`}
                 </p>
-                <p className="whitespace-pre-wrap text-sm text-ink dark:text-paper">{displayText}</p>
-                {isLong && (
-                  <button
-                    type="button"
-                    onClick={() => toggleExpanded(entry.date)}
-                    className="mt-1 text-xs font-medium text-bloom hover:underline"
-                  >
-                    {isExpanded ? "Show less" : "Show more"}
-                  </button>
-                )}
+                {/* Full text, wrapped: an entry is never cut off behind "Show more" (DESIGN.md). */}
+                <p className="whitespace-pre-wrap break-words text-sm text-ink dark:text-paper">{entry.text}</p>
                 {formatDetection(entry.aiExtracted) && (
                   <p className="mt-1 text-xs text-bloom">{formatDetection(entry.aiExtracted)}</p>
                 )}
