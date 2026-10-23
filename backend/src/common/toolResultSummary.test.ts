@@ -15,6 +15,7 @@ describe("summarizeToolResult", () => {
       id: "t1",
       title: "Call plumber",
       fields: { due: "2026-10-16 18:00", priority: "Medium" },
+      item: { title: "Call plumber", dueDate: "2026-10-16", dueTime: "18:00", priority: "Medium" },
     });
   });
 
@@ -25,6 +26,7 @@ describe("summarizeToolResult", () => {
       id: "t2",
       title: "Someday task",
       fields: {},
+      item: { title: "Someday task" },
     });
   });
 
@@ -54,6 +56,7 @@ describe("summarizeToolResult", () => {
       id: "m2",
       title: "Vitamin D",
       fields: { dosage: "1000 IU", time: "08:00" },
+      item: { name: "Vitamin D", dosage: "1000 IU", timeOfDay: "08:00" },
     });
   });
 
@@ -145,5 +148,118 @@ describe("summarizeToolResult names in log results", () => {
   it("falls back to a generic medication title when no name is returned", () => {
     const content = JSON.stringify({ dateMedicationId: "2026-10-23#m1", status: "taken" });
     expect(summarizeToolResult("log_medication", {}, content)).toMatchObject({ title: "Medication" });
+  });
+});
+
+describe("whole-item results for create tools (Redo)", () => {
+  it("keeps only the allowlisted writable task fields, never internal ones", () => {
+    const content = JSON.stringify({
+      taskId: "t9",
+      userId: "user-1",
+      title: "Renew passport",
+      description: "bring photos",
+      category: "admin",
+      priority: "High",
+      prioritySource: "manual",
+      estimatedHours: 2,
+      recurrence: { frequency: "weekly", daysOfWeek: [1, 3], extra: "drop me" },
+      reminderSentAt: "2026-10-01T00:00:00Z",
+      createdAt: "2026-10-01T00:00:00Z",
+    });
+    const result = summarizeToolResult("create_task", {}, content);
+    expect(result?.item).toEqual({
+      title: "Renew passport",
+      description: "bring photos",
+      category: "admin",
+      priority: "High",
+      estimatedHours: 2,
+      recurrence: { frequency: "weekly", daysOfWeek: [1, 3] },
+    });
+    expect(JSON.stringify(result?.item)).not.toMatch(/user-1|reminderSentAt|createdAt|prioritySource/);
+  });
+
+  it("omits item rather than truncating when a string is over 500 characters", () => {
+    const content = JSON.stringify({ taskId: "t10", title: "x", description: "a".repeat(501) });
+    const result = summarizeToolResult("create_task", {}, content);
+    expect(result).toBeDefined();
+    expect(result).not.toHaveProperty("item");
+  });
+
+  it("omits item when a routine has more than 30 steps", () => {
+    const content = JSON.stringify({
+      routineId: "r9",
+      name: "Long",
+      category: "dailyRoutine",
+      steps: Array.from({ length: 31 }, (_, i) => `step ${i}`),
+    });
+    expect(summarizeToolResult("create_routine_template", {}, content)).not.toHaveProperty("item");
+  });
+
+  it("keeps a routine's steps, schedule and time when within limits", () => {
+    const content = JSON.stringify({
+      routineId: "r10",
+      name: "Skin",
+      category: "skinCare",
+      steps: ["Cleanser", "Toner"],
+      daysOfWeek: [0, 6],
+      timeOfDay: "07:00",
+      estimatedMinutes: 5,
+      createdAt: "2026-10-01T00:00:00Z",
+    });
+    expect(summarizeToolResult("create_routine_template", {}, content)?.item).toEqual({
+      category: "skinCare",
+      name: "Skin",
+      steps: ["Cleanser", "Toner"],
+      daysOfWeek: [0, 6],
+      timeOfDay: "07:00",
+      estimatedMinutes: 5,
+    });
+  });
+
+  it("keeps a medication's dosage and notes for Redo, and does not expose a userId", () => {
+    const content = JSON.stringify({
+      medicationId: "m7",
+      userId: "user-1",
+      name: "Iron",
+      dosage: "65 mg",
+      notes: "take with food",
+      startDate: "2026-10-23",
+      durationDays: 30,
+      timezoneOffsetMinutes: -330,
+      endDate: "2026-11-21",
+    });
+    const result = summarizeToolResult("create_medication", {}, content);
+    expect(result?.item).toEqual({
+      name: "Iron",
+      dosage: "65 mg",
+      notes: "take with food",
+      startDate: "2026-10-23",
+      durationDays: 30,
+      timezoneOffsetMinutes: -330,
+    });
+  });
+
+  it("keeps a wish's type, mode and targets for Redo", () => {
+    const content = JSON.stringify({
+      wishId: "w1",
+      title: "Read 12 books",
+      type: "learning",
+      progressMode: "quantity",
+      quantityTarget: 12,
+      quantityUnit: "books",
+      imageKeys: ["a.jpg"],
+    });
+    expect(summarizeToolResult("create_wish", {}, content)?.item).toEqual({
+      title: "Read 12 books",
+      type: "learning",
+      progressMode: "quantity",
+      quantityTarget: 12,
+      quantityUnit: "books",
+    });
+  });
+
+  it("never adds an item to an update, only to a create", () => {
+    const content = JSON.stringify({ medicationId: "m1", name: "Iron" });
+    expect(summarizeToolResult("update_medication", {}, content)).not.toHaveProperty("item");
   });
 });

@@ -14,6 +14,9 @@ export interface ToolResultSummary {
   title: string;
   fields?: Record<string, string>;
   deleted?: boolean;
+  // Present only on create results, and only when the whole item fits (see losslessItem).
+  // Lets the client recreate the item exactly (Redo), so it holds the user's own writable fields.
+  item?: Record<string, unknown>;
 }
 
 function capitalize(s: string): string {
@@ -45,6 +48,40 @@ function numStr(v: unknown): string | undefined {
   return typeof v === "number" && Number.isFinite(v) ? String(v) : undefined;
 }
 
+// Whole-item payloads for Redo. Lossless or nothing: an item that is too large, or has a string
+// over 500 characters or an array over 30 items, is omitted rather than truncated, so a Redo can
+// never silently recreate a smaller item. Undefined keys are dropped.
+const ITEM_MAX_STRING = 500;
+const ITEM_MAX_ARRAY = 30;
+const ITEM_MAX_BYTES = 4096;
+
+function losslessItem(fields: Record<string, unknown>): Record<string, unknown> | undefined {
+  const item: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(fields)) {
+    if (value === undefined) continue;
+    if (typeof value === "string" && value.length > ITEM_MAX_STRING) return undefined;
+    if (Array.isArray(value)) {
+      if (value.length > ITEM_MAX_ARRAY) return undefined;
+      if (value.some((v) => typeof v === "string" && v.length > ITEM_MAX_STRING)) return undefined;
+    }
+    item[key] = value;
+  }
+  if (JSON.stringify(item).length > ITEM_MAX_BYTES) return undefined;
+  return item;
+}
+
+// Picks only the recurrence keys the app writes, so nothing unexpected rides along.
+function recurrenceItem(value: unknown): Record<string, unknown> | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const r = value as Record<string, unknown>;
+  return losslessItem({
+    frequency: r.frequency,
+    daysOfWeek: r.daysOfWeek,
+    intervalDays: r.intervalDays,
+    dayOfMonth: r.dayOfMonth,
+  });
+}
+
 // `input` is the tool call's own arguments (from the model) — needed for delete tools, whose
 // HTTP responses are either `{deleted:true}` or an empty 204 body, neither of which echoes
 // back the id or a title; the id the model itself passed in is the only thing available.
@@ -71,7 +108,17 @@ export function summarizeToolResult(
       const fields: Record<string, string> = {};
       if (str(d.dueDate)) fields.due = `${d.dueDate}${str(d.dueTime) ? ` ${d.dueTime}` : ""}`;
       if (str(d.priority)) fields.priority = d.priority as string;
-      return { itemType: "task", id: str(d.taskId), title, fields };
+      const item = losslessItem({
+        title,
+        description: d.description,
+        dueDate: d.dueDate,
+        dueTime: d.dueTime,
+        category: d.category,
+        priority: d.priority,
+        estimatedHours: d.estimatedHours,
+        recurrence: recurrenceItem(d.recurrence),
+      });
+      return { itemType: "task", id: str(d.taskId), title, fields, ...(item ? { item } : {}) };
     }
     case "delete_task":
       return { itemType: "task", id: str(input.taskId), title: "Task", deleted: true };
@@ -83,7 +130,20 @@ export function summarizeToolResult(
       const fields: Record<string, string> = {};
       if (str(d.dosage)) fields.dosage = d.dosage as string;
       if (str(d.timeOfDay)) fields.time = d.timeOfDay as string;
-      return { itemType: "medication", id: str(d.medicationId), title, fields };
+      const item = name.startsWith("create_")
+        ? losslessItem({
+            name: d.name,
+            dosage: d.dosage,
+            notes: d.notes,
+            startDate: d.startDate,
+            durationDays: d.durationDays,
+            timeOfDay: d.timeOfDay,
+            timezoneOffsetMinutes: d.timezoneOffsetMinutes,
+            daysOfWeek: d.daysOfWeek,
+            estimatedMinutes: d.estimatedMinutes,
+          })
+        : undefined;
+      return { itemType: "medication", id: str(d.medicationId), title, fields, ...(item ? { item } : {}) };
     }
     case "delete_medication":
       return { itemType: "medication", id: str(input.medicationId), title: "Medication", deleted: true };
@@ -95,7 +155,17 @@ export function summarizeToolResult(
       const fields: Record<string, string> = {};
       if (Array.isArray(d.steps)) fields.steps = `${d.steps.length} step${d.steps.length === 1 ? "" : "s"}`;
       if (str(d.timeOfDay)) fields.time = d.timeOfDay as string;
-      return { itemType: "routine", id: str(d.routineId), title, fields };
+      const item = name.startsWith("create_")
+        ? losslessItem({
+            category: d.category,
+            name: d.name,
+            steps: d.steps,
+            daysOfWeek: d.daysOfWeek,
+            timeOfDay: d.timeOfDay,
+            estimatedMinutes: d.estimatedMinutes,
+          })
+        : undefined;
+      return { itemType: "routine", id: str(d.routineId), title, fields, ...(item ? { item } : {}) };
     }
     case "delete_routine_template":
       return { itemType: "routine", id: str(input.routineId), title: "Routine", deleted: true };
@@ -178,7 +248,17 @@ export function summarizeToolResult(
       const fields: Record<string, string> = {};
       if (str(d.type)) fields.type = d.type as string;
       if (str(d.targetDate)) fields.target = d.targetDate as string;
-      return { itemType: "wish", id: str(d.wishId), title, fields };
+      const item = losslessItem({
+        title,
+        type: d.type,
+        progressMode: d.progressMode,
+        targetDate: d.targetDate,
+        quantityTarget: d.quantityTarget,
+        quantityUnit: d.quantityUnit,
+        linkedHabitType: d.linkedHabitType,
+        habitLinkTargetValue: d.habitLinkTargetValue,
+      });
+      return { itemType: "wish", id: str(d.wishId), title, fields, ...(item ? { item } : {}) };
     }
 
     case "create_expense":
