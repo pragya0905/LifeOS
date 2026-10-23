@@ -326,7 +326,7 @@ export default function Insights() {
                 <ul className="flex flex-col gap-1">
                   {progressSummary.wishes.map((w) => (
                     <li key={w.title} className="flex items-center justify-between gap-2 text-sm">
-                      <span className="truncate text-ink dark:text-paper">{w.title}</span>
+                      <span className="min-w-0 break-words text-ink dark:text-paper">{w.title}</span>
                       <span className={w.fallingBehind ? "shrink-0 font-medium text-alert" : `shrink-0 ${mutedText}`}>
                         {w.progressPercent ?? 0}% done{w.fallingBehind ? " · falling behind" : ""}
                       </span>
