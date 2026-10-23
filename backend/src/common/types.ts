@@ -21,6 +21,12 @@ export interface Task {
   userId: string;
   taskId: string;
   title: string;
+  // "protected" marks time set aside (deep work, commute) rather than a task to tick off.
+  // Absent means a normal task.
+  blockType?: "task" | "protected";
+  // Push reminder fires this many minutes before dueAtUtc instead of exactly at it. Absent
+  // means 0 (the existing at-due-instant behavior).
+  reminderLeadMinutes?: number;
   description?: string;
   dueDate?: string;
   dueTime?: string;
@@ -168,6 +174,8 @@ export interface HabitLog {
   unit?: HabitUnit;
   source: HabitSource;
   note?: string;
+  // "HH:MM" the activity started — only meaningful for habitType "exercise", optional.
+  startTime?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -259,6 +267,23 @@ export interface RoutineTemplate {
   timeOfDay?: string;
   // How long the whole routine takes to complete, in minutes.
   estimatedMinutes?: number;
+  // "HH:MM" the routine is expected to finish by. Optional; the timeline derives an end from
+  // timeOfDay + estimatedMinutes when this is absent.
+  endTime?: string;
+  // One whole-minute duration per entry in `steps`, same order. Optional.
+  stepMinutes?: number[];
+  // Opt-in push reminder at the start time, `reminderLeadMinutes` early. timezoneOffsetMinutes is
+  // the browser's getTimezoneOffset() at save time, so the scheduler can reconstruct local time.
+  remindMe?: boolean;
+  reminderLeadMinutes?: number;
+  timezoneOffsetMinutes?: number;
+  // Local date (YYYY-MM-DD) a reminder last went out, so it isn't repeated that day.
+  lastReminderSentDate?: string;
+  // Duration learning: ISO instants of the most recent Start tap and most recent "all steps
+  // done" moment. Compared against estimatedMinutes to offer updating the estimate — never
+  // written to automatically.
+  lastStartedAt?: string;
+  lastCompletedAt?: string;
   createdAt: string;
 }
 

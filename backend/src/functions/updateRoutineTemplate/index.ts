@@ -3,10 +3,11 @@ import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb } from "../../common/dynamo";
 import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
+import { checkEndTime, checkReminderLead, checkStepMinutes, checkTimezoneOffset } from "../../common/timelineFields";
 
 const MAX_CATEGORY_LENGTH = 40;
 const TIME_RE = /^\d{2}:\d{2}$/;
-const UPDATABLE_FIELDS = ["name", "category", "steps", "daysOfWeek", "timeOfDay", "estimatedMinutes"] as const;
+const UPDATABLE_FIELDS = ["name", "category", "steps", "daysOfWeek", "timeOfDay", "estimatedMinutes", "endTime", "stepMinutes", "remindMe", "reminderLeadMinutes", "timezoneOffsetMinutes", "lastStartedAt", "lastCompletedAt"] as const;
 
 export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) => {
   const userId = getUserId(event);
@@ -55,6 +56,33 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     (typeof body.estimatedMinutes !== "number" || !Number.isFinite(body.estimatedMinutes) || body.estimatedMinutes <= 0)
   ) {
     return errorResponse(400, "estimatedMinutes must be a positive number");
+  }
+
+  if (body.endTime !== undefined) {
+    const err = checkEndTime(body.endTime);
+    if (err) return errorResponse(400, err);
+  }
+  if (body.stepMinutes !== undefined) {
+    // Checked against the new step list when steps are changed in the same request.
+    const err = checkStepMinutes(body.stepMinutes, Array.isArray(body.steps) ? body.steps.length : undefined);
+    if (err) return errorResponse(400, err);
+  }
+
+  if (body.reminderLeadMinutes !== undefined) {
+    const err = checkReminderLead(body.reminderLeadMinutes);
+    if (err) return errorResponse(400, err);
+  }
+  if (body.timezoneOffsetMinutes !== undefined) {
+    const err = checkTimezoneOffset(body.timezoneOffsetMinutes);
+    if (err) return errorResponse(400, err);
+  }
+  if (body.remindMe !== undefined && typeof body.remindMe !== "boolean") {
+    return errorResponse(400, "remindMe must be true or false");
+  }
+  for (const field of ["lastStartedAt", "lastCompletedAt"] as const) {
+    if (body[field] !== undefined && (typeof body[field] !== "string" || Number.isNaN(Date.parse(body[field] as string)))) {
+      return errorResponse(400, `${field} must be an ISO date string`);
+    }
   }
 
   const updates = UPDATABLE_FIELDS.filter((field) => body[field] !== undefined);

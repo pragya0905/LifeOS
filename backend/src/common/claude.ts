@@ -243,6 +243,87 @@ export async function generateInsights(period: "day" | "week", context: string):
   return response.parsed_output;
 }
 
+const TimelinePlacementSchema = z.object({
+  id: z.string(),
+  startMin: z.number().int().min(0).max(1439),
+});
+const TimelineSuggestionsSchema = z.object({
+  placements: z.array(TimelinePlacementSchema),
+});
+
+const TIMELINE_SUGGEST_SYSTEM_PROMPT =
+  "You are helping place a person's unscheduled to-do items into the free gaps in their day. " +
+  "Each item has an id, a title, and how many minutes it needs. Each gap is a start-end range " +
+  "in minutes from midnight (0-1439). For each item you choose to place, pick a startMin such " +
+  "that startMin >= some gap's start and startMin + the item's minutes <= that same gap's end " +
+  "— the item must fit entirely inside one gap, never split across two. Prefer spreading items " +
+  "across the day rather than cramming them all into the first gap, and prefer placing an item " +
+  "in the smallest gap that still fits it, leaving larger gaps open. Only include an item in " +
+  "your output if you found it a real fit; omit any you can't place well. Never invent an id " +
+  "that wasn't given to you.";
+
+// Suggests start times for unscheduled items within the day's free gaps. The caller re-checks
+// every returned placement against the actual gaps before using it — this is a proposal, never
+// applied automatically, and the user accepts each placement individually.
+export async function suggestTimelinePlacements(
+  items: { id: string; title: string; estimatedMinutes: number }[],
+  gaps: { startMin: number; endMin: number }[],
+): Promise<{ id: string; startMin: number }[]> {
+  const client = await getClient();
+  const prompt =
+    `Unscheduled items:\n${items.map((i) => `${i.id}: "${i.title}" (${i.estimatedMinutes} min)`).join("\n")}\n\n` +
+    `Free gaps today (minutes from midnight):\n${gaps.map((g) => `${g.startMin}-${g.endMin}`).join(", ")}`;
+  const response = await client.messages.parse({
+    model: "claude-haiku-4-5",
+    max_tokens: 512,
+    system: TIMELINE_SUGGEST_SYSTEM_PROMPT,
+    messages: [{ role: "user", content: prompt }],
+    output_config: { format: zodOutputFormat(TimelineSuggestionsSchema) },
+  });
+  if (!response.parsed_output) {
+    throw new Error("Claude did not return parsed structured output");
+  }
+  return response.parsed_output.placements;
+}
+
+const DailyReflectionSchema = z.object({ reflection: z.string() });
+
+// DESIGN.md: calm and practical first, motivating second, no guilt wording — enforced here in
+// the prompt itself, not left to chance.
+const DAILY_REFLECTION_SYSTEM_PROMPT =
+  "Write exactly one short, warm sentence (at most 25 words) reflecting on how someone's day " +
+  "went, based only on the counts given: how many planned items were done, and how the day's " +
+  "minutes split across sleep, routines, and tasks. Never mention specific task or routine " +
+  "names — you don't have them. Never use guilt-inducing language, exclamation-heavy hype, or " +
+  "a pushy tone. If most things got done, be quietly positive without over-praising. If little " +
+  "got done, be gentle and matter-of-fact — rest and partial progress are both fine. Output " +
+  "only the sentence, no preamble.";
+
+export interface DailyReflectionSummary {
+  plannedCount: number;
+  doneCount: number;
+  sleepMinutes: number;
+  routineMinutes: number;
+  taskMinutes: number;
+}
+
+// Generated fresh each time from counts only (never titles, notes, or health/cycle detail) —
+// nothing here is stored.
+export async function generateDailyReflection(summary: DailyReflectionSummary): Promise<string> {
+  const client = await getClient();
+  const response = await client.messages.parse({
+    model: "claude-haiku-4-5",
+    max_tokens: 128,
+    system: DAILY_REFLECTION_SYSTEM_PROMPT,
+    messages: [{ role: "user", content: JSON.stringify(summary) }],
+    output_config: { format: zodOutputFormat(DailyReflectionSchema) },
+  });
+  if (!response.parsed_output) {
+    throw new Error("Claude did not return parsed structured output");
+  }
+  return response.parsed_output.reflection;
+}
+
 export async function suggestTaskPriority(
   title: string,
   dueDate?: string,

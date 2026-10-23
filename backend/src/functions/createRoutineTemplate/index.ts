@@ -5,6 +5,7 @@ import { ddb } from "../../common/dynamo";
 import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
 import type { RoutineTemplate } from "../../common/types";
+import { checkEndTime, checkReminderLead, checkStepMinutes, checkTimezoneOffset } from "../../common/timelineFields";
 
 const MAX_CATEGORY_LENGTH = 40;
 const TIME_RE = /^\d{2}:\d{2}$/;
@@ -53,6 +54,23 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     return errorResponse(400, "estimatedMinutes must be a positive number");
   }
 
+  if (body.endTime !== undefined) {
+    const err = checkEndTime(body.endTime);
+    if (err) return errorResponse(400, err);
+  }
+  if (body.stepMinutes !== undefined) {
+    const err = checkStepMinutes(body.stepMinutes, steps.length);
+    if (err) return errorResponse(400, err);
+  }
+  if (body.reminderLeadMinutes !== undefined) {
+    const err = checkReminderLead(body.reminderLeadMinutes);
+    if (err) return errorResponse(400, err);
+  }
+  if (body.timezoneOffsetMinutes !== undefined) {
+    const err = checkTimezoneOffset(body.timezoneOffsetMinutes);
+    if (err) return errorResponse(400, err);
+  }
+
   const routine: RoutineTemplate = {
     userId,
     routineId: randomUUID(),
@@ -62,6 +80,11 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     ...(daysOfWeek ? { daysOfWeek } : {}),
     ...(typeof body.timeOfDay === "string" ? { timeOfDay: body.timeOfDay } : {}),
     ...(typeof body.estimatedMinutes === "number" ? { estimatedMinutes: body.estimatedMinutes } : {}),
+    ...(typeof body.endTime === "string" ? { endTime: body.endTime } : {}),
+    ...(Array.isArray(body.stepMinutes) ? { stepMinutes: body.stepMinutes as number[] } : {}),
+    ...(body.remindMe === true ? { remindMe: true } : {}),
+    ...(typeof body.reminderLeadMinutes === "number" ? { reminderLeadMinutes: body.reminderLeadMinutes } : {}),
+    ...(typeof body.timezoneOffsetMinutes === "number" ? { timezoneOffsetMinutes: body.timezoneOffsetMinutes } : {}),
     createdAt: new Date().toISOString(),
   };
 

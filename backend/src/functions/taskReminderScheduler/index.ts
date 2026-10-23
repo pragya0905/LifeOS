@@ -54,13 +54,17 @@ export const handler: ScheduledHandler = async () => {
 
       if (task.status === "done" || task.reminderSentAt || !task.dueAtUtc) continue;
       const dueAt = new Date(task.dueAtUtc);
-      if (dueAt < now || dueAt > windowEnd) continue;
+      const lead = task.reminderLeadMinutes ?? 0;
+      const target = new Date(dueAt.getTime() - lead * 60000);
+      if (target < now || target > windowEnd) continue;
 
       for (const sub of userSubs) {
         try {
           await sendPushNotification(sub, {
             title: "Task due soon",
-            body: `"${task.title}" is due${task.dueTime ? ` at ${task.dueTime}` : " soon"}`,
+            body: lead > 0
+              ? `"${task.title}" is due in ${lead} min${task.dueTime ? ` (${task.dueTime})` : ""}`
+              : `"${task.title}" is due${task.dueTime ? ` at ${task.dueTime}` : " soon"}`,
           });
         } catch (err) {
           console.error(`Failed to send push notification for task ${task.taskId}:`, err);

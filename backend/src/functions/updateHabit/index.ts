@@ -34,6 +34,9 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     return errorResponse(400, "value must be a non-negative number");
   }
   const note = typeof body.note === "string" ? body.note : undefined;
+  if (body.startTime !== undefined && (typeof body.startTime !== "string" || !/^\d{2}:\d{2}$/.test(body.startTime))) {
+    return errorResponse(400, "startTime must be in HH:MM format");
+  }
 
   const now = new Date().toISOString();
   const status = body.value > 0 ? "done" : "missed";
@@ -64,6 +67,11 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     names["#note"] = "note";
     values[":note"] = note;
     setExpr += ", #note = :note";
+  }
+  if (body.startTime !== undefined) {
+    names["#startTime"] = "startTime";
+    values[":startTime"] = body.startTime;
+    setExpr += ", #startTime = :startTime";
   }
 
   const result = await ddb.send(

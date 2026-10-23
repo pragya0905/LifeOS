@@ -5,6 +5,7 @@ import { ddb } from "../../common/dynamo";
 import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
 import { suggestTaskPriority } from "../../common/claude";
+import { checkBlockType, checkReminderLead } from "../../common/timelineFields";
 import { isValidRecurrence } from "../../common/taskRecurrence";
 import type { Task, TaskPriority, TaskStatus, PrioritySource } from "../../common/types";
 
@@ -42,6 +43,15 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
   const status = VALID_STATUSES.includes(body.status as TaskStatus)
     ? (body.status as TaskStatus)
     : "todo";
+
+  if (body.blockType !== undefined) {
+    const err = checkBlockType(body.blockType);
+    if (err) return errorResponse(400, err);
+  }
+  if (body.reminderLeadMinutes !== undefined) {
+    const err = checkReminderLead(body.reminderLeadMinutes);
+    if (err) return errorResponse(400, err);
+  }
 
   if (body.recurrence !== undefined && !isValidRecurrence(body.recurrence)) {
     return errorResponse(
@@ -88,6 +98,8 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     category,
     scheduleTime: typeof body.scheduleTime === "string" ? body.scheduleTime : undefined,
     ...(isValidRecurrence(body.recurrence) ? { recurrence: body.recurrence } : {}),
+    ...(body.blockType !== undefined ? { blockType: body.blockType as "task" | "protected" } : {}),
+    ...(typeof body.reminderLeadMinutes === "number" ? { reminderLeadMinutes: body.reminderLeadMinutes } : {}),
     createdAt: now,
     updatedAt: now,
   };

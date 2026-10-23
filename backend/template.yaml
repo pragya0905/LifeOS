@@ -1832,6 +1832,69 @@ Resources:
               Authorizer: CognitoAuthorizer
 
   ########################
+  # Lambda — Timeline AI (stateless: suggestions + reflection, nothing stored)
+  ########################
+  SuggestTimelinePlacementsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node22"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-suggest-timeline-placements-${Environment}"
+      CodeUri: src/functions/suggestTimelinePlacements/
+      Handler: index.handler
+      Timeout: 30
+      Environment:
+        Variables:
+          ANTHROPIC_API_KEY_PARAM: !Sub "/lifeos/${Environment}/anthropic-api-key"
+      Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: !Sub "lifeos/${Environment}/anthropic-api-key"
+      Events:
+        SuggestTimelinePlacements:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /timeline/suggest
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  GenerateDailyReflectionFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node22"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-generate-daily-reflection-${Environment}"
+      CodeUri: src/functions/generateDailyReflection/
+      Handler: index.handler
+      Timeout: 30
+      Environment:
+        Variables:
+          ANTHROPIC_API_KEY_PARAM: !Sub "/lifeos/${Environment}/anthropic-api-key"
+      Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: !Sub "lifeos/${Environment}/anthropic-api-key"
+      Events:
+        GenerateDailyReflection:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /timeline/reflect
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  ########################
   # Lambda — Daily Schedule
   ########################
   GetScheduleFunction:
@@ -2912,6 +2975,42 @@ Resources:
             TableName: !Ref MedicationsTable
         - DynamoDBReadPolicy:
             TableName: !Ref MedicationLogsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref PushSubscriptionsTable
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifeos/${Environment}/push-vapid-private-key"
+      Events:
+        Schedule:
+          Type: Schedule
+          Properties:
+            Schedule: "rate(15 minutes)"
+            Enabled: true
+
+  RoutineReminderSchedulerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node22"
+        Sourcemap: false
+        EntryPoints: ["index.ts"]
+    Properties:
+      FunctionName: !Sub "lifeos-routine-reminder-scheduler-${Environment}"
+      CodeUri: src/functions/routineReminderScheduler/
+      Handler: index.handler
+      Timeout: 60
+      Environment:
+        Variables:
+          ROUTINE_TEMPLATES_TABLE_NAME: !Ref RoutineTemplatesTable
+          PUSH_SUBSCRIPTIONS_TABLE_NAME: !Ref PushSubscriptionsTable
+          PUSH_VAPID_PRIVATE_KEY_PARAM: !Sub "/lifeos/${Environment}/push-vapid-private-key"
+          PUSH_VAPID_PUBLIC_KEY: !Ref PushVapidPublicKey
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RoutineTemplatesTable
         - DynamoDBReadPolicy:
             TableName: !Ref PushSubscriptionsTable
         - Statement:

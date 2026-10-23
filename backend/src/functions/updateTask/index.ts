@@ -5,6 +5,7 @@ import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
 import { suggestTaskPriority } from "../../common/claude";
 import { computeNextOccurrence, isValidRecurrence } from "../../common/taskRecurrence";
+import { checkBlockType, checkReminderLead } from "../../common/timelineFields";
 import type { Task, TaskPriority, TaskStatus } from "../../common/types";
 
 const VALID_PRIORITIES: TaskPriority[] = ["Low", "Medium", "High"];
@@ -22,6 +23,8 @@ const UPDATABLE_FIELDS = [
   "category",
   "scheduleTime",
   "recurrence",
+  "blockType",
+  "reminderLeadMinutes",
 ] as const;
 
 export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) => {
@@ -42,6 +45,15 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
   if (body.status !== undefined && !VALID_STATUSES.includes(body.status as TaskStatus)) {
     return errorResponse(400, "Invalid status");
   }
+  if (body.blockType !== undefined) {
+    const err = checkBlockType(body.blockType);
+    if (err) return errorResponse(400, err);
+  }
+  if (body.reminderLeadMinutes !== undefined) {
+    const err = checkReminderLead(body.reminderLeadMinutes);
+    if (err) return errorResponse(400, err);
+  }
+
   if (body.recurrence !== undefined && !isValidRecurrence(body.recurrence)) {
     return errorResponse(
       400,
