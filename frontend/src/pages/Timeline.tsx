@@ -51,7 +51,7 @@ const ZOOM_LEVELS = [24, 6, 2] as const;
 type Zoom = (typeof ZOOM_LEVELS)[number];
 
 // Fixed scale per hour, so the day is wider than the phone and scrolls sideways.
-const PX_PER_HOUR: Record<Zoom, number> = { 24: 64, 6: 160, 2: 320 };
+const PX_PER_HOUR: Record<Zoom, number> = { 24: 96, 6: 200, 2: 400 };
 
 const SUB_ROW_PX = 58;
 const WEEKDAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -202,14 +202,18 @@ export default function Timeline() {
   const blocks = useMemo<TimelineBlock[]>(() => (built ? built.blocks.map((b) => ({ ...b, status: statusById[b.id] })) : []), [built, statusById]);
   const unscheduled = built?.unscheduled ?? [];
   const visibleBlocks = useMemo(() => blocks.filter((b) => filters[b.kind]), [blocks, filters]);
+  // Sleep sits in its own band above the shared line: it's background, not something to plan
+  // around, so waking at a medication's time isn't treated as a clash.
+  const sleepPacked = useMemo(() => assignLanes(visibleBlocks.filter((b) => b.kind === "sleep").map((b) => ({ ...b }))), [visibleBlocks]);
+  const sleepRows = Math.max(1, ...sleepPacked.map((b) => b.lane + 1));
   // Re-packed over only the visible blocks, so hiding a kind never leaves an empty row behind.
-  const packed = useMemo(() => assignLanes(visibleBlocks.map((b) => ({ ...b }))), [visibleBlocks]);
+  const packed = useMemo(() => assignLanes(visibleBlocks.filter((b) => b.kind !== "sleep").map((b) => ({ ...b }))), [visibleBlocks]);
   const packedRows = Math.max(1, ...packed.map((b) => b.lane + 1));
   const expanded = packed.find((b) => b.id === selectedId);
 
   const totals = useMemo(() => totalsByKind(blocks), [blocks]);
   const gaps = useMemo(() => findFreeGaps(blocks), [blocks]);
-  const overlaps = useMemo(() => findOverlaps(blocks), [blocks]);
+  const overlaps = useMemo(() => findOverlaps(blocks.filter((b) => b.kind !== "sleep")), [blocks]);
 
   // Week strip: routines, meds and tasks per day. Sleep and meals are only fetched for the
   // viewed day, so they're left out of the other days' counts.
@@ -544,6 +548,14 @@ export default function Timeline() {
                 />
               ))}
 
+              {sleepPacked.length > 0 && (
+                <div className="relative border-b border-stone dark:border-stone-dark" style={{ height: sleepRows * SUB_ROW_PX + 8 }}>
+                  {sleepPacked.map((b) => (
+                    <SleepBlock key={b.id} block={b} />
+                  ))}
+                </div>
+              )}
+
               {/* One shared line: blocks sit side by side until two of them overlap in time, and only then take a second row. */}
               <div className="relative border-b border-stone dark:border-stone-dark">
                 {packed.map((b) => (
@@ -643,6 +655,21 @@ function BlockButton({
       </span>
       {block.status && <span className="block truncate text-[11px] opacity-90">{block.status}</span>}
     </button>
+  );
+}
+
+// Sleep is read-only here (it's logged from the Today screen), so it's a plain block, not a button.
+function SleepBlock({ block }: { block: TimelineBlock }) {
+  return (
+    <div
+      className="absolute z-10 overflow-hidden rounded-control px-1.5 py-1 leading-tight text-paper-card bg-[#7a6fb0]"
+      style={{ left: `${pctOfDay(block.startMin)}%`, width: `${pctOfDay(block.endMin - block.startMin)}%`, top: block.lane * SUB_ROW_PX + 6, height: SUB_ROW_PX - 12, minWidth: 44 }}
+    >
+      <span className="block truncate text-xs font-medium">{block.title}</span>
+      <span className="block text-[11px] tabular-nums opacity-90">
+        {hhmm(block.startMin)}–{hhmm(block.endMin)}
+      </span>
+    </div>
   );
 }
 
