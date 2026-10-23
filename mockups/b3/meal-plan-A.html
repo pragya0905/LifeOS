@@ -1,0 +1,43 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=412">
+<title>Meal Plan A</title>
+<style>
+:root{--paper:#191320;--card:#221a2b;--ink:#f3eef0;--muted:#b3a6ba;--stone:#332a3b;--bloom:#ff6f5e;--amber:#e8a33d}
+*{box-sizing:border-box}body{margin:0;background:#0f0b14;font-family:Inter,system-ui,sans-serif;color:var(--ink)}
+.frame{width:412px;min-height:860px;margin:0 auto;background:var(--paper);padding:16px;overflow:hidden}
+h1{font-family:"Bricolage Grotesque",system-ui;font-size:26px;margin:4px 0 12px}
+.label{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+.card{background:var(--card);border:1px solid var(--stone);border-radius:14px;padding:12px}
+.rule{border-left:3px solid var(--bloom);padding-left:12px}
+.btn{min-height:40px;min-width:40px;border-radius:999px;border:1px solid var(--stone);background:var(--card);color:var(--ink);font:inherit;padding:0 14px}
+.btn.on{background:var(--bloom);border-color:var(--bloom);color:#191320}
+.row{display:flex;gap:8px;align-items:center}
+.grow{flex:1}
+.input{width:100%;min-height:40px;border-radius:10px;border:1px solid var(--stone);background:#191320;color:var(--ink);padding:8px 10px;font:inherit;font-size:15px}
+.meal{display:grid;grid-template-columns:86px 1fr;gap:10px;align-items:start;padding:8px 0;border-top:1px solid var(--stone)}
+.meal:first-child{border-top:0}
+.mlabel{font-size:13px;color:var(--muted);padding-top:10px}
+.num{font-variant-numeric:tabular-nums}
+.today{color:var(--bloom)}
+.note{font-size:12px;color:var(--muted);margin-top:14px;line-height:1.4}
+.tag{font-size:11px;color:var(--amber);border:1px solid var(--amber);border-radius:999px;padding:2px 8px}
+</style></head><body><div class="frame">
+
+<h1>Meal Plan</h1>
+<div class="row"><button class="btn">‹</button><div class="grow" style="text-align:center;font-weight:600">Thu 23 – Fri 24 Oct</div><button class="btn">›</button></div>
+<div class="row" style="margin-top:10px"><button class="btn on">Thu 23</button><button class="btn">Fri 24</button><button class="btn">Pick date</button></div>
+<div class="label">Today's plan</div>
+<div class="card rule">
+  <div class="meal"><div class="mlabel">Breakfast</div><input class="input" value="Oats with banana"></div>
+  <div class="meal"><div class="mlabel">Lunch</div><input class="input" value="Dal, rice, cucumber salad"></div>
+  <div class="meal"><div class="mlabel">Dinner</div><input class="input" placeholder="Add dinner"></div>
+  <div class="meal"><div class="mlabel">Snack</div><input class="input" value="Apple and peanut butter"></div>
+</div>
+<div class="label">Weekly defaults</div>
+<div class="card">
+  <div class="row" style="flex-wrap:wrap;gap:6px"><button class="btn on">Mon</button><button class="btn">Tue</button><button class="btn">Wed</button><button class="btn">Thu</button><button class="btn">Fri</button><button class="btn">Sat</button><button class="btn">Sun</button></div>
+  <div class="meal" style="margin-top:6px"><div class="mlabel">Breakfast</div><input class="input" value="Oats"></div>
+  <div class="meal"><div class="mlabel">Lunch</div><input class="input" placeholder="Not set"></div>
+</div>
+<p class="note">Defaults apply until a day is edited. A day is switched with the chips; the window moves with ‹ ›.</p>
+<p class="note">Static mockup, 412px, dark theme. No real data. Option A: pick A or B.</p>
+</div></body></html>
