@@ -11,7 +11,7 @@ import { computeProgressSummary, progressFractionForWish, type WishWithProgress 
 import { isMedicationActiveOnDate } from "../../common/medications";
 import { geocodeLocation, fetchWeather } from "../../common/weather";
 import { conversationTurnsQuery } from "../../common/assistantHistory";
-import { summarizeToolResult } from "../../common/toolResultSummary";
+import { toolEvents } from "./toolEvents";
 import { checkAttachmentTotalSize, MAX_IMAGE_BYTES } from "../../common/attachmentLimits";
 import type {
   AssistantConversationTurn,
@@ -1741,9 +1741,8 @@ export const handler = awslambda.streamifyResponse(async (event: APIGatewayProxy
         // summarize (see toolResultSummary.ts) — old frontends just see a harmless duplicate
         // tool_use event for the same tool name; new frontends use the presence of `result` to
         // render a confirmation card instead of (or alongside) the generic status line.
-        if (!isError) {
-          const result = summarizeToolResult(tool.name, toolInput, content);
-          if (result) writeEvent(responseStream, { type: "tool_use", name: tool.name, result });
+        for (const event of toolEvents(tool.name, toolInput, { content, isError })) {
+          writeEvent(responseStream, event);
         }
         toolResults.push({ type: "tool_result", tool_use_id: tool.id, content, is_error: isError });
       }
