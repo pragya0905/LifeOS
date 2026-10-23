@@ -111,6 +111,7 @@ export default function TodayHabits({ date: selectedDate }: { date: string }) {
 
   const [waterDraft, setWaterDraft] = useState("");
   const [exerciseDraft, setExerciseDraft] = useState("");
+  const [exerciseStartTime, setExerciseStartTime] = useState("");
   const [stepsDraft, setStepsDraft] = useState("");
   // Tracks whether each habit's current value came from journal AI extraction (vs a manual
   // save), so the UI can show where a number actually came from — the same "manual always
@@ -126,6 +127,7 @@ export default function TodayHabits({ date: selectedDate }: { date: string }) {
   const [callLogId, setCallLogId] = useState<string | null>(null);
   const [callPerson, setCallPerson] = useState("");
   const [callDuration, setCallDuration] = useState("");
+  const [callStartTime, setCallStartTime] = useState("");
 
   const [weightLogId, setWeightLogId] = useState<string | null>(null);
   const [weightDraft, setWeightDraft] = useState("");
@@ -152,6 +154,7 @@ export default function TodayHabits({ date: selectedDate }: { date: string }) {
       // sleep/call/weight/etc. entry would keep showing the previous date's values.
       setWaterDraft("");
       setExerciseDraft("");
+      setExerciseStartTime("");
       setStepsDraft("");
       setHabitSource({});
       setSleepLogId(null);
@@ -187,7 +190,10 @@ export default function TodayHabits({ date: selectedDate }: { date: string }) {
         for (const habit of habitsData.habits) {
           const value = String(habit.value ?? "");
           if (habit.habitType === "water") setWaterDraft(value);
-          if (habit.habitType === "exercise") setExerciseDraft(value);
+          if (habit.habitType === "exercise") {
+            setExerciseDraft(value);
+            setExerciseStartTime(habit.startTime ?? "");
+          }
           if (habit.habitType === "steps") setStepsDraft(value);
           if (
             habit.habitType === "water" ||
@@ -217,6 +223,7 @@ export default function TodayHabits({ date: selectedDate }: { date: string }) {
           setCallDuration(
             call.data.durationMinutes !== undefined ? String(call.data.durationMinutes) : "",
           );
+          setCallStartTime((call.data.startTime as string) ?? "");
         }
 
         const weight = weightData.entries[0];
@@ -291,7 +298,7 @@ export default function TodayHabits({ date: selectedDate }: { date: string }) {
         tasks.push(
           request(`/habits/${selectedDate}/exercise`, {
             method: "PATCH",
-            body: JSON.stringify({ value: exercise }),
+            body: JSON.stringify({ value: exercise, ...(exerciseStartTime ? { startTime: exerciseStartTime } : {}) }),
           }),
         );
       }
@@ -318,6 +325,7 @@ export default function TodayHabits({ date: selectedDate }: { date: string }) {
         const data = {
           personName: callPerson.trim(),
           durationMinutes: duration ?? undefined,
+          ...(callStartTime ? { startTime: callStartTime } : {}),
         };
         tasks.push(
           callLogId
@@ -557,7 +565,14 @@ export default function TodayHabits({ date: selectedDate }: { date: string }) {
                           aria-label="Call duration in minutes"
                           className={`w-16 py-1 sm:w-20 ${input}`}
                         />
-                        <span className={mutedText}>min</span>
+                        <span className={mutedText}>min at</span>
+                        <input
+                          type="time"
+                          value={callStartTime}
+                          onChange={(e) => setCallStartTime(e.target.value)}
+                          aria-label="Call start time"
+                          className={`py-1 ${input}`}
+                        />
                       </div>
                       {fieldErrors.callDuration && (
                         <p className={errorText}>{fieldErrors.callDuration}</p>
@@ -573,6 +588,13 @@ export default function TodayHabits({ date: selectedDate }: { date: string }) {
                   <td className={detailCellClass}>
                     <div className="flex flex-col gap-1">
                       <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="time"
+                          value={exerciseStartTime}
+                          onChange={(e) => setExerciseStartTime(e.target.value)}
+                          aria-label="Exercise start time"
+                          className={`py-1 ${input}`}
+                        />
                         <input
                           type="number"
                           min={0}
