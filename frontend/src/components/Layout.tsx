@@ -4,6 +4,7 @@ import {
   Calendar,
   CheckSquare,
   ChevronLeft,
+  Clock,
   ChevronRight,
   HelpCircle,
   Home,
@@ -66,6 +67,7 @@ const MORE_GROUPS: NavGroup[] = [
       { to: "/calendar", label: "Calendar", icon: Calendar },
       { to: "/logs", label: "Logs", icon: ScrollText },
       { to: "/meal-plan", label: "Meal Plan", icon: UtensilsCrossed },
+      { to: "/timeline", label: "Timeline", icon: Clock },
     ],
   },
   {

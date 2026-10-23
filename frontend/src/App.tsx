@@ -29,6 +29,7 @@ const Help = lazy(() => import("./pages/Help"));
 const Wishes = lazy(() => import("./pages/Wishes"));
 const Assistant = lazy(() => import("./pages/Assistant"));
 const MealPlan = lazy(() => import("./pages/MealPlan"));
+const Timeline = lazy(() => import("./pages/Timeline"));
 
 function PageLoading() {
   return <p className={`mt-16 text-center ${mutedText}`}>Loading...</p>;
@@ -85,6 +86,7 @@ export default function App() {
                 <Route path="/wishes" element={<Wishes />} />
                 <Route path="/assistant" element={<Assistant />} />
                 <Route path="/meal-plan" element={<MealPlan />} />
+                <Route path="/timeline" element={<Timeline />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/help" element={<Help />} />
               </Route>
