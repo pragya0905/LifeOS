@@ -4,6 +4,7 @@ import { ddb } from "../../common/dynamo";
 import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
 import { computeEndDate } from "../../common/medications";
+import { checkReminderLead } from "../../common/timelineFields";
 import type { Medication } from "../../common/types";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -18,6 +19,7 @@ const UPDATABLE_FIELDS = [
   "timezoneOffsetMinutes",
   "daysOfWeek",
   "estimatedMinutes",
+  "reminderLeadMinutes",
 ] as const;
 
 // Same UPDATABLE_FIELDS/UpdateCommand pattern as updateRoutineTemplate and updateExpense.
@@ -71,6 +73,10 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     (typeof body.estimatedMinutes !== "number" || !Number.isFinite(body.estimatedMinutes) || body.estimatedMinutes <= 0)
   ) {
     return errorResponse(400, "estimatedMinutes must be a positive number");
+  }
+  if (body.reminderLeadMinutes !== undefined) {
+    const err = checkReminderLead(body.reminderLeadMinutes);
+    if (err) return errorResponse(400, err);
   }
 
   const updates = UPDATABLE_FIELDS.filter((field) => body[field] !== undefined);

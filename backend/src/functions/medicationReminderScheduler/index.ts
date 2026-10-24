@@ -55,7 +55,8 @@ export const handler: ScheduledHandler = async () => {
 
       if (!isMedicationActiveOnDate(medication, today)) continue;
 
-      const target = targetUtcInstant(today, medication.timeOfDay, medication.timezoneOffsetMinutes);
+      const lead = medication.reminderLeadMinutes ?? 0;
+      const target = new Date(targetUtcInstant(today, medication.timeOfDay, medication.timezoneOffsetMinutes).getTime() - lead * 60000);
       if (target < now || target > windowEnd) continue;
 
       const existingLog = await ddb.send(
@@ -69,12 +70,14 @@ export const handler: ScheduledHandler = async () => {
       const existingStatus = (existingLog.Item as MedicationLog | undefined)?.status;
       if (existingStatus === "taken" || existingStatus === "skipped") continue;
 
+      const body = lead > 0
+        ? `${medication.name}${medication.dosage ? ` (${medication.dosage})` : ""} in ${lead} min.`
+        : `Time to take ${medication.name}${medication.dosage ? ` (${medication.dosage})` : ""}.`;
       await Promise.all(
         userSubs.map((sub) =>
-          sendPushNotification(sub, {
-            title: "Medication reminder",
-            body: `Time to take ${medication.name}${medication.dosage ? ` (${medication.dosage})` : ""}.`,
-          }).catch((err) => console.error(`Failed to send push for medication ${medication.medicationId}:`, err)),
+          sendPushNotification(sub, { title: "Medication reminder", body }).catch((err) =>
+            console.error(`Failed to send push for medication ${medication.medicationId}:`, err),
+          ),
         ),
       );
 

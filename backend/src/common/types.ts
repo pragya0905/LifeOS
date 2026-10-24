@@ -194,6 +194,9 @@ export interface Medication {
   // YYYY-MM-DD of the last date a reminder was sent for this medication — prevents
   // re-sending within the same day across scheduler runs.
   lastReminderSentDate?: string;
+  // Push reminder fires this many minutes before timeOfDay instead of exactly at it. Absent
+  // means 0 (the original at-time behavior). Same field/meaning as Task.reminderLeadMinutes.
+  reminderLeadMinutes?: number;
   startDate: string;
   durationDays: number;
   // Days this medication is taken on: 0=Sun..6=Sat (JS Date#getDay() convention), same

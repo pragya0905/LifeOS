@@ -5,6 +5,7 @@ import { ddb } from "../../common/dynamo";
 import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
 import { computeEndDate } from "../../common/medications";
+import { checkReminderLead } from "../../common/timelineFields";
 import type { Medication } from "../../common/types";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -59,6 +60,10 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
   ) {
     return errorResponse(400, "estimatedMinutes must be a positive number");
   }
+  if (body.reminderLeadMinutes !== undefined) {
+    const err = checkReminderLead(body.reminderLeadMinutes);
+    if (err) return errorResponse(400, err);
+  }
 
   const medication: Medication = {
     userId,
@@ -73,6 +78,7 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     durationDays,
     ...(daysOfWeek ? { daysOfWeek } : {}),
     ...(typeof body.estimatedMinutes === "number" ? { estimatedMinutes: body.estimatedMinutes } : {}),
+    ...(typeof body.reminderLeadMinutes === "number" ? { reminderLeadMinutes: body.reminderLeadMinutes } : {}),
     createdAt: new Date().toISOString(),
   };
 

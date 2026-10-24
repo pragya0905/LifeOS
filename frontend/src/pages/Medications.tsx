@@ -23,6 +23,7 @@ function daysAgo(n: number, from: string): string {
 }
 
 const DURATION_PRESETS = [7, 30];
+const MED_REMINDER_LEAD_OPTIONS = [0, 5, 10, 15, 30];
 const ADHERENCE_WINDOW_DAYS = 14;
 
 // Below this many scheduled days of history (after excluding Skipped — see below), a
@@ -99,7 +100,7 @@ function MedicationCard({
   onDelete: (medicationId: string) => void;
   onSave: (
     medicationId: string,
-    patch: { name: string; dosage?: string; notes?: string; startDate: string; durationDays: number; timeOfDay?: string; timezoneOffsetMinutes?: number; daysOfWeek: number[]; estimatedMinutes?: number },
+    patch: { name: string; dosage?: string; notes?: string; startDate: string; durationDays: number; timeOfDay?: string; timezoneOffsetMinutes?: number; daysOfWeek: number[]; estimatedMinutes?: number; reminderLeadMinutes?: number },
   ) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
@@ -107,6 +108,7 @@ function MedicationCard({
   const [dosageDraft, setDosageDraft] = useState(medication.dosage ?? "");
   const [notesDraft, setNotesDraft] = useState(medication.notes ?? "");
   const [timeOfDayDraft, setTimeOfDayDraft] = useState(medication.timeOfDay ?? "");
+  const [reminderLeadDraft, setReminderLeadDraft] = useState(medication.reminderLeadMinutes ?? 0);
   const [estimatedMinutesDraft, setEstimatedMinutesDraft] = useState(medication.estimatedMinutes !== undefined ? String(medication.estimatedMinutes) : "");
   const [startDateDraft, setStartDateDraft] = useState(medication.startDate);
   const [durationDaysDraft, setDurationDaysDraft] = useState(medication.durationDays);
@@ -131,6 +133,7 @@ function MedicationCard({
         timezoneOffsetMinutes: timeOfDayDraft ? new Date().getTimezoneOffset() : undefined,
         daysOfWeek: daysOfWeekDraft.length === 7 ? [] : daysOfWeekDraft,
         estimatedMinutes: estimatedMinutesDraft ? Number(estimatedMinutesDraft) : undefined,
+        ...(timeOfDayDraft ? { reminderLeadMinutes: reminderLeadDraft } : {}),
       });
       setEditing(false);
     } finally {
@@ -154,6 +157,18 @@ function MedicationCard({
             <label className={label}>Reminder time</label>
             <input type="time" value={timeOfDayDraft} onChange={(e) => setTimeOfDayDraft(e.target.value)} className={input} />
           </div>
+          {timeOfDayDraft && (
+            <div>
+              <label className={label}>Remind me</label>
+              <select value={reminderLeadDraft} onChange={(e) => setReminderLeadDraft(Number(e.target.value))} className={`min-h-10 ${input}`}>
+                {MED_REMINDER_LEAD_OPTIONS.map((m) => (
+                  <option key={m} value={m}>
+                    {m === 0 ? "At reminder time" : `${m} min before`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <label className={label}>Takes about (min)</label>
             <input type="number" min={1} value={estimatedMinutesDraft} onChange={(e) => setEstimatedMinutesDraft(e.target.value)} placeholder="e.g. 10" className={`w-24 ${input}`} />
@@ -271,6 +286,7 @@ export default function Medications() {
   const [dosage, setDosage] = useState("");
   const [notes, setNotes] = useState("");
   const [timeOfDay, setTimeOfDay] = useState("");
+  const [reminderLead, setReminderLead] = useState(0);
   const [estimatedMinutes, setEstimatedMinutes] = useState("");
   const [durationDays, setDurationDays] = useState(7);
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>(ALL_DAYS);
@@ -341,6 +357,7 @@ export default function Medications() {
           timezoneOffsetMinutes: timeOfDay ? new Date().getTimezoneOffset() : undefined,
           daysOfWeek: daysOfWeek.length === 7 ? [] : daysOfWeek,
           estimatedMinutes: estimatedMinutes ? Number(estimatedMinutes) : undefined,
+          ...(timeOfDay ? { reminderLeadMinutes: reminderLead } : {}),
         }),
       });
       setMedications((prev) => [medication, ...prev]);
@@ -348,6 +365,7 @@ export default function Medications() {
       setDosage("");
       setNotes("");
       setTimeOfDay("");
+      setReminderLead(0);
       setEstimatedMinutes("");
       setDurationDays(7);
       setDaysOfWeek(ALL_DAYS);
@@ -376,7 +394,7 @@ export default function Medications() {
 
   async function handleSaveEdit(
     medicationId: string,
-    patch: { name: string; dosage?: string; notes?: string; startDate: string; durationDays: number; timeOfDay?: string; timezoneOffsetMinutes?: number; daysOfWeek: number[] },
+    patch: { name: string; dosage?: string; notes?: string; startDate: string; durationDays: number; timeOfDay?: string; timezoneOffsetMinutes?: number; daysOfWeek: number[]; reminderLeadMinutes?: number },
   ) {
     setError(null);
     try {
@@ -427,6 +445,18 @@ export default function Medications() {
             <label className={label}>Reminder time (optional)</label>
             <input type="time" value={timeOfDay} onChange={(e) => setTimeOfDay(e.target.value)} className={input} />
           </div>
+          {timeOfDay && (
+            <div>
+              <label className={label}>Remind me</label>
+              <select value={reminderLead} onChange={(e) => setReminderLead(Number(e.target.value))} className={`min-h-10 ${input}`}>
+                {MED_REMINDER_LEAD_OPTIONS.map((m) => (
+                  <option key={m} value={m}>
+                    {m === 0 ? "At reminder time" : `${m} min before`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <label className={label}>Takes about (min, optional)</label>
             <input type="number" min={1} value={estimatedMinutes} onChange={(e) => setEstimatedMinutes(e.target.value)} placeholder="e.g. 10" className={`w-24 ${input}`} />
@@ -456,7 +486,9 @@ export default function Medications() {
         {timeOfDay && (
           <p className={`inline-flex items-start gap-1 ${mutedText}`}>
             <Icon icon={Bell} size={13} className="mt-0.5 shrink-0" />
-            You'll get a push reminder around {timeOfDay} on days this medication is scheduled for, unless you've already marked it taken.
+            {reminderLead > 0
+              ? `You'll get a push reminder ${reminderLead} min before ${timeOfDay} on days this medication is scheduled for, unless you've already marked it taken.`
+              : `You'll get a push reminder around ${timeOfDay} on days this medication is scheduled for, unless you've already marked it taken.`}
           </p>
         )}
         <button type="submit" disabled={saving || daysOfWeek.length === 0} className={`self-start ${primaryButton}`}>
