@@ -1,3 +1,5 @@
+import { isValidTimeOfDay } from "../../common/timeOfDay";
+
 // Builds the POST /tasks body for the create_task tool. With no priority, the body is exactly
 // what it was before: the app's own AI suggestion decides priority. A valid priority the user
 // stated is sent as-is and skips that model call (the REST handler honours it only when
@@ -30,5 +32,5 @@ export function createTaskBody(input: Record<string, unknown>): Record<string, u
 
 // Forwarded only when it is HH:MM; anything else is dropped so the REST handler never sees it.
 export function routineTimeOfDay(value: unknown): string | undefined {
-  return typeof value === "string" && /^\d{2}:\d{2}$/.test(value) ? value : undefined;
+  return isValidTimeOfDay(value) ? value : undefined;
 }

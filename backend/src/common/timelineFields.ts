@@ -1,14 +1,14 @@
 // Validators for the optional fields the timeline page uses. Each returns an error message,
 // or null when the value is fine. Absent fields are the caller's concern, not these checks'.
 
-const TIME_RE = /^\d{2}:\d{2}$/;
+import { isValidTimeOfDay } from "./timeOfDay";
+
 const MAX_MINUTES_IN_DAY = 1440;
 
 export const BLOCK_TYPES = ["task", "protected"] as const;
 
 export function checkEndTime(value: unknown): string | null {
-  if (typeof value !== "string" || !TIME_RE.test(value)) return "endTime must be in HH:MM format";
-  return null;
+  return isValidTimeOfDay(value) ? null : "endTime must be in HH:MM format";
 }
 
 // One whole-minute duration per step. `stepCount`, when known, must match the step list.

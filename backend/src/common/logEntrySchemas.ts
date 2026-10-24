@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isValidTimeOfDay } from "./timeOfDay";
 import type { LogType } from "./types";
 
 const FoodSchema = z.object({
@@ -10,8 +11,8 @@ const FoodSchema = z.object({
 // up at 9am") without requiring the other half of the pair to have been mentioned too.
 const SleepSchema = z
   .object({
-    bedTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
-    wakeTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+    bedTime: z.string().refine(isValidTimeOfDay, "bedTime must be in HH:MM format").optional(),
+    wakeTime: z.string().refine(isValidTimeOfDay, "wakeTime must be in HH:MM format").optional(),
   })
   .refine((data) => data.bedTime !== undefined || data.wakeTime !== undefined, {
     message: "At least one of bedTime or wakeTime is required",
@@ -34,7 +35,7 @@ const CallSchema = z.object({
   personName: z.string().trim().min(1),
   durationMinutes: z.number().positive().optional(),
   note: z.string().trim().optional(),
-  startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  startTime: z.string().refine(isValidTimeOfDay, "startTime must be in HH:MM format").optional(),
 });
 
 // Superseded by the dedicated Expenses table (see common/expenseCategories.ts) — kept only

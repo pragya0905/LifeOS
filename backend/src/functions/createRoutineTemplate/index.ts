@@ -6,9 +6,9 @@ import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
 import type { RoutineTemplate } from "../../common/types";
 import { checkEndTime, checkReminderLead, checkStepMinutes, checkTimezoneOffset } from "../../common/timelineFields";
+import { isValidTimeOfDay } from "../../common/timeOfDay";
 
 const MAX_CATEGORY_LENGTH = 40;
-const TIME_RE = /^\d{2}:\d{2}$/;
 
 export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) => {
   const userId = getUserId(event);
@@ -43,7 +43,7 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     if ((rawDays as number[]).length > 0) daysOfWeek = rawDays as number[];
   }
 
-  if (body.timeOfDay !== undefined && (typeof body.timeOfDay !== "string" || !TIME_RE.test(body.timeOfDay))) {
+  if (body.timeOfDay !== undefined && !isValidTimeOfDay(body.timeOfDay)) {
     return errorResponse(400, "timeOfDay must be in HH:MM format");
   }
 

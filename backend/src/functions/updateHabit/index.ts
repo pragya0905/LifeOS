@@ -4,6 +4,7 @@ import { ddb } from "../../common/dynamo";
 import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
 import type { HabitType, HabitUnit } from "../../common/types";
+import { isValidTimeOfDay } from "../../common/timeOfDay";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const HABIT_TYPES: HabitType[] = ["water", "exercise", "steps"];
@@ -34,7 +35,7 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     return errorResponse(400, "value must be a non-negative number");
   }
   const note = typeof body.note === "string" ? body.note : undefined;
-  if (body.startTime !== undefined && (typeof body.startTime !== "string" || !/^\d{2}:\d{2}$/.test(body.startTime))) {
+  if (body.startTime !== undefined && !isValidTimeOfDay(body.startTime)) {
     return errorResponse(400, "startTime must be in HH:MM format");
   }
 

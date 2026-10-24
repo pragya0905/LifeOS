@@ -4,9 +4,9 @@ import { ddb } from "../../common/dynamo";
 import { getUserId } from "../../common/auth";
 import { jsonResponse, errorResponse } from "../../common/http";
 import { checkEndTime, checkReminderLead, checkStepMinutes, checkTimezoneOffset } from "../../common/timelineFields";
+import { isValidTimeOfDay } from "../../common/timeOfDay";
 
 const MAX_CATEGORY_LENGTH = 40;
-const TIME_RE = /^\d{2}:\d{2}$/;
 const UPDATABLE_FIELDS = ["name", "category", "steps", "daysOfWeek", "timeOfDay", "estimatedMinutes", "endTime", "stepMinutes", "remindMe", "reminderLeadMinutes", "timezoneOffsetMinutes", "lastStartedAt", "lastCompletedAt"] as const;
 
 export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) => {
@@ -47,7 +47,7 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     if (!valid) return errorResponse(400, "daysOfWeek must be an array of integers 0-6 (0=Sun..6=Sat)");
   }
 
-  if (body.timeOfDay !== undefined && (typeof body.timeOfDay !== "string" || !TIME_RE.test(body.timeOfDay))) {
+  if (body.timeOfDay !== undefined && !isValidTimeOfDay(body.timeOfDay)) {
     return errorResponse(400, "timeOfDay must be in HH:MM format");
   }
 
