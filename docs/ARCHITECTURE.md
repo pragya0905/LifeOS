@@ -3,10 +3,10 @@
 🌸 System design reference
 
 A personal life-tracking PWA — tasks, journal, habits, medications, cycle,
-budget, routines, wishes, a weekly meal plan, AI-generated insights, and a
-voice/chat AI Assistant — built as a serverless AWS backend behind a React
-SPA. This document describes the system as it is actually deployed today,
-not an aspirational target.
+budget, routines, wishes, a weekly meal plan, a 24-hour day timeline,
+AI-generated insights, and a voice/chat AI Assistant — built as a
+serverless AWS backend behind a React SPA. This document describes the
+system as it is actually deployed today, not an aspirational target.
 
 account 593110023904
 region ap-southeast-2
@@ -35,11 +35,11 @@ deployment stage. Where a more scalable pattern was considered and
 deliberately not built, it's called out in [§14](#limitations)
 rather than left unexplained.
 
-- **67** Lambda functions
-- **60** API routes (+ 1 Lambda Function URL)
-- **17** DynamoDB tables
-- **20** Frontend routes
-- **5** Scheduled jobs
+- **78** Lambda functions
+- **70** API routes (+ 1 Lambda Function URL)
+- **19** DynamoDB tables
+- **21** Frontend routes
+- **6** Scheduled jobs
 - **1** AI model (Haiku 4.5) + Bedrock Titan Embeddings
 
 ## Architecture at a glance
@@ -65,12 +65,12 @@ flowchart TB
       FURL["Lambda Function URL<br/>(response streaming)<br/>token verified in-Lambda"]
     end
 
-    subgraph Compute["Compute — 67 Lambda functions"]
+    subgraph Compute["Compute — 78 Lambda functions"]
       direction TB
       CRUD["CRUD handlers<br/>(tasks, journal, habits, meds,<br/>logs, cycle, budget, routines,<br/>wishes, goals, profile)"]
       AICALLS["AI-calling handlers<br/>(journal extraction, insights,<br/>task priority, journal search)"]
       ASSIST["chatAssistant<br/>(tool-calling loop)"]
-      SCHED["5 scheduled Lambdas<br/>(reminders + weekly digest)"]
+      SCHED["6 scheduled Lambdas<br/>(reminders + weekly digest)"]
     end
 
     subgraph Data["Data & identity"]
@@ -138,11 +138,11 @@ on the regular API Gateway route like everything else).
 Three auth-flow pages (Sign up, Confirm sign up, Log in) are imported
 eagerly, since they're the first thing an unauthenticated visitor needs.
 Every page behind the authenticated shell — Dashboard, Tasks, Journal,
-Medications, Logs, Cycle, Budget, Routines, Insights, Calendar, Wishes,
-Settings, Help, Onboarding — is `React.lazy()`-loaded, one chunk
-per page, inside a single `<Suspense>` boundary at the
-router root. A visitor to any one page downloads only that page's JS, not
-the other twelve.
+Medications, Logs, Cycle, Budget, Routines, Timeline, Insights, Calendar,
+Wishes, Settings, Help, Onboarding, Assistant, Meal Plan — is
+`React.lazy()`-loaded, one chunk per page, inside a single
+`<Suspense>` boundary at the router root. A visitor to any one page
+downloads only that page's JS, not the other sixteen.
 
 ### Data layer — `useApi()`
 
@@ -192,12 +192,12 @@ every list page.
 `vite-plugin-pwa` in `injectManifest` mode ships a
 custom service worker, making the app installable to a home screen. Web
 push subscriptions are created client-side and stored server-side
-(`PushSubscriptionsTable`), which the five scheduled Lambdas
+(`PushSubscriptionsTable`), which the six scheduled Lambdas
 read to deliver reminders — see [§8](#notifications).
 
 ## Backend compute
 
-Defined as a single AWS SAM template. All 58 functions share a
+Defined as a single AWS SAM template. All 78 functions share a
 `Globals` block — Node.js 20.x on arm64, 256MB memory, X-Ray
 tracing on, 10-second default timeout — and individual functions override
 the timeout upward where they call Claude (30–120s depending on how much
@@ -224,14 +224,18 @@ nothing is implicitly reachable.
 
 | Shape | Count | Timeout | Example |
 | --- | --- | --- | --- |
-| Simple CRUD (single table) | ~35 | 10s | updateHabit, deleteWish |
+| Simple CRUD (single table) | ~45 | 10s | updateHabit, deleteWish |
 | Multi-table read/aggregate | ~10 | 10–30s | getSchedule, listWishes |
-| Claude-calling | ~5 | 30–120s | createJournalEntry, getInsights, updateTask |
-| Scheduled (EventBridge) | 5 | 10–60s | weeklyInsightsScheduler |
+| Claude-calling | ~7 | 30–120s | createJournalEntry, getInsights, updateTask, suggestTimelinePlacements, generateDailyReflection |
+| Scheduled (EventBridge) | 6 | 10–60s | weeklyInsightsScheduler, routineReminderScheduler |
+
+`suggestTimelinePlacements` and `generateDailyReflection` (§7.6) are
+Claude-calling but touch no DynamoDB table at all — the only two functions
+in the system that are stateless end to end.
 
 ## Data model
 
-17 DynamoDB tables, all `PAY_PER_REQUEST` billing, all with
+19 DynamoDB tables, all `PAY_PER_REQUEST` billing, all with
 server-side encryption and point-in-time recovery enabled. Every table uses
 the same partition strategy — `userId` as the hash key — which
 is what makes the per-user ownership model in [§6](#auth)
@@ -241,19 +245,21 @@ table is queried by its own primary key only.
 
 | Table | Partition key | Sort key | Notes |
 | --- | --- | --- | --- |
-| TasksTable | userId | taskId | dueAtUtc computed client-side for reminder scheduling |
+| TasksTable | userId | taskId | dueAtUtc computed client-side for reminder scheduling; `blockType: "protected"` marks time set aside rather than a to-do (shown distinctly on the Timeline page); `reminderLeadMinutes` fires the push that many minutes before dueAtUtc instead of exactly at it |
 | JournalEntriesTable | userId | date | one entry per calendar day, enforced by conditional put; also carries a `embedding` field (Bedrock Titan vector, written best-effort/async) powering journal semantic search — never sent to the frontend |
-| HabitLogsTable | userId | dateHabitType | composite sort key, e.g. 2026-08-21#water |
-| MedicationsTable | userId | medicationId | – |
-| MealPlanTable | userId | dateMealType | composite sort key, e.g. 2026-09-28#dinner; free-text planned meals, separate from LogEntriesTable's after-the-fact food logs |
+| HabitLogsTable | userId | dateHabitType | composite sort key, e.g. 2026-08-21#water; `startTime` ("HH:MM") is optional and only meaningful for habitType "exercise" — lets the Timeline page place a workout block |
+| MedicationsTable | userId | medicationId | `reminderLeadMinutes` (optional) fires the push that many minutes before timeOfDay instead of exactly at it — same field name/meaning as TasksTable's |
+| MealPlanTable | userId | dateMealType | composite sort key, e.g. 2026-09-28#dinner; free-text planned meals, separate from LogEntriesTable's after-the-fact food logs; carries no clock time of its own, so where a slot is drawn on the Timeline page is a per-device display preference, not a stored field |
+| MealPlanTemplatesTable | userId | dayMealType | composite sort key, e.g. 1#dinner (dayOfWeek#mealType); the recurring weekly default a MealPlanTable date falls back to when nothing's planned for that specific date |
 | MedicationLogsTable | userId | dateMedicationId | composite sort key |
-| LogEntriesTable | userId | logId | catch-all: food, calls, weight, mood, sleep, cycle events |
-| RoutineTemplatesTable | userId | routineId | – |
+| LogEntriesTable | userId | logId | catch-all: food, calls, weight, mood, sleep, cycle events; a `call` entry's `data` bag carries an optional `startTime` ("HH:MM"), validated by `logEntrySchemas.ts`, so a logged call can be placed on the Timeline page |
+| RoutineTemplatesTable | userId | routineId | `endTime`/`stepMinutes` (optional) round out the schedule alongside `timeOfDay`/`estimatedMinutes`; `remindMe`/`reminderLeadMinutes`/`timezoneOffsetMinutes` (same pairing convention as MedicationsTable) back an opt-in push at the start time; `lastStartedAt`/`lastCompletedAt` (ISO instants, written by a Start/Finished pair on the Timeline page) back duration learning — comparing the elapsed time against `estimatedMinutes` and offering to update it when they're meaningfully apart, never automatically |
 | RoutineLogsTable | userId | dateRoutineStep | composite sort key |
 | GoalsTable | userId | metric | one row per tracked target (water, exercise, steps, weight) |
 | WishesTable | userId | wishId | 5 progress-tracking modes, see §9 |
 | ExpensesTable | userId | expenseId | – |
 | BudgetsTable | userId | category | per-category recurring monthly limits |
+| AchievementsTable | userId | badgeKey | one row per earned badge, with the date it was unlocked |
 | PushSubscriptionsTable | userId | endpoint | self-pruned on 404/410 from the push service |
 | UserProfileTable | userId | — (no sort key) | sex, height, weight target, monthly budget, onboarding flag |
 | AssistantConversationsTable | userId | conversationTurn | `{conversationId}#{epochMs}` sort key — one conversation's turns sort chronologically under a `begins_with` query |
@@ -478,9 +484,34 @@ for something lighter" can read the real plan and write an agreed change
 back — the actual "discuss and improve" surface, not a second suggestion
 endpoint.
 
+### 6. Timeline suggestions & reflection
+
+Two Lambdas backing the Timeline page's two on-demand AI sections, both
+genuinely stateless — neither reads nor writes any DynamoDB table, the
+only functions in the system that don't. `suggestTimelinePlacements`
+(`POST /timeline/suggest`) takes the caller's own unscheduled tasks (id,
+title, estimate) and the day's actual free gaps, computed client-side, and
+asks Claude to propose a start time for each; every placement returned is
+re-validated server-side against those same gaps before being sent back —
+an id that wasn't given, a duplicate, or a placement that doesn't actually
+fit inside a provided gap is silently dropped rather than trusted. The
+frontend shows each surviving placement with its own Accept/Reject, so
+nothing moves without an explicit tap even after the server-side check.
+`generateDailyReflection` (`POST /timeline/reflect`) takes only counts the
+client already computed — planned vs. done, and minutes split across
+sleep/routines/tasks — never titles, notes, or health/cycle detail, and
+returns one sentence. The system prompt bakes in the product's own
+"calm and practical first" rule directly: no guilt wording, no
+exclamation-heavy hype, gentle and matter-of-fact when little got done.
+Both endpoints still require a valid JWT (`getUserId()` is called purely
+to enforce that a caller is signed in; its result is otherwise unused),
+and both fail soft — a Claude error returns an empty result (`{
+placements: [] }` / `{ reflection: null }`) rather than a 500, since
+neither is on any critical path.
+
 ## Notifications & scheduled jobs
 
-Five EventBridge-triggered Lambdas, each on its own cadence, each sending
+Six EventBridge-triggered Lambdas, each on its own cadence, each sending
 Web Push notifications through a shared `sendPushNotification()`
 helper (VAPID keys in SSM). A subscription that a push service reports as
 gone (HTTP 404/410 — the browser unsubscribed, or the device is gone) is
@@ -488,13 +519,14 @@ deleted automatically rather than retried forever.
 
 | Scheduler | Cadence | Purpose |
 | --- | --- | --- |
-| taskReminderScheduler | rate(15 min) | Notifies once when a task's due instant falls inside the current 15-minute window |
+| taskReminderScheduler | rate(15 min) | Notifies once when a task's due instant, minus its optional `reminderLeadMinutes`, falls inside the current 15-minute window |
 | wishReminderScheduler | rate(15 min) | Deadline-approaching countdown + a one-time "falling behind schedule" nudge |
-| medicationReminderScheduler | rate(15 min) | Fires at each medication's configured time of day, reconstructed from a stored timezone offset |
+| medicationReminderScheduler | rate(15 min) | Fires at each medication's configured time of day (minus its optional `reminderLeadMinutes`), reconstructed from a stored timezone offset |
+| routineReminderScheduler | rate(15 min) | Opt-in (`remindMe`) only — fires at a routine's `timeOfDay` minus its optional `reminderLeadMinutes`, on the days it applies to, same timezone-offset reconstruction as medications |
 | cycleReminderScheduler | rate(6 hours) | Predicted-period-approaching notice, sent once per predicted date |
 | weeklyInsightsScheduler | rate(1 day) | Checks each user's digest gate daily; generates & sends only when 7 days have actually elapsed |
 
-All five share one paginated scan helper for
+All six share one paginated scan helper for
 `PushSubscriptionsTable` rather than each hand-rolling its own —
 this was a fix applied after an audit found none of them handled
 DynamoDB's `LastEvaluatedKey` pagination, meaning results would
@@ -504,7 +536,7 @@ correctness bug worth closing regardless of scale.
 
 ## API surface
 
-60 routes on a single HTTP API, grouped by resource below (plus the Assistant's own
+70 routes on a single HTTP API, grouped by resource below (plus the Assistant's own
 Lambda Function URL, not part of this API — see §9). Every route
 (except the auth endpoints Cognito itself fronts) requires a valid JWT.
 
@@ -524,6 +556,8 @@ Lambda Function URL, not part of this API — see §9). Every route
 | Budget | GET /budgets · PUT/DELETE /budgets/{category} · GET/POST /expenses · PATCH/DELETE /expenses/{id} |
 | Wishes | GET/POST /wishes · PATCH/DELETE /wishes/{id} · image routes under /wishes/{id}/images\* |
 | Insights | GET /insights |
+| Timeline | POST /timeline/suggest · POST /timeline/reflect — both stateless, see §7.6 |
+| Achievements | GET /achievements |
 | Push | POST/DELETE /push-subscriptions |
 
 ## Performance
@@ -545,7 +579,7 @@ fixes below — framed here as the current state, not a roadmap.
 
 #### Backend
 
-- Lambda memory 128MB → 256MB across all 55 functions
+- Lambda memory 128MB → 256MB across all backend functions
   ([§4](#backend)).
 - `listWishes` had an N+1 pattern — one extra
   `HabitLogsTable` query per habit-linked wish. Rewritten to one
@@ -620,12 +654,14 @@ maintenance surface for a benefit that doesn't show up at 3 users.
 > — needs a parallel table and a data migration, since DynamoDB can't
 > change a table's key schema in place.
 
-> **Five independent reminder scans**
+> **Six independent reminder scans**
 >
-> The five schedulers in §8 each scan `PushSubscriptionsTable`
-> on their own cadence (293 scans/day combined at current rates) rather than
-> one shared scan feeding all five. Consolidating them into a single
-> Lambda would cut that to ~96 scans/day, but merges five independently
+> The six schedulers in §8 each scan `PushSubscriptionsTable`
+> on their own cadence (389 scans/day combined at current rates: four at
+> rate(15 min) = 384, plus cycle's rate(6 hours) = 4, plus weekly's
+> rate(1 day) = 1) rather than
+> one shared scan feeding all six. Consolidating them into a single
+> Lambda would cut that to ~96 scans/day, but merges six independently
 > working, independently testable functions into one — real regression
 > risk for a table that currently holds a handful of items and costs
 > fractions of a cent to scan that often.

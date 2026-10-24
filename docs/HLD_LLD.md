@@ -32,7 +32,7 @@ rather than requiring separate manual entry into each one.
 
 This document specifies the system as built and deployed, for the
 purpose of enabling: (a) a new contributor to understand the system
-without reading all 67 Lambda functions, (b) a design review to evaluate
+without reading all 78 Lambda functions, (b) a design review to evaluate
 the choices made and the tradeoffs deliberately accepted, and (c) future
 extension work to be scoped against an accurate baseline.
 
@@ -69,6 +69,7 @@ extension work to be scoped against an accurate baseline.
 | Insights | On-demand AI summary (today/week) plus an automatic weekly digest push, gated to roughly once every 7 days per user. |
 | Assistant | Dedicated chat/voice page, streamed token-by-token from a Claude tool-calling loop, that reads/logs across the modules above; browsable/reopenable/deletable conversation history; a dedicated hands-free voice mode; semantic search over journal history (RAG); persistent cross-conversation memory of facts about the user, visible and deletable from Settings; deterministic goals-anchored coaching (falling-behind wishes, habit streaks, budget pace) with an honest-accountability framing. |
 | Meal Plan | A weekly grid (7 days × breakfast/lunch/dinner/snack) of free-text planned meals, separate from Logs' after-the-fact food entries. AI can suggest text for empty slots on request (preview only, not auto-saved), and the Assistant can read and revise the plan directly in conversation. |
+| Timeline | A 24-hour chart of the viewed day — routines, medications, meals (placed at a per-device nominal time, since the plan itself carries none), tasks, protected time, sleep, workouts, and calls on one shared line, zoomable, with free-gap and overlap detection, a per-kind customizable colour, Move/Fit-this-task placement, AI-proposed placements and a one-sentence daily reflection (both reviewed before anything is accepted), and duration learning that compares a routine's logged Start/Finished elapsed time against its estimate. |
 | Onboarding & Settings | First-run setup of sex, height, and daily targets; theme, data export, account deletion. |
 
 ## Non-functional requirements
@@ -123,7 +124,7 @@ Four layers, each with a single responsibility:
 flowchart TB
     subgraph L1["Presentation layer"]
       direction LR
-      P1["Pages (18 routes)"]
+      P1["Pages (21 routes)"]
       P2["Shared components<br/>(Layout, Skeleton, EmptyState)"]
       P3["useApi data hook"]
     end
@@ -134,12 +135,12 @@ flowchart TB
     end
     subgraph L3["Business logic layer"]
       direction LR
-      B1["67 Lambda handlers"]
-      B2["common/ modules<br/>(auth, journal, claude,<br/>bedrock, pushNotifications, medications)"]
+      B1["78 Lambda handlers"]
+      B2["common/ modules<br/>(auth, journal, claude,<br/>bedrock, pushNotifications, medications,<br/>timelineFields, routineReminders)"]
     end
     subgraph L4["Data & integration layer"]
       direction LR
-      D1[("16 DynamoDB tables")]
+      D1[("19 DynamoDB tables")]
       D2["Cognito User Pool"]
       D3["SSM Parameter Store"]
       D4["S3 (frontend + uploads)"]
@@ -158,7 +159,7 @@ handler is a small, single-purpose file that composes shared logic from
 `backend/src/common/` (auth resolution, journal extraction
 orchestration, Claude client, Bedrock embeddings client, push delivery,
 medication date math) rather than duplicating it. This keeps the
-58-function surface area manageable: most handlers are <80 lines
+78-function surface area manageable: most handlers are <80 lines
 because the real logic lives in a handful of shared modules (detailed in
 [§11](#modules)). The one exception is `chatAssistant`, which is
 necessarily larger since it owns the tool-use loop and every tool's
@@ -170,7 +171,7 @@ second copy of the business logic.
 
 | Layer | Choice | Why |
 | --- | --- | --- |
-| Frontend framework | React 19.2 + TypeScript 6.0 | Component reuse across 18 routes; type safety across a 14-table data model shared between frontend and backend |
+| Frontend framework | React 19.2 + TypeScript 6.0 | Component reuse across 21 routes; type safety across a 19-table data model shared between frontend and backend |
 | Styling | Tailwind CSS 4.3 | Utility classes composed into one shared token file, avoiding a separate component-library dependency |
 | Build/dev | Vite 8.1 | Native ESM dev server, fast HMR, first-class code-splitting output |
 | PWA | vite-plugin-pwa 1.3 (injectManifest) | Custom service worker needed for Web Push subscription handling beyond generic asset caching |
@@ -205,12 +206,12 @@ change shape, not as a growth plan (see [§2](#goals) non-goals).
 | Journal saves/day | ~3 | ~100 |
 | Claude calls/day | ~10–15 | ~350–500 |
 | Total API requests/day | ~150–300 | ~5,000–10,000 |
-| Scheduler invocations/day | 293 (fixed — see below) | 293 (fixed — independent of user count) |
+| Scheduler invocations/day | 389 (fixed — see below) | 389 (fixed — independent of user count) |
 | DynamoDB item count growth/year | low thousands | low hundred-thousands |
 | Peak concurrent Lambda executions | 1–2 | ~10–20 |
 
 The scheduler invocation count doesn't scale with users because each of
-the 5 scheduled Lambdas fires on a fixed cadence (§ LLD 14) and processes
+the 6 scheduled Lambdas fires on a fixed cadence (§ LLD 14) and processes
 all users' subscriptions in one invocation — cost there scales with
 *Lambda duration* as user count grows, not invocation
 *count*. At 100 users the per-invocation scan/loop simply does more
@@ -223,8 +224,8 @@ section for the specific deferred fix).
 ```mermaid
 flowchart LR
     DEV["Developer machine"] -- "sam build && sam deploy" --> CFN["CloudFormation<br/>(lifeos-backend-dev stack)"]
-    CFN --> LAMBDAS["67 Lambda functions"]
-    CFN --> TABLES["17 DynamoDB tables"]
+    CFN --> LAMBDAS["78 Lambda functions"]
+    CFN --> TABLES["19 DynamoDB tables"]
     CFN --> APIGW["API Gateway"]
     CFN --> POOL["Cognito User Pool"]
     DEV -- "vite build" --> DIST["dist/"]
@@ -255,15 +256,17 @@ the response.
 
 | Module | Responsibility | Used by |
 | --- | --- | --- |
-| auth.ts | Resolves `userId` from the verified JWT — the single choke point for the ownership guarantee | All 55 handlers |
+| auth.ts | Resolves `userId` from the verified JWT — the single choke point for the ownership guarantee | All 78 handlers |
 | dynamo.ts | Shared DynamoDB DocumentClient instance | All handlers that touch DynamoDB |
-| http.ts | `jsonResponse` / `errorResponse` helpers — consistent response shape and status codes | All 55 handlers |
+| http.ts | `jsonResponse` / `errorResponse` helpers — consistent response shape and status codes | All 78 handlers |
 | journal.ts | Journal extraction orchestration: fetches active medications/routines/height, calls Claude, fans results into 8 tables, clears stale AI-sourced rows on re-edit | createJournalEntry, updateJournalEntry |
-| claude.ts | Anthropic client (cached across warm invocations), the 3 structured-output schemas + prompts, `suggestTaskPriority`'s deterministic guardrail | Journal, Insights, Task handlers |
+| claude.ts | Anthropic client (cached across warm invocations), the structured-output schemas + prompts (journal, insights, task priority, meal plan, timeline suggest, daily reflection), `suggestTaskPriority`'s deterministic guardrail | Journal, Insights, Task, Meal Plan, Timeline AI handlers |
 | insights.ts | 8 parallel table queries aggregated into the context Claude summarizes | getInsights, weeklyInsightsScheduler |
-| pushNotifications.ts | `sendPushNotification` (VAPID-signed, self-prunes dead subscriptions) + `scanAllPushSubscriptions` (paginated scan shared by all 5 schedulers) | 5 scheduler Lambdas, updateWish |
+| timelineFields.ts | Shared validators for the Timeline page's optional fields — `endTime`, `stepMinutes`, `reminderLeadMinutes`, `timezoneOffsetMinutes`, `blockType` — one definition reused everywhere a field appears on more than one entity (routines, tasks, medications) | createRoutineTemplate, updateRoutineTemplate, createTask, updateTask, createMedication, updateMedication |
+| routineReminders.ts | `routineReminderDate` — pure function deciding whether a routine's reminder should fire on a given scheduler run, given its `timeOfDay`, `reminderLeadMinutes`, `daysOfWeek`, `timezoneOffsetMinutes`, and `lastReminderSentDate` | routineReminderScheduler |
+| pushNotifications.ts | `sendPushNotification` (VAPID-signed, self-prunes dead subscriptions) + `scanAllPushSubscriptions` (paginated scan shared by all 6 schedulers) | 6 scheduler Lambdas, updateWish |
 | medications.ts | `computeEndDate` — start date + duration → active window, used consistently everywhere a medication's active status is checked | Medication CRUD + journal + reminder scheduler |
-| logEntrySchemas.ts | Per-`LogType` field validation for the catch-all `LogEntry.data` bag | createLogEntry, updateLogEntry |
+| logEntrySchemas.ts | Per-`LogType` field validation for the catch-all `LogEntry.data` bag — the `call` schema's optional `startTime` is what lets a logged call appear on the Timeline page | createLogEntry, updateLogEntry |
 | expenseCategories.ts | Shared category enum + labels, kept in sync between Budget UI and journal-extraction's category matching | Budget handlers, claude.ts prompt |
 | types.ts | Every entity interface (see [§12](#schema)) — the contract between all handlers and the frontend's mirrored `types.ts` | Everything |
 
@@ -287,6 +290,8 @@ partition key (omitted from the field lists below since it's constant).
 | prioritySource | "manual"|"ai" | [req] |
 | status | "todo"|"in\_progress"|"done" | [req] |
 | reminderSentAt | string (ISO) | [opt — dedup guard for the 15-min scheduler] |
+| reminderLeadMinutes | number (0-120) | [opt — fires the push this many minutes before dueAtUtc instead of exactly at it] |
+| blockType | "task"\|"protected" | [opt — "protected" marks time set aside rather than a to-do; shown distinctly on the Timeline page] |
 
 ### JournalEntriesTable PK userId · SK date
 
@@ -318,6 +323,7 @@ partition key (omitted from the field lists below since it's constant).
 | status | "done"|"missed"|"skipped" |
 | value / unit | number / "ml"|"minutes"|"steps" |
 | source | "manual"|"ai-journal" |
+| startTime | "HH:MM"? — only meaningful for habitType "exercise"; lets the Timeline page place a workout block |
 
 ### WishesTable PK userId · SK wishId
 
@@ -339,6 +345,7 @@ partition key (omitted from the field lists below since it's constant).
 | name / dosage / notes | string / string? / string? |
 | timeOfDay / timezoneOffsetMinutes | "HH:MM"? / number? — paired so the scheduler reconstructs the correct UTC instant without guessing the user's zone |
 | lastReminderSentDate | "YYYY-MM-DD"? — one-per-day dedup guard |
+| reminderLeadMinutes | number (0-120)? — fires the push this many minutes before timeOfDay instead of exactly at it; same field name/meaning as TasksTable's |
 | startDate / durationDays | string / number — active window = [startDate, startDate + durationDays) |
 
 ### LogEntriesTable PK userId · SK logId (random UUID)
@@ -355,11 +362,13 @@ partition key (omitted from the field lists below since it's constant).
 | Table | Sort key | Key fields |
 | --- | --- | --- |
 | MedicationLogsTable | dateMedicationId | status: taken|missed · source |
-| RoutineTemplatesTable | routineId | category · name · steps: string[] |
+| RoutineTemplatesTable | routineId | category · name · steps: string[] · timeOfDay?/estimatedMinutes? · endTime?/stepMinutes?: number[] (per-step, same order as steps) · remindMe?/reminderLeadMinutes?/timezoneOffsetMinutes?/lastReminderSentDate? (same reminder shape as MedicationsTable) · lastStartedAt?/lastCompletedAt?: ISO (duration learning, compared against estimatedMinutes) |
 | RoutineLogsTable | dateRoutineStep | routineId · stepIndex · status: done|skipped |
 | GoalsTable | metric | targetValue: number |
 | ExpensesTable | expenseId | category (9-value enum) · amount · note? |
 | BudgetsTable | category | monthlyLimit: number |
+| AchievementsTable | badgeKey | unlockedAt: ISO |
+| MealPlanTemplatesTable | dayMealType (`{dayOfWeek}#{mealType}`) | dayOfWeek: 0-6 · mealType · text: string — the recurring weekly default a MealPlanTable date falls back to |
 | PushSubscriptionsTable | endpoint | keys: { p256dh, auth } |
 | UserProfileTable | — none | heightCm? · sex? · monthlyBudget? · lastWeeklyDigestSentAt? · onboardingCompletedAt? |
 | AssistantConversationsTable | conversationTurn (`{conversationId}#{epochMs}`) | conversationId · role: user\|assistant · content: string |
@@ -369,7 +378,7 @@ partition key (omitted from the field lists below since it's constant).
 ## API contracts
 
 Full route inventory lives in the companion Architecture doc (§9). Below
-are complete request/response contracts for the three highest-complexity
+are complete request/response contracts for the highest-complexity
 endpoints — the ones worth specifying exactly rather than inferring from
 the schema tables above.
 
@@ -501,6 +510,33 @@ batch-deletes every turn with that prefix.
     "createdAt": "...", "updatedAt": "..."
   }]
 }
+```
+
+### POST /timeline/suggest
+
+Stateless — reads no table. Every returned placement is re-validated against the caller's own `gaps` before it ships; an id, overlap, or out-of-gap placement the model invents is dropped silently rather than surfaced as an error.
+
+```
+// Request
+{
+  "items": [{ "id": "task:abc123", "title": "Renew passport", "estimatedMinutes": 45 }],
+  "gaps": [{ "startMin": 930, "endMin": 1080 }]   // minutes from midnight, computed client-side
+}
+
+// Response 200 — only placements that survived server-side re-validation
+{ "placements": [{ "id": "task:abc123", "startMin": 930 }] }
+```
+
+### POST /timeline/reflect
+
+Also stateless. The request carries only counts the client already computed — never titles, notes, or health/cycle detail.
+
+```
+// Request
+{ "plannedCount": 7, "doneCount": 5, "sleepMinutes": 450, "routineMinutes": 65, "taskMinutes": 150 }
+
+// Response 200 — reflection is null (not an error) if the Claude call itself fails
+{ "reflection": "A steady day — most of what you planned got done, and you slept well." }
 ```
 
 ## Sequence diagrams
@@ -710,6 +746,27 @@ for each date from activeStart to activeEnd:
 
 adherence = round(takenDays / activeDays * 100)   // null if activeDays == 0
 ```
+
+### Reminder lead time (shared by Task, Medication, and Routine schedulers)
+
+```
+// Tasks: dueAtUtc is already an unambiguous instant, so the lead is a straight subtraction.
+target = dueAtUtc - reminderLeadMinutes * 60000
+
+// Medications and Routines: timeOfDay is a bare "HH:MM" reconstructed into a UTC instant via
+// the stored timezoneOffsetMinutes first (same targetUtcInstant() helper both share), then the
+// lead is applied the same way.
+target = targetUtcInstant(today, timeOfDay, timezoneOffsetMinutes) - reminderLeadMinutes * 60000
+
+fire if target is within [now, now + 15min)   // the window this scheduler run covers
+```
+
+`reminderLeadMinutes` defaults to 0 when absent, which reduces to the
+original at-the-instant behavior unchanged — existing tasks/medications
+with no lead set are unaffected. Routines additionally gate on an opt-in
+`remindMe` flag (absent on every pre-existing routine, since the field
+didn't exist before), unlike tasks and medications, which have always
+reminded whenever a time was set.
 
 ### Task priority deadline guardrail
 
