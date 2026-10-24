@@ -32,25 +32,68 @@ import type { HabitLog, LogEntry, Medication, MealPlanSlot, MedicationLog, Medic
 // Shared horizontal line (see mockups/b5/timeline-B.html): every visible block sits on one line
 // and only takes a second row when it overlaps another in time. Colour codes the kind.
 
-// `dot` fills a small legend swatch (no text sits on it, so a saturated fill reads fine).
-// `border` is a left-rule accent, `bg` a soft tint behind the whole block — the same
-// soft-background + ink-text pairing already used for badges and priority pills app-wide
-// (e.g. urgency.ts's URGENCY_BADGE_CLASS), not a solid fill, because white text on
-// amber/bloom/sleep's mid-lightness colors falls well under WCAG's 4.5:1 minimum for small
-// text. A left border alone read as barely-there on short blocks, so the tint carries most
-// of the at-a-glance differentiation; ink/paper text stays legible against any of them.
-const LANES: { kind: TimelineKind; label: string; dot: string; border: string; bg: string }[] = [
-  { kind: "sleep", label: "Sleep", dot: "bg-[#7a6fb0]", border: "border-l-[#7a6fb0]", bg: "bg-[#7a6fb0]/20 dark:bg-[#7a6fb0]/30" },
-  { kind: "routine", label: "Routines", dot: "bg-routine", border: "border-l-routine", bg: "bg-routine-soft dark:bg-routine-soft-dark" },
-  { kind: "med", label: "Meds", dot: "bg-medication", border: "border-l-medication", bg: "bg-medication-soft dark:bg-medication-soft-dark" },
-  { kind: "meal", label: "Meals", dot: "bg-[#c26a8f]", border: "border-l-[#c26a8f]", bg: "bg-[#c26a8f]/20 dark:bg-[#c26a8f]/30" },
-  { kind: "task", label: "Tasks", dot: "bg-amber", border: "border-l-amber", bg: "bg-amber-soft dark:bg-amber-soft-dark" },
-  { kind: "workout", label: "Workouts", dot: "bg-success", border: "border-l-success", bg: "bg-success-soft dark:bg-success-soft-dark" },
-  { kind: "call", label: "Calls", dot: "bg-slate", border: "border-l-slate", bg: "bg-slate-soft dark:bg-slate-soft-dark" },
+// Which kinds exist and in what order they're listed — colour is looked up separately via
+// kindColors/PALETTE below, so every kind can be recoloured without touching this list.
+const KINDS: { kind: TimelineKind; label: string }[] = [
+  { kind: "sleep", label: "Sleep" },
+  { kind: "routine", label: "Routines" },
+  { kind: "med", label: "Meds" },
+  { kind: "meal", label: "Meals" },
+  { kind: "task", label: "Tasks" },
+  { kind: "workout", label: "Workouts" },
+  { kind: "call", label: "Calls" },
 ];
 
+// The selectable palette. `dot` is a saturated fill for the small legend/picker swatch (no
+// text sits on it, so that's fine). `border` is a left-rule accent and `bg` a soft tint behind
+// the whole block — the same soft-background + ink-text pairing already used for badges and
+// priority pills app-wide (urgency.ts's URGENCY_BADGE_CLASS), not a solid fill, because white
+// text on most of these colors at this lightness falls well under WCAG's 4.5:1 minimum for
+// small text. Every entry here is pre-vetted that way, so any kind can use any colour safely.
+const PALETTE: { key: string; name: string; dot: string; border: string; bg: string }[] = [
+  { key: "teal", name: "Teal", dot: "bg-routine", border: "border-l-routine", bg: "bg-routine-soft dark:bg-routine-soft-dark" },
+  { key: "indigo", name: "Indigo", dot: "bg-medication", border: "border-l-medication", bg: "bg-medication-soft dark:bg-medication-soft-dark" },
+  { key: "amber", name: "Amber", dot: "bg-amber", border: "border-l-amber", bg: "bg-amber-soft dark:bg-amber-soft-dark" },
+  { key: "green", name: "Green", dot: "bg-success", border: "border-l-success", bg: "bg-success-soft dark:bg-success-soft-dark" },
+  { key: "slate", name: "Slate", dot: "bg-slate", border: "border-l-slate", bg: "bg-slate-soft dark:bg-slate-soft-dark" },
+  { key: "coral", name: "Coral", dot: "bg-bloom", border: "border-l-bloom", bg: "bg-bloom-soft dark:bg-bloom-soft-dark" },
+  { key: "red", name: "Red", dot: "bg-alert", border: "border-l-alert", bg: "bg-alert-soft dark:bg-alert-soft-dark" },
+  { key: "purple", name: "Purple", dot: "bg-[#7a6fb0]", border: "border-l-[#7a6fb0]", bg: "bg-[#7a6fb0]/20 dark:bg-[#7a6fb0]/30" },
+  { key: "pink", name: "Pink", dot: "bg-[#c26a8f]", border: "border-l-[#c26a8f]", bg: "bg-[#c26a8f]/20 dark:bg-[#c26a8f]/30" },
+];
+
+const DEFAULT_KIND_COLORS: Record<TimelineKind, string> = {
+  sleep: "purple",
+  routine: "teal",
+  med: "indigo",
+  meal: "pink",
+  task: "amber",
+  workout: "green",
+  call: "slate",
+};
+
+const KIND_COLORS_KEY = "lifeos.timeline.kindColors";
+
+function paletteFor(key: string) {
+  return PALETTE.find((p) => p.key === key) ?? PALETTE[0];
+}
+
+function readKindColors(): Record<TimelineKind, string> {
+  try {
+    const raw = localStorage.getItem(KIND_COLORS_KEY);
+    if (!raw) return DEFAULT_KIND_COLORS;
+    const parsed = JSON.parse(raw) as Partial<Record<TimelineKind, string>>;
+    // Merge over the defaults rather than trusting the stored object shape — a kind added
+    // after someone last customized their colours still gets a sensible default.
+    return { ...DEFAULT_KIND_COLORS, ...parsed };
+  } catch {
+    return DEFAULT_KIND_COLORS;
+  }
+}
+
 // A protected task (deep work, commute — time set aside, not a to-do) gets its own accent —
-// deliberately the neutral surface tone, not a category colour, since it isn't one.
+// deliberately the neutral surface tone, not a category colour, since it isn't one, and not
+// customizable for the same reason.
 const PROTECTED_BORDER = "border-l-ink-muted dark:border-l-mist-muted";
 const PROTECTED_BG = "bg-stone dark:bg-stone-dark";
 
@@ -72,10 +115,10 @@ const SUB_ROW_PX = 58;
 const WEEKDAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const CYCLE_HINT_KEY = "lifeos.timeline.cycleHints";
 
-function colorFor(block: TimelineBlock): { border: string; bg: string } {
+function colorFor(block: TimelineBlock, kindColors: Record<TimelineKind, string>): { border: string; bg: string } {
   if (block.protected) return { border: PROTECTED_BORDER, bg: PROTECTED_BG };
-  const lane = LANES.find((l) => l.kind === block.kind);
-  return { border: lane?.border ?? "border-l-stone", bg: lane?.bg ?? "bg-stone/20 dark:bg-stone-dark/40" };
+  const { border, bg } = paletteFor(kindColors[block.kind]);
+  return { border, bg };
 }
 
 // Every horizontal position is a percentage of the full-day width, so a zoomed chart is just
@@ -133,6 +176,8 @@ export default function Timeline() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [now, setNow] = useState<number>(() => nowMinutes());
   const [cycleHintsOn, setCycleHintsOn] = useState<boolean>(readCycleHintsOn);
+  const [kindColors, setKindColors] = useState<Record<TimelineKind, string>>(readKindColors);
+  const [customizingColors, setCustomizingColors] = useState(false);
   const [suggestions, setSuggestions] = useState<{ id: string; startMin: number }[] | null>(null);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestError, setSuggestError] = useState<string | null>(null);
@@ -303,6 +348,20 @@ export default function Timeline() {
         localStorage.setItem(CYCLE_HINT_KEY, next ? "on" : "off");
       } catch {
         // Storage can be blocked; the toggle still works for this visit.
+      }
+      return next;
+    });
+  }
+
+  // Per-device only (localStorage), same as the cycle-hints toggle — this is a display
+  // preference, not data, so it never touches the backend.
+  function setKindColor(kind: TimelineKind, paletteKey: string) {
+    setKindColors((prev) => {
+      const next = { ...prev, [kind]: paletteKey };
+      try {
+        localStorage.setItem(KIND_COLORS_KEY, JSON.stringify(next));
+      } catch {
+        // Storage can be blocked; the change still applies for this visit.
       }
       return next;
     });
@@ -641,7 +700,7 @@ export default function Timeline() {
       )}
 
       <div className="mt-3 flex flex-wrap gap-2">
-        {LANES.map(({ kind, label, dot }) => (
+        {KINDS.map(({ kind, label }) => (
           <button
             key={kind}
             type="button"
@@ -649,11 +708,47 @@ export default function Timeline() {
             onClick={() => toggleFilter(kind)}
             className={`inline-flex min-h-10 items-center gap-1.5 rounded-full border px-3 text-xs font-medium ${filters[kind] ? "border-bloom bg-bloom text-paper-card" : "border-stone text-ink-muted dark:border-stone-dark dark:text-mist-muted"}`}
           >
-            <span aria-hidden="true" className={`inline-block h-2.5 w-2.5 rounded-full ${dot}`} />
+            <span aria-hidden="true" className={`inline-block h-2.5 w-2.5 rounded-full ${paletteFor(kindColors[kind]).dot}`} />
             {label}
           </button>
         ))}
+        <button
+          type="button"
+          aria-pressed={customizingColors}
+          onClick={() => setCustomizingColors((v) => !v)}
+          className={`inline-flex min-h-10 items-center gap-1.5 rounded-full border px-3 text-xs font-medium ${customizingColors ? "border-bloom bg-bloom text-paper-card" : "border-stone text-ink-muted dark:border-stone-dark dark:text-mist-muted"}`}
+        >
+          Customise colours
+        </button>
       </div>
+
+      {customizingColors && (
+        <Card className="mt-2 flex flex-col gap-3 p-3">
+          {KINDS.map(({ kind, label }) => (
+            <div key={kind}>
+              <p className="mb-1.5 text-xs font-medium text-ink dark:text-paper">{label}</p>
+              <div className="flex flex-wrap gap-2">
+                {PALETTE.map((p) => {
+                  const active = kindColors[kind] === p.key;
+                  return (
+                    <button
+                      key={p.key}
+                      type="button"
+                      aria-pressed={active}
+                      aria-label={p.name}
+                      title={p.name}
+                      onClick={() => setKindColor(kind, p.key)}
+                      className={`flex h-10 w-10 items-center justify-center rounded-full border-2 ${p.dot} ${active ? "border-ink dark:border-paper" : "border-transparent"}`}
+                    >
+                      {active && <Icon icon={Check} size={16} className="text-paper-card" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </Card>
+      )}
 
       {error && <p className="mt-4 text-sm text-alert">{error}</p>}
       {!data && !error && <p className={`mt-6 ${mutedText}`}>Loading...</p>}
@@ -716,7 +811,7 @@ export default function Timeline() {
               {sleepPacked.length > 0 && (
                 <div className="relative border-b border-stone dark:border-stone-dark" style={{ height: sleepRows * SUB_ROW_PX + 8 }}>
                   {sleepPacked.map((b) => (
-                    <SleepBlock key={b.id} block={b} />
+                    <SleepBlock key={b.id} block={b} color={paletteFor(kindColors.sleep)} />
                   ))}
                 </div>
               )}
@@ -724,7 +819,7 @@ export default function Timeline() {
               {/* One shared line: blocks sit side by side until two of them overlap in time, and only then take a second row. */}
               <div className="relative border-b border-stone dark:border-stone-dark">
                 {packed.map((b) => (
-                  <BlockButton key={b.id} block={b} color={colorFor(b)} selected={selectedId === b.id} onSelect={() => setSelectedId(selectedId === b.id ? null : b.id)} />
+                  <BlockButton key={b.id} block={b} color={colorFor(b, kindColors)} selected={selectedId === b.id} onSelect={() => setSelectedId(selectedId === b.id ? null : b.id)} />
                 ))}
                 <div style={{ height: packedRows * SUB_ROW_PX + 8 }} />
                 {expanded && (
@@ -878,10 +973,10 @@ function BlockButton({
 }
 
 // Sleep is read-only here (it's logged from the Today screen), so it's a plain block, not a button.
-function SleepBlock({ block }: { block: TimelineBlock }) {
+function SleepBlock({ block, color }: { block: TimelineBlock; color: { border: string; bg: string } }) {
   return (
     <div
-      className="absolute z-10 overflow-hidden rounded-control border border-l-4 border-stone border-l-[#7a6fb0] bg-[#7a6fb0]/20 px-1.5 py-1 leading-tight shadow-sm dark:border-stone-dark dark:border-l-[#7a6fb0] dark:bg-[#7a6fb0]/30"
+      className={`absolute z-10 overflow-hidden rounded-control border border-l-4 border-stone px-1.5 py-1 leading-tight shadow-sm dark:border-stone-dark ${color.bg} ${color.border}`}
       style={{ left: `${pctOfDay(block.startMin)}%`, width: `${pctOfDay(block.endMin - block.startMin)}%`, top: block.lane * SUB_ROW_PX + 6, height: SUB_ROW_PX - 12, minWidth: 44 }}
     >
       <span className="block truncate text-xs font-medium text-ink dark:text-paper">{block.title}</span>
