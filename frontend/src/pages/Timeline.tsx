@@ -145,6 +145,14 @@ type Zoom = (typeof ZOOM_LEVELS)[number];
 const PX_PER_HOUR: Record<Zoom, number> = { 24: 96, 6: 200, 2: 400 };
 
 const SUB_ROW_PX = 58;
+// A short block (a 2-minute medication, say) used to floor out at 44px — barely enough for
+// 3-4 letters before the title truncated to something like "Gl…". DESIGN.md: never truncate
+// text the user needs to read. A Gantt block can't wrap the way a list row can without also
+// growing taller, so the fix here is width instead — wide enough that most real titles
+// ("Morning routine", "Glutone 1000") show in full regardless of how short the block's actual
+// duration is. The chart already scrolls sideways, so a block reading wider than its true
+// duration costs nothing.
+const MIN_BLOCK_WIDTH = 150;
 const WEEKDAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const CYCLE_HINT_KEY = "lifeos.timeline.cycleHints";
 
@@ -337,12 +345,23 @@ export default function Timeline() {
   const blocks = useMemo<TimelineBlock[]>(() => (built ? built.blocks.map((b) => ({ ...b, status: statusById[b.id] })) : []), [built, statusById]);
   const unscheduled = built?.unscheduled ?? [];
   const visibleBlocks = useMemo(() => blocks.filter((b) => filters[b.kind]), [blocks, filters]);
+  // MIN_BLOCK_WIDTH is a pixel floor, but lane packing works in minutes — converted at the
+  // current zoom's scale so two short blocks close together in real time (but not literally
+  // overlapping) still get pushed to separate lanes once each is wide enough to visually
+  // collide. Recomputed per zoom level since px-per-minute changes with it.
+  const minVisualGapMin = (MIN_BLOCK_WIDTH / PX_PER_HOUR[zoom]) * 60;
   // Sleep sits in its own band above the shared line: it's background, not something to plan
   // around, so waking at a medication's time isn't treated as a clash.
-  const sleepPacked = useMemo(() => assignLanes(visibleBlocks.filter((b) => b.kind === "sleep").map((b) => ({ ...b }))), [visibleBlocks]);
+  const sleepPacked = useMemo(
+    () => assignLanes(visibleBlocks.filter((b) => b.kind === "sleep").map((b) => ({ ...b })), minVisualGapMin),
+    [visibleBlocks, minVisualGapMin],
+  );
   const sleepRows = Math.max(1, ...sleepPacked.map((b) => b.lane + 1));
   // Re-packed over only the visible blocks, so hiding a kind never leaves an empty row behind.
-  const packed = useMemo(() => assignLanes(visibleBlocks.filter((b) => b.kind !== "sleep").map((b) => ({ ...b }))), [visibleBlocks]);
+  const packed = useMemo(
+    () => assignLanes(visibleBlocks.filter((b) => b.kind !== "sleep").map((b) => ({ ...b })), minVisualGapMin),
+    [visibleBlocks, minVisualGapMin],
+  );
   const packedRows = Math.max(1, ...packed.map((b) => b.lane + 1));
   const expanded = packed.find((b) => b.id === selectedId);
 
@@ -915,9 +934,13 @@ export default function Timeline() {
 
           <div ref={scrollRef} className="mt-3 overflow-x-auto rounded-control border border-stone dark:border-stone-dark" aria-label="24-hour timeline">
             <div className="relative" style={{ width: `${innerWidthPx}px` }}>
-              <div className="relative h-7 border-b border-stone text-[11px] tabular-nums text-ink-muted dark:border-stone-dark dark:text-mist-muted">
+              {/* Taller than a single text row on purpose: the "now" badge lives in the top
+                  half and the hour ticks in the bottom half, so the two never land on top of
+                  each other no matter what time it is — they used to share one row and
+                  collide whenever "now" fell near an hour mark. */}
+              <div className="relative h-11 border-b border-stone text-[11px] tabular-nums text-ink-muted dark:border-stone-dark dark:text-mist-muted">
                 {Array.from({ length: 24 }, (_, h) => (
-                  <span key={h} className="absolute top-1 -translate-x-1/2" style={{ left: `${pctOfDay(h * 60)}%` }}>
+                  <span key={h} className="absolute bottom-1 -translate-x-1/2" style={{ left: `${pctOfDay(h * 60)}%` }}>
                     {String(h).padStart(2, "0")}
                   </span>
                 ))}
@@ -927,7 +950,7 @@ export default function Timeline() {
                 <div
                   key={z.fromHour}
                   aria-hidden="true"
-                  className={`pointer-events-none absolute bottom-0 top-7 ${z.color}`}
+                  className={`pointer-events-none absolute bottom-0 top-11 ${z.color}`}
                   style={{ left: `${pctOfDay(z.fromHour * 60)}%`, width: `${pctOfDay((z.toHour - z.fromHour) * 60)}%` }}
                 />
               ))}
@@ -968,20 +991,25 @@ export default function Timeline() {
               </div>
 
               {gaps.map((g) => (
+                // overflow-hidden so the sticky label is clipped to this gap's own width —
+                // without it, a label wider than a narrow gap could visually spill into
+                // whatever block sits right after it.
                 <div
                   key={`${g.startMin}-${g.endMin}`}
-                  className="pointer-events-none absolute top-7 bottom-0"
+                  className="pointer-events-none absolute top-11 bottom-0 overflow-hidden"
                   style={{ left: `${pctOfDay(g.startMin)}%`, width: `${pctOfDay(g.endMin - g.startMin)}%` }}
                 >
-                  <span className="sticky left-1 top-8 inline-block whitespace-nowrap bg-paper/70 px-1 text-[10px] text-ink-muted dark:text-mist-muted">
+                  <span className="sticky left-1 top-1 inline-block max-w-full truncate whitespace-nowrap bg-paper/70 px-1 text-[10px] text-ink-muted dark:text-mist-muted">
                     {formatDuration(g.endMin - g.startMin)} free
                   </span>
                 </div>
               ))}
 
               {showNow && (
-                // Lives in the hour ruler only, so it doesn't cut vertically through the lanes.
-                <div className="pointer-events-none absolute top-0 z-20 flex h-7 -translate-x-1/2 items-center" style={{ left: `${pctOfDay(now)}%` }} aria-label={`Now ${hhmm(now)}`}>
+                // Pinned to the top half of the (now taller) ruler, the hour ticks live in
+                // the bottom half — so this never lands on top of an hour label, and it
+                // doesn't cut vertically through the lanes below.
+                <div className="pointer-events-none absolute top-1 z-20 -translate-x-1/2" style={{ left: `${pctOfDay(now)}%` }} aria-label={`Now ${hhmm(now)}`}>
                   <span className="rounded bg-bloom px-1 text-[10px] font-medium tabular-nums text-paper-card">{hhmm(now)}</span>
                 </div>
               )}
@@ -1081,7 +1109,7 @@ function BlockButton({
       onClick={onSelect}
       aria-pressed={selected}
       className={`absolute z-10 overflow-hidden rounded-control border border-l-4 border-stone px-1.5 py-1 text-left leading-tight shadow-sm dark:border-stone-dark ${color.className} ${selected ? "ring-2 ring-bloom" : ""}`}
-      style={{ ...color.style, left: `${pctOfDay(block.startMin)}%`, width: `${pctOfDay(block.endMin - block.startMin)}%`, top: block.lane * SUB_ROW_PX + 22, height: SUB_ROW_PX - 6, minWidth: 44 }}
+      style={{ ...color.style, left: `${pctOfDay(block.startMin)}%`, width: `${pctOfDay(block.endMin - block.startMin)}%`, top: block.lane * SUB_ROW_PX + 22, height: SUB_ROW_PX - 6, minWidth: MIN_BLOCK_WIDTH }}
     >
       <span className="block truncate text-xs font-medium text-ink dark:text-paper">{block.title}</span>
       <span className="block text-[11px] tabular-nums text-ink-muted dark:text-mist-muted">
@@ -1103,7 +1131,7 @@ function SleepBlock({ block, hex }: { block: TimelineBlock; hex: string }) {
   return (
     <div
       className="absolute z-10 overflow-hidden rounded-control border border-l-4 border-stone px-1.5 py-1 leading-tight shadow-sm dark:border-stone-dark"
-      style={{ ...kindBlockStyle(hex), left: `${pctOfDay(block.startMin)}%`, width: `${pctOfDay(block.endMin - block.startMin)}%`, top: block.lane * SUB_ROW_PX + 6, height: SUB_ROW_PX - 12, minWidth: 44 }}
+      style={{ ...kindBlockStyle(hex), left: `${pctOfDay(block.startMin)}%`, width: `${pctOfDay(block.endMin - block.startMin)}%`, top: block.lane * SUB_ROW_PX + 6, height: SUB_ROW_PX - 12, minWidth: MIN_BLOCK_WIDTH }}
     >
       <span className="block truncate text-xs font-medium text-ink dark:text-paper">{block.title}</span>
       <span className="block text-[11px] tabular-nums text-ink-muted dark:text-mist-muted">

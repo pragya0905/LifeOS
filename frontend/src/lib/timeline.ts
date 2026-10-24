@@ -152,16 +152,25 @@ function pushTimed(
 // Greedy interval colouring: each block takes the lowest lane that's free at its start.
 // Blocks that overlap in time end up in different lanes, so the page can draw them side
 // by side instead of stacking one on top of the other.
-export function assignLanes(blocks: TimelineBlock[]): TimelineBlock[] {
+// `minVisualGapMin`: two blocks can be minutes apart and not literally overlap in time, yet
+// still collide on screen once each is floored to a minimum rendered pixel width (so a title
+// isn't truncated to a couple of letters — see Timeline.tsx's MIN_BLOCK_WIDTH). Passing that
+// minimum width converted to minutes (at the current zoom's px-per-minute) makes a block
+// reserve at least that much lane space even when its real duration is shorter, so close-
+// together short blocks get pushed to separate lanes instead of visually overlapping. Purely
+// a packing input — the block's own startMin/endMin, used for its displayed time range and
+// every duration total, are never touched.
+export function assignLanes(blocks: TimelineBlock[], minVisualGapMin = 0): TimelineBlock[] {
   const sorted = blocks.slice().sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
   const laneEnds: number[] = [];
   for (const b of sorted) {
+    const reservedEnd = Math.max(b.endMin, b.startMin + minVisualGapMin);
     let lane = laneEnds.findIndex((end) => end <= b.startMin);
     if (lane === -1) {
       lane = laneEnds.length;
-      laneEnds.push(b.endMin);
+      laneEnds.push(reservedEnd);
     } else {
-      laneEnds[lane] = b.endMin;
+      laneEnds[lane] = reservedEnd;
     }
     b.lane = lane;
   }

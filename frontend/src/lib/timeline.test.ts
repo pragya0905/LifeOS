@@ -151,6 +151,25 @@ describe("assignLanes", () => {
     const laned = assignLanes([block("a", 0, 60), block("b", 60, 120)]);
     expect(laned.every((b) => b.lane === 0)).toBe(true);
   });
+
+  it("with no minVisualGapMin, two short blocks 30 minutes apart share a lane (today's default)", () => {
+    const laned = assignLanes([block("a", 360, 362), block("b", 390, 392)]);
+    expect(laned.every((b) => b.lane === 0)).toBe(true);
+  });
+
+  it("minVisualGapMin pushes two short blocks that don't overlap in time, but would overlap visually, onto separate lanes", () => {
+    // 06:00-06:02 and 06:30-06:32, 30 real minutes apart — too close for a 150px-min block at
+    // 96px/hour (≈94 real minutes' worth of width) not to visually collide.
+    const laned = assignLanes([block("a", 360, 362), block("b", 390, 392)], 94);
+    const lanes = Object.fromEntries(laned.map((b) => [b.id, b.lane]));
+    expect(lanes.a).toBe(0);
+    expect(lanes.b).toBe(1);
+  });
+
+  it("minVisualGapMin never shrinks a block that's already wide enough on its own", () => {
+    const laned = assignLanes([block("a", 0, 120), block("b", 120, 240)], 30);
+    expect(laned.every((b) => b.lane === 0)).toBe(true);
+  });
 });
 
 describe("findOverlaps", () => {
