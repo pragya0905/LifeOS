@@ -261,7 +261,7 @@ table is queried by its own primary key only.
 | BudgetsTable | userId | category | per-category recurring monthly limits |
 | AchievementsTable | userId | badgeKey | one row per earned badge, with the date it was unlocked |
 | PushSubscriptionsTable | userId | endpoint | self-pruned on 404/410 from the push service |
-| UserProfileTable | userId | — (no sort key) | sex, height, weight target, monthly budget, onboarding flag |
+| UserProfileTable | userId | — (no sort key) | sex, height, weight target, monthly budget, onboarding flag, Assistant preferences (model, tone, preferred name, location) |
 | AssistantConversationsTable | userId | conversationTurn | `{conversationId}#{epochMs}` sort key — one conversation's turns sort chronologically under a `begins_with` query |
 | UserMemoryTable | userId | memoryId | `{epochMs}-{uuid}` sort key; short distilled facts, not raw conversation dumps |
 
@@ -543,22 +543,26 @@ Lambda Function URL, not part of this API — see §9). Every route
 | Resource | Routes |
 | --- | --- |
 | Identity | GET /whoami · GET/PATCH /profile · DELETE /account |
-| Tasks | GET/POST /tasks · PATCH /tasks/{id} · GET /schedule/{date} |
+| Tasks | GET/POST /tasks · PATCH/DELETE /tasks/{id} · GET /schedule/{date} |
 | Journal | GET/POST /journal · PATCH /journal/{date} · POST /journal/search |
-| Assistant | GET/DELETE /assistant/conversations(/{id}) — chat itself is `POST` on its own Lambda Function URL, not this API, see §9 |
+| Assistant | GET/DELETE /assistant/conversations(/{id}) · POST /assistant/attachments/presign (upload URL for a chat image/PDF attachment) — chat itself is `POST` on its own Lambda Function URL, not this API, see §9 |
 | Memory | GET /memory · DELETE /memory/{id} |
-| Meal Plan | GET /meal-plan · PATCH/DELETE /meal-plan/{date}/{mealType} · POST /meal-plan/suggest |
+| Meal Plan | GET /meal-plan · PATCH/DELETE /meal-plan/{date}/{mealType} · POST /meal-plan/suggest · GET /meal-plan-templates · PATCH/DELETE /meal-plan-templates/{day}/{mealType} (the recurring weekly defaults a date falls back to) |
 | Habits | GET /habits · GET /habits/{date} · PATCH /habits/{date}/{type} |
 | Goals | GET /goals · PATCH /goals/{metric} |
-| Medications | GET/POST /medications · DELETE /medications/{id} · GET /medication-logs(/{date}) · PATCH /medication-logs/{date}/{medicationId} |
+| Medications | GET/POST /medications · PATCH/DELETE /medications/{id} · GET /medication-logs(/{date}) · PATCH /medication-logs/{date}/{medicationId} |
 | Logs | GET/POST /logs · PATCH/DELETE /logs/{id} |
 | Routines | GET/POST /routines · PATCH/DELETE /routines/{id} · GET /routine-logs(/{date}) · PATCH /routine-logs/{date}/{routineId}/{stepIndex} |
 | Budget | GET /budgets · PUT/DELETE /budgets/{category} · GET/POST /expenses · PATCH/DELETE /expenses/{id} |
 | Wishes | GET/POST /wishes · PATCH/DELETE /wishes/{id} · image routes under /wishes/{id}/images\* |
-| Insights | GET /insights |
+| Insights | GET /insights · GET /progress-summary (the same goals/habits/budget-pace computation `get_progress_summary` exposes to the Assistant — see §7.4 — also read directly by Dashboard and Insights) |
 | Timeline | POST /timeline/suggest · POST /timeline/reflect — both stateless, see §7.6 |
 | Achievements | GET /achievements |
 | Push | POST/DELETE /push-subscriptions |
+
+70 routes total, verified against `template.yaml`'s `HttpApi`
+events directly (`grep -c "Type: HttpApi"`) rather than inferred from this
+table — the authoritative count if the two ever drift again.
 
 ## Performance
 

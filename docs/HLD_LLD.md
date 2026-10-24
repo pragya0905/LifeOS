@@ -58,7 +58,8 @@ extension work to be scoped against an accurate baseline.
 | Module | Core requirement |
 | --- | --- |
 | Journal | One entry per calendar day; free text plus optional voice input; AI extraction into 8 downstream trackers without overwriting manually-entered values. |
-| Tasks | CRUD with due date/time, effort estimate, and priority; AI priority suggestion with a deterministic deadline-forces-High guardrail; push reminders; calendar month view. |
+| Tasks | CRUD with due date/time, effort estimate, and priority; AI priority suggestion with a deterministic deadline-forces-High guardrail, plus a second, independent re-check on the 15-minute scheduler that can force High later as a deadline nears even after creation; push reminders. |
+| Calendar | Month-grid view of tasks by due date, colour-coded by priority; Indian public holidays/festivals marked; "add task for this day" shortcut into Tasks. |
 | Habits | Daily water/exercise/steps tracking, manual or AI-journal-sourced, with per-metric daily goals and streaks. |
 | Medications | Active-medication tracking with dosage/notes, daily taken/missed logging, adherence percentage, daily push reminders. |
 | Logs | Catch-all structured logging for food, calls, sleep, weight, body fat %, mood, and cycle events. |
@@ -70,6 +71,7 @@ extension work to be scoped against an accurate baseline.
 | Assistant | Dedicated chat/voice page, streamed token-by-token from a Claude tool-calling loop, that reads/logs across the modules above; browsable/reopenable/deletable conversation history; a dedicated hands-free voice mode; semantic search over journal history (RAG); persistent cross-conversation memory of facts about the user, visible and deletable from Settings; deterministic goals-anchored coaching (falling-behind wishes, habit streaks, budget pace) with an honest-accountability framing. |
 | Meal Plan | A weekly grid (7 days × breakfast/lunch/dinner/snack) of free-text planned meals, separate from Logs' after-the-fact food entries. AI can suggest text for empty slots on request (preview only, not auto-saved), and the Assistant can read and revise the plan directly in conversation. |
 | Timeline | A 24-hour chart of the viewed day — routines, medications, meals (placed at a per-device nominal time, since the plan itself carries none), tasks, protected time, sleep, workouts, and calls on one shared line, zoomable, with free-gap and overlap detection, a per-kind customizable colour, Move/Fit-this-task placement, AI-proposed placements and a one-sentence daily reflection (both reviewed before anything is accepted), and duration learning that compares a routine's logged Start/Finished elapsed time against its estimate. |
+| Achievements | 14 badges across tasks, journaling, habit streaks, routines, medications, and wishes; locked badges stay visible (showing what's needed) rather than hidden, and a one-time banner marks anything newly unlocked. |
 | Onboarding & Settings | First-run setup of sex, height, and daily targets; theme, data export, account deletion. |
 
 ## Non-functional requirements
@@ -283,12 +285,16 @@ partition key (omitted from the field lists below since it's constant).
 | --- | --- | --- |
 | title | string | [req] |
 | description | string | [opt] |
+| voiceInput | boolean | [opt] |
+| category | string | [opt — free text] |
 | dueDate / dueTime | string (YYYY-MM-DD / HH:MM) | [opt] |
 | dueAtUtc | string (ISO 8601) | [opt — client-computed, timezone-safe instant] |
+| scheduleTime | string (HH:MM) | [opt — a non-deadline "plan to work on this around" time, distinct from dueTime] |
 | estimatedHours | number | [opt] |
 | priority | "Low"|"Medium"|"High" | [req] |
-| prioritySource | "manual"|"ai" | [req] |
+| prioritySource | "manual"\|"ai"\|"auto" | [req — "ai" is set at creation whenever a suggestion was requested, covering both an actual Claude call and `suggestTaskPriority`'s own internal deadline short-circuit (LLD §16); "auto" is set later, only by taskReminderScheduler's ongoing re-check (below), never at creation] |
 | status | "todo"|"in\_progress"|"done" | [req] |
+| recurrence | TaskRecurrence (nested: frequency, daysOfWeek?, intervalDays?, dayOfMonth?) | [opt] |
 | reminderSentAt | string (ISO) | [opt — dedup guard for the 15-min scheduler] |
 | reminderLeadMinutes | number (0-120) | [opt — fires the push this many minutes before dueAtUtc instead of exactly at it] |
 | blockType | "task"\|"protected" | [opt — "protected" marks time set aside rather than a to-do; shown distinctly on the Timeline page] |
@@ -300,6 +306,8 @@ partition key (omitted from the field lists below since it's constant).
 | text | string | [req] |
 | voiceInput | boolean | [req] |
 | aiExtracted | JournalEntryExtraction (nested, 13 fields) | [opt — see below] |
+| dayReview | DayReview (nested) | [opt — see below] |
+| embedding | number[] (Bedrock Titan vector) | [opt — written best-effort/async, never sent to the frontend, see Architecture §7] |
 
 #### aiExtracted (nested object)
 
@@ -313,6 +321,14 @@ partition key (omitted from the field lists below since it's constant).
 | cycleEvent | "period\_start"|"period\_end"|"symptom" | null |
 | calls | { personName, durationMinutes, note }[] |
 | expenses | { category, amount, note }[] |
+
+#### dayReview (nested object)
+
+| Field | Type |
+| --- | --- |
+| productivityScore | number (1-10) |
+| timeWastedMinutes | number \| null — only set when the journal text itself explicitly describes time lost, never inferred from silence or the score alone |
+| wins / suggestions | string[] |
 
 ### HabitLogsTable PK userId · SK dateHabitType
 
@@ -361,18 +377,18 @@ partition key (omitted from the field lists below since it's constant).
 
 | Table | Sort key | Key fields |
 | --- | --- | --- |
-| MedicationLogsTable | dateMedicationId | status: taken|missed · source |
+| MedicationLogsTable | dateMedicationId | status: taken|missed|skipped · note? · source |
 | RoutineTemplatesTable | routineId | category · name · steps: string[] · timeOfDay?/estimatedMinutes? · endTime?/stepMinutes?: number[] (per-step, same order as steps) · remindMe?/reminderLeadMinutes?/timezoneOffsetMinutes?/lastReminderSentDate? (same reminder shape as MedicationsTable) · lastStartedAt?/lastCompletedAt?: ISO (duration learning, compared against estimatedMinutes) |
-| RoutineLogsTable | dateRoutineStep | routineId · stepIndex · status: done|skipped |
+| RoutineLogsTable | dateRoutineStep | routineId · stepIndex · status: done\|skipped\|not\_applicable · note? |
 | GoalsTable | metric | targetValue: number |
 | ExpensesTable | expenseId | category (9-value enum) · amount · note? |
 | BudgetsTable | category | monthlyLimit: number |
-| AchievementsTable | badgeKey | unlockedAt: ISO |
+| AchievementsTable | badgeKey | earnedAt: ISO — one row per badge the user has unlocked (14 possible badges, see Help page) |
 | MealPlanTemplatesTable | dayMealType (`{dayOfWeek}#{mealType}`) | dayOfWeek: 0-6 · mealType · text: string — the recurring weekly default a MealPlanTable date falls back to |
 | PushSubscriptionsTable | endpoint | keys: { p256dh, auth } |
-| UserProfileTable | — none | heightCm? · sex? · monthlyBudget? · lastWeeklyDigestSentAt? · onboardingCompletedAt? |
+| UserProfileTable | — none | heightCm? · sex? · monthlyBudget? · assistantModel? ("claude-haiku-4-5"\|"claude-sonnet-5"\|"claude-opus-5") · assistantTone? ("warm"\|"direct"\|"playful") · preferredName? · location? · lastWeeklyDigestSentAt? · onboardingCompletedAt? |
 | AssistantConversationsTable | conversationTurn (`{conversationId}#{epochMs}`) | conversationId · role: user\|assistant · content: string |
-| UserMemoryTable | memoryId (`{epochMs}-{uuid}`) | text: string · category: health\|financial\|emotional\|consistency\|general |
+| UserMemoryTable | memoryId (`{epochMs}-{uuid}`) | text: string · category: health\|financial\|emotional\|consistency\|general\|style |
 | MealPlanTable | dateMealType (`{date}#{mealType}`) | date · mealType: breakfast\|lunch\|dinner\|snack · text: string |
 
 ## API contracts
@@ -770,6 +786,11 @@ reminded whenever a time was set.
 
 ### Task priority deadline guardrail
 
+Runs inside `suggestTaskPriority` at creation/edit time, whenever
+`suggestPriority: true` was requested — either branch below leaves
+`prioritySource = "ai"` from the caller's point of view, since both are
+reached only when a suggestion was asked for:
+
 ```
 hoursUntilDue = (dueAtUtc - now) / 3600000   // dueAtUtc preferred (client-computed,
                                               // timezone-unambiguous) over reconstructing
@@ -778,6 +799,20 @@ if estimatedHours is set and hoursUntilDue <= estimatedHours:
     priority = "High"   // deterministic — no Claude call, no ambiguity to resolve
 else:
     priority = suggestTaskPriority(title, due, estimate, description)  // Claude call
+```
+
+A second, separate guardrail runs later and on its own cadence, inside
+`taskReminderScheduler` (LLD §14) — not at creation, and not part of the
+function above. Nothing else ever re-checks a task's slack once it's
+created, so this is the one place that catches a task sliding from "fits
+fine" to "no longer fits" purely because time passed, not because
+anything about the task itself changed:
+
+```
+// Every 15 minutes, for every non-done, non-already-High task:
+if estimatedHours is set and hoursUntilDue(dueAtUtc, now) <= estimatedHours:
+    priority = "High"
+    prioritySource = "auto"   // distinct from "ai" — this task was never shown to Claude
 ```
 
 ### Assistant progress summary (get_progress_summary tool)
