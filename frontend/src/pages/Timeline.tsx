@@ -6,7 +6,7 @@ import { Card } from "../components/Card";
 import { Icon } from "../components/Icon";
 import { MedicationStatusButtons } from "../components/MedicationStatusButtons";
 import { useToast } from "../components/Toast";
-import { mutedText, pageTitle, sectionLabel } from "../components/ui";
+import { input, mutedText, pageTitle, sectionLabel } from "../components/ui";
 import { addDays, computeDueAtUtc, isValidDateStr, todayLocal } from "../lib/date";
 import { getMoonEventsInRange, MOON_EVENT_LABEL } from "../lib/moonPhase";
 import { medicationStatusLabel, routineStatusLabel } from "../lib/statusDisplay";
@@ -19,6 +19,8 @@ import {
   findFreeGaps,
   findOverlaps,
   formatDuration,
+  MEAL_NOMINAL_MIN,
+  parseHm,
   totalsByKind,
   viewportFor,
   weekDates,
@@ -90,6 +92,34 @@ function readKindColors(): Record<TimelineKind, string> {
     return next;
   } catch {
     return DEFAULT_KIND_COLORS;
+  }
+}
+
+// Meal plan slots carry no clock time of their own (see TimelineSource.meals' comment in
+// lib/timeline.ts), so where they land on the chart is only ever a per-device display
+// preference — stored the same way as the colour picker, never sent to the backend.
+const MEAL_TYPES: { type: string; label: string }[] = [
+  { type: "breakfast", label: "Breakfast" },
+  { type: "lunch", label: "Lunch" },
+  { type: "snack", label: "Snack" },
+  { type: "dinner", label: "Dinner" },
+];
+const DEFAULT_MEAL_TIMES: Record<string, string> = { breakfast: "08:00", lunch: "13:00", snack: "16:00", dinner: "19:00" };
+const MEAL_TIMES_KEY = "lifeos.timeline.mealTimes";
+
+function readMealTimes(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(MEAL_TIMES_KEY);
+    if (!raw) return DEFAULT_MEAL_TIMES;
+    const parsed = JSON.parse(raw) as Partial<Record<string, string>>;
+    const next = { ...DEFAULT_MEAL_TIMES };
+    for (const type of Object.keys(next)) {
+      const value = parsed[type];
+      if (value && parseHm(value) !== undefined) next[type] = value;
+    }
+    return next;
+  } catch {
+    return DEFAULT_MEAL_TIMES;
   }
 }
 
@@ -183,6 +213,8 @@ export default function Timeline() {
   const [cycleHintsOn, setCycleHintsOn] = useState<boolean>(readCycleHintsOn);
   const [kindColors, setKindColors] = useState<Record<TimelineKind, string>>(readKindColors);
   const [customizingColors, setCustomizingColors] = useState(false);
+  const [mealTimes, setMealTimes] = useState<Record<string, string>>(readMealTimes);
+  const [customizingMealTimes, setCustomizingMealTimes] = useState(false);
   const [suggestions, setSuggestions] = useState<{ id: string; startMin: number }[] | null>(null);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestError, setSuggestError] = useState<string | null>(null);
@@ -267,7 +299,21 @@ export default function Timeline() {
     };
   }, [data]);
 
-  const built = useMemo(() => (source ? buildTimeline(source, new Date(`${selectedDate}T00:00:00`), selectedDate) : null), [source, selectedDate]);
+  // Converted once per change, not per render; falls back to the built-in default minute for
+  // any meal type the user hasn't customized (or whose stored value somehow failed to parse).
+  const mealMinutes = useMemo(() => {
+    const out = { ...MEAL_NOMINAL_MIN };
+    for (const { type } of MEAL_TYPES) {
+      const parsed = parseHm(mealTimes[type]);
+      if (parsed !== undefined) out[type] = parsed;
+    }
+    return out;
+  }, [mealTimes]);
+
+  const built = useMemo(
+    () => (source ? buildTimeline(source, new Date(`${selectedDate}T00:00:00`), selectedDate, mealMinutes) : null),
+    [source, selectedDate, mealMinutes],
+  );
 
   // Plain-text status per block, so each block says Done / Taken / Skipped as well as its colour.
   const statusById = useMemo(() => {
@@ -365,6 +411,18 @@ export default function Timeline() {
       const next = { ...prev, [kind]: paletteKey };
       try {
         localStorage.setItem(KIND_COLORS_KEY, JSON.stringify(next));
+      } catch {
+        // Storage can be blocked; the change still applies for this visit.
+      }
+      return next;
+    });
+  }
+
+  function setMealTime(type: string, time: string) {
+    setMealTimes((prev) => {
+      const next = { ...prev, [type]: time };
+      try {
+        localStorage.setItem(MEAL_TIMES_KEY, JSON.stringify(next));
       } catch {
         // Storage can be blocked; the change still applies for this visit.
       }
@@ -740,7 +798,48 @@ export default function Timeline() {
         >
           Customise colours
         </button>
+        <button
+          type="button"
+          aria-pressed={customizingMealTimes}
+          onClick={() => setCustomizingMealTimes((v) => !v)}
+          className={`inline-flex min-h-10 items-center gap-1.5 rounded-full border px-3 text-xs font-medium ${customizingMealTimes ? "border-bloom bg-bloom text-paper-card" : "border-stone text-ink-muted dark:border-stone-dark dark:text-mist-muted"}`}
+        >
+          Meal times
+        </button>
       </div>
+
+      {customizingMealTimes && (
+        <Card className="mt-2 flex flex-col gap-3 p-3">
+          {MEAL_TYPES.map(({ type, label }) => {
+            const isDefault = mealTimes[type] === DEFAULT_MEAL_TIMES[type];
+            return (
+              <div key={type} className="flex items-center gap-3">
+                <input
+                  type="time"
+                  value={mealTimes[type]}
+                  onChange={(e) => e.target.value && setMealTime(type, e.target.value)}
+                  aria-label={`${label} time`}
+                  className={`w-32 ${input}`}
+                />
+                <p className="min-w-0 flex-1 text-sm text-ink dark:text-paper">{label}</p>
+                {!isDefault && (
+                  <button
+                    type="button"
+                    onClick={() => setMealTime(type, DEFAULT_MEAL_TIMES[type])}
+                    className="min-h-10 shrink-0 rounded-control border border-stone px-2 text-xs text-ink-muted dark:border-stone-dark dark:text-mist-muted"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            );
+          })}
+          <p className="text-xs text-ink-muted dark:text-mist-muted">
+            Meals have no time of their own in the meal plan, so this is only where they're drawn on the chart. Saved on this device only; edit what's actually planned on the{" "}
+            <Link to="/meal-plan" className="text-bloom underline">Meal Plan</Link> page.
+          </p>
+        </Card>
+      )}
 
       {customizingColors && (
         <Card className="mt-2 flex flex-col gap-3 p-3">

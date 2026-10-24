@@ -233,6 +233,27 @@ describe("meals", () => {
       ["meal", "Dal and rice", 1140, 1170],
     ]);
   });
+
+  it("uses a caller-supplied nominal time over the default", () => {
+    const { blocks } = buildTimeline(
+      source({ meals: [{ mealType: "breakfast", text: "Oats" }] }),
+      FRIDAY,
+      DATE,
+      { breakfast: 7 * 60 },
+    );
+    expect(blocks[0]).toMatchObject({ startMin: 420, endMin: 450 });
+  });
+
+  it("drops a meal type the override has no entry for, same as today's missing-slot behavior", () => {
+    const { blocks, unscheduled } = buildTimeline(
+      source({ meals: [{ mealType: "snack", text: "Nuts" }] }),
+      FRIDAY,
+      DATE,
+      { breakfast: 7 * 60 },
+    );
+    expect(blocks).toEqual([]);
+    expect(unscheduled).toEqual([]);
+  });
 });
 
 describe("bestFitGap", () => {

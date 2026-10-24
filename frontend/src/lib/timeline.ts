@@ -70,6 +70,9 @@ export function buildTimeline(
   source: TimelineSource,
   date: Date,
   dateStr: string,
+  // Overridable per device (the page reads/writes this via localStorage, same as the colour
+  // picker); defaults to MEAL_NOMINAL_MIN when the caller has no preference saved.
+  mealTimes: Record<string, number> = MEAL_NOMINAL_MIN,
 ): { blocks: TimelineBlock[]; unscheduled: UnscheduledItem[] } {
   const blocks: TimelineBlock[] = [];
   const unscheduled: UnscheduledItem[] = [];
@@ -102,7 +105,7 @@ export function buildTimeline(
   }
 
   for (const m of source.meals) {
-    const start = MEAL_NOMINAL_MIN[m.mealType];
+    const start = mealTimes[m.mealType];
     if (start === undefined || !m.text.trim()) continue;
     blocks.push({ id: `meal:${m.mealType}`, kind: "meal", title: m.text.trim(), startMin: start, endMin: start + MEAL_DURATION_MIN, lane: 0 });
   }
