@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Check, ChevronLeft, ChevronRight, Clock, Minus, Plus } from "lucide-react";
 import { useApi } from "../api/useApi";
@@ -33,7 +33,7 @@ import type { HabitLog, LogEntry, Medication, MealPlanSlot, MedicationLog, Medic
 // and only takes a second row when it overlaps another in time. Colour codes the kind.
 
 // Which kinds exist and in what order they're listed — colour is looked up separately via
-// kindColors/PALETTE below, so every kind can be recoloured without touching this list.
+// kindColors below, so every kind can be recoloured without touching this list.
 const KINDS: { kind: TimelineKind; label: string }[] = [
   { kind: "sleep", label: "Sleep" },
   { kind: "routine", label: "Routines" },
@@ -44,38 +44,34 @@ const KINDS: { kind: TimelineKind; label: string }[] = [
   { kind: "call", label: "Calls" },
 ];
 
-// The selectable palette. `dot` is a saturated fill for the small legend/picker swatch (no
-// text sits on it, so that's fine). `border` is a left-rule accent and `bg` a soft tint behind
-// the whole block — the same soft-background + ink-text pairing already used for badges and
-// priority pills app-wide (urgency.ts's URGENCY_BADGE_CLASS), not a solid fill, because white
-// text on most of these colors at this lightness falls well under WCAG's 4.5:1 minimum for
-// small text. Every entry here is pre-vetted that way, so any kind can use any colour safely.
-const PALETTE: { key: string; name: string; dot: string; border: string; bg: string }[] = [
-  { key: "teal", name: "Teal", dot: "bg-routine", border: "border-l-routine", bg: "bg-routine-soft dark:bg-routine-soft-dark" },
-  { key: "indigo", name: "Indigo", dot: "bg-medication", border: "border-l-medication", bg: "bg-medication-soft dark:bg-medication-soft-dark" },
-  { key: "amber", name: "Amber", dot: "bg-amber", border: "border-l-amber", bg: "bg-amber-soft dark:bg-amber-soft-dark" },
-  { key: "green", name: "Green", dot: "bg-success", border: "border-l-success", bg: "bg-success-soft dark:bg-success-soft-dark" },
-  { key: "slate", name: "Slate", dot: "bg-slate", border: "border-l-slate", bg: "bg-slate-soft dark:bg-slate-soft-dark" },
-  { key: "coral", name: "Coral", dot: "bg-bloom", border: "border-l-bloom", bg: "bg-bloom-soft dark:bg-bloom-soft-dark" },
-  { key: "red", name: "Red", dot: "bg-alert", border: "border-l-alert", bg: "bg-alert-soft dark:bg-alert-soft-dark" },
-  { key: "purple", name: "Purple", dot: "bg-[#7a6fb0]", border: "border-l-[#7a6fb0]", bg: "bg-[#7a6fb0]/20 dark:bg-[#7a6fb0]/30" },
-  { key: "pink", name: "Pink", dot: "bg-[#c26a8f]", border: "border-l-[#c26a8f]", bg: "bg-[#c26a8f]/20 dark:bg-[#c26a8f]/30" },
-];
-
+// Any colour, via the native picker — not a curated palette. The earlier contrast problem
+// (white text on a solid amber/bloom/purple fill, ~2.7:1) came from letting the *text* sit
+// directly on a saturated colour; that's structurally impossible here, because the picked hex
+// only ever becomes a low-alpha tint behind the block (see hexAlpha/kindBlockStyle below) and
+// the left-rule border — text stays the fixed ink/paper colour always. So any hex the user
+// picks is safe by construction, no vetting needed.
 const DEFAULT_KIND_COLORS: Record<TimelineKind, string> = {
-  sleep: "purple",
-  routine: "teal",
-  med: "indigo",
-  meal: "pink",
-  task: "amber",
-  workout: "green",
-  call: "slate",
+  sleep: "#7a6fb0",
+  routine: "#2b8f8a",
+  med: "#4a63e0",
+  meal: "#c26a8f",
+  task: "#d98b2b",
+  workout: "#2e9960",
+  call: "#5b7290",
 };
 
 const KIND_COLORS_KEY = "lifeos.timeline.kindColors";
+const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
-function paletteFor(key: string) {
-  return PALETTE.find((p) => p.key === key) ?? PALETTE[0];
+// True alpha compositing, so the same value naturally reads as a pale tint over the light
+// theme's paper-card and a muted tint over the dark theme's ink-bg-card — no separate
+// light/dark tuning needed, unlike a flat (non-transparent) colour swap would.
+function hexAlpha(hex: string, alphaHex: string): string {
+  return HEX_RE.test(hex) ? `${hex}${alphaHex}` : hex;
+}
+
+function kindBlockStyle(hex: string): CSSProperties {
+  return { backgroundColor: hexAlpha(hex, "3d"), borderLeftColor: hex };
 }
 
 function readKindColors(): Record<TimelineKind, string> {
@@ -83,9 +79,15 @@ function readKindColors(): Record<TimelineKind, string> {
     const raw = localStorage.getItem(KIND_COLORS_KEY);
     if (!raw) return DEFAULT_KIND_COLORS;
     const parsed = JSON.parse(raw) as Partial<Record<TimelineKind, string>>;
+    const next = { ...DEFAULT_KIND_COLORS };
     // Merge over the defaults rather than trusting the stored object shape — a kind added
-    // after someone last customized their colours still gets a sensible default.
-    return { ...DEFAULT_KIND_COLORS, ...parsed };
+    // after someone last customized their colours still gets a sensible default, and a
+    // malformed/legacy value (e.g. an old named-palette key) is dropped rather than applied.
+    for (const kind of Object.keys(next) as TimelineKind[]) {
+      const value = parsed[kind];
+      if (value && HEX_RE.test(value)) next[kind] = value;
+    }
+    return next;
   } catch {
     return DEFAULT_KIND_COLORS;
   }
@@ -93,7 +95,8 @@ function readKindColors(): Record<TimelineKind, string> {
 
 // A protected task (deep work, commute — time set aside, not a to-do) gets its own accent —
 // deliberately the neutral surface tone, not a category colour, since it isn't one, and not
-// customizable for the same reason.
+// customizable for the same reason. Uses real Tailwind dark: tokens (unlike the hex-based
+// kinds above) because this one never varies, so there's no reason not to.
 const PROTECTED_BORDER = "border-l-ink-muted dark:border-l-mist-muted";
 const PROTECTED_BG = "bg-stone dark:bg-stone-dark";
 
@@ -115,10 +118,12 @@ const SUB_ROW_PX = 58;
 const WEEKDAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const CYCLE_HINT_KEY = "lifeos.timeline.cycleHints";
 
-function colorFor(block: TimelineBlock, kindColors: Record<TimelineKind, string>): { border: string; bg: string } {
-  if (block.protected) return { border: PROTECTED_BORDER, bg: PROTECTED_BG };
-  const { border, bg } = paletteFor(kindColors[block.kind]);
-  return { border, bg };
+// Protected blocks use real Tailwind classes (fixed, theme-aware); every other kind uses an
+// inline style built from its user-picked hex (see kindBlockStyle) since Tailwind can't
+// generate a utility class for a colour it doesn't know about until runtime.
+function colorFor(block: TimelineBlock, kindColors: Record<TimelineKind, string>): { className: string; style?: CSSProperties } {
+  if (block.protected) return { className: `${PROTECTED_BORDER} ${PROTECTED_BG}` };
+  return { className: "", style: kindBlockStyle(kindColors[block.kind]) };
 }
 
 // Every horizontal position is a percentage of the full-day width, so a zoomed chart is just
@@ -708,7 +713,7 @@ export default function Timeline() {
             onClick={() => toggleFilter(kind)}
             className={`inline-flex min-h-10 items-center gap-1.5 rounded-full border px-3 text-xs font-medium ${filters[kind] ? "border-bloom bg-bloom text-paper-card" : "border-stone text-ink-muted dark:border-stone-dark dark:text-mist-muted"}`}
           >
-            <span aria-hidden="true" className={`inline-block h-2.5 w-2.5 rounded-full ${paletteFor(kindColors[kind]).dot}`} />
+            <span aria-hidden="true" className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: kindColors[kind] }} />
             {label}
           </button>
         ))}
@@ -724,29 +729,34 @@ export default function Timeline() {
 
       {customizingColors && (
         <Card className="mt-2 flex flex-col gap-3 p-3">
-          {KINDS.map(({ kind, label }) => (
-            <div key={kind}>
-              <p className="mb-1.5 text-xs font-medium text-ink dark:text-paper">{label}</p>
-              <div className="flex flex-wrap gap-2">
-                {PALETTE.map((p) => {
-                  const active = kindColors[kind] === p.key;
-                  return (
-                    <button
-                      key={p.key}
-                      type="button"
-                      aria-pressed={active}
-                      aria-label={p.name}
-                      title={p.name}
-                      onClick={() => setKindColor(kind, p.key)}
-                      className={`flex h-10 w-10 items-center justify-center rounded-full border-2 ${p.dot} ${active ? "border-ink dark:border-paper" : "border-transparent"}`}
-                    >
-                      {active && <Icon icon={Check} size={16} className="text-paper-card" />}
-                    </button>
-                  );
-                })}
+          {KINDS.map(({ kind, label }) => {
+            const isDefault = kindColors[kind] === DEFAULT_KIND_COLORS[kind];
+            return (
+              <div key={kind} className="flex items-center gap-3">
+                <input
+                  type="color"
+                  value={kindColors[kind]}
+                  onChange={(e) => setKindColor(kind, e.target.value)}
+                  aria-label={`${label} colour`}
+                  className="h-10 w-14 shrink-0 cursor-pointer rounded-control border border-stone bg-transparent p-1 dark:border-stone-dark"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-ink dark:text-paper">{label}</p>
+                  <p className="text-xs uppercase tabular-nums text-ink-muted dark:text-mist-muted">{kindColors[kind]}</p>
+                </div>
+                {!isDefault && (
+                  <button
+                    type="button"
+                    onClick={() => setKindColor(kind, DEFAULT_KIND_COLORS[kind])}
+                    className="min-h-10 shrink-0 rounded-control border border-stone px-2 text-xs text-ink-muted dark:border-stone-dark dark:text-mist-muted"
+                  >
+                    Reset
+                  </button>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
+          <p className="text-xs text-ink-muted dark:text-mist-muted">Tap a swatch to open the full colour picker. Saved on this device only.</p>
         </Card>
       )}
 
@@ -811,7 +821,7 @@ export default function Timeline() {
               {sleepPacked.length > 0 && (
                 <div className="relative border-b border-stone dark:border-stone-dark" style={{ height: sleepRows * SUB_ROW_PX + 8 }}>
                   {sleepPacked.map((b) => (
-                    <SleepBlock key={b.id} block={b} color={paletteFor(kindColors.sleep)} />
+                    <SleepBlock key={b.id} block={b} hex={kindColors.sleep} />
                   ))}
                 </div>
               )}
@@ -947,7 +957,7 @@ function BlockButton({
   onSelect,
 }: {
   block: TimelineBlock;
-  color: { border: string; bg: string };
+  color: { className: string; style?: CSSProperties };
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -956,8 +966,8 @@ function BlockButton({
       type="button"
       onClick={onSelect}
       aria-pressed={selected}
-      className={`absolute z-10 overflow-hidden rounded-control border border-l-4 border-stone px-1.5 py-1 text-left leading-tight shadow-sm dark:border-stone-dark ${color.bg} ${color.border} ${selected ? "ring-2 ring-bloom" : ""}`}
-      style={{ left: `${pctOfDay(block.startMin)}%`, width: `${pctOfDay(block.endMin - block.startMin)}%`, top: block.lane * SUB_ROW_PX + 22, height: SUB_ROW_PX - 6, minWidth: 44 }}
+      className={`absolute z-10 overflow-hidden rounded-control border border-l-4 border-stone px-1.5 py-1 text-left leading-tight shadow-sm dark:border-stone-dark ${color.className} ${selected ? "ring-2 ring-bloom" : ""}`}
+      style={{ ...color.style, left: `${pctOfDay(block.startMin)}%`, width: `${pctOfDay(block.endMin - block.startMin)}%`, top: block.lane * SUB_ROW_PX + 22, height: SUB_ROW_PX - 6, minWidth: 44 }}
     >
       <span className="block truncate text-xs font-medium text-ink dark:text-paper">{block.title}</span>
       <span className="block text-[11px] tabular-nums text-ink-muted dark:text-mist-muted">
@@ -973,11 +983,13 @@ function BlockButton({
 }
 
 // Sleep is read-only here (it's logged from the Today screen), so it's a plain block, not a button.
-function SleepBlock({ block, color }: { block: TimelineBlock; color: { border: string; bg: string } }) {
+// Sleep's hex comes straight from kindColors.sleep — it's never "protected", so no className
+// branch is needed here the way BlockButton needs one.
+function SleepBlock({ block, hex }: { block: TimelineBlock; hex: string }) {
   return (
     <div
-      className={`absolute z-10 overflow-hidden rounded-control border border-l-4 border-stone px-1.5 py-1 leading-tight shadow-sm dark:border-stone-dark ${color.bg} ${color.border}`}
-      style={{ left: `${pctOfDay(block.startMin)}%`, width: `${pctOfDay(block.endMin - block.startMin)}%`, top: block.lane * SUB_ROW_PX + 6, height: SUB_ROW_PX - 12, minWidth: 44 }}
+      className="absolute z-10 overflow-hidden rounded-control border border-l-4 border-stone px-1.5 py-1 leading-tight shadow-sm dark:border-stone-dark"
+      style={{ ...kindBlockStyle(hex), left: `${pctOfDay(block.startMin)}%`, width: `${pctOfDay(block.endMin - block.startMin)}%`, top: block.lane * SUB_ROW_PX + 6, height: SUB_ROW_PX - 12, minWidth: 44 }}
     >
       <span className="block truncate text-xs font-medium text-ink dark:text-paper">{block.title}</span>
       <span className="block text-[11px] tabular-nums text-ink-muted dark:text-mist-muted">
