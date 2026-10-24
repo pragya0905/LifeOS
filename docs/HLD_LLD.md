@@ -80,7 +80,7 @@ extension work to be scoped against an accurate baseline.
 | --- | --- | --- |
 | Availability | Best-effort, managed-service SLA (no custom uptime target) | Fully managed AWS services (Lambda, DynamoDB, API Gateway, Cognito, CloudFront) — no self-managed servers to keep running |
 | Security & isolation | Zero cross-user data access | JWT-derived `userId` as every table's partition key (§6, LLD §17) |
-| Data durability | Point-in-time recovery to any second, 35-day window | `PointInTimeRecoverySpecification` enabled on all 17 tables |
+| Data durability | Point-in-time recovery to any second, 35-day window | `PointInTimeRecoverySpecification` enabled on all 19 tables |
 | Confidentiality | Encrypted at rest and in transit | DynamoDB SSE on every table; HTTPS-only at CloudFront and API Gateway |
 | Performance | Sub-second CRUD, low seconds for AI calls | 256MB Lambda memory, DynamoDB single-digit-ms reads on key lookups, client-side request cache/dedup (LLD §15) |
 | Consistency | Eventually consistent reads accepted; no cross-table transactions used | DynamoDB default (eventually consistent) reads; each write is scoped to one logical entity per table |
@@ -97,6 +97,7 @@ flowchart LR
     CLAUDE["Claude API<br/>(AI extraction, insights,<br/>Assistant tool-calling)"]
     BEDROCK["Bedrock Titan<br/>(journal embeddings)"]
     PUSHSVC["Browser push services<br/>(FCM / Mozilla / etc.)"]
+    METEO["Open-Meteo<br/>(weather + geocoding)"]
 
     U -- uses --> LO
     LO -- authenticates via --> COG
@@ -104,17 +105,20 @@ flowchart LR
     LO -- embeds journal text via --> BEDROCK
     LO -- delivers reminders via --> PUSHSVC
     PUSHSVC -- delivers to --> U
+    LO -- get_weather tool only --> METEO
 ```
 
-System context — LifeOs and its four external dependencies. No other third-party system is integrated.
+System context — LifeOs and its five external dependencies. No other third-party system is integrated.
 
-LifeOs has exactly four external system dependencies: **Cognito**
+LifeOs has exactly five external system dependencies: **Cognito**
 for identity (fully inside the AWS account, but architecturally external to
 the application code), **Claude** for all AI extraction/summarization/chat,
 **Bedrock** (Titan Embeddings, also inside the AWS account — IAM-authenticated,
-no separate API key) for journal semantic search, and the **browser push
+no separate API key) for journal semantic search, the **browser push
 ecosystem** (Web Push standard, routed through each browser vendor's push
-service) for notifications. There is no payment processor, no email
+service) for notifications, and **Open-Meteo** (no API key, geocoding plus
+a 3-day forecast), reached only by the Assistant's `get_weather` tool —
+nothing else in the app calls it. There is no payment processor, no email
 service, no analytics/telemetry vendor, and no third-party wearable
 integration at this time.
 
@@ -191,10 +195,10 @@ second copy of the business logic.
 
 Five flows account for nearly all system activity; the first, second, and fourth are detailed as sequence diagrams in [LLD §14](#sequences):
 
-1. **Journal-driven extraction** — a journal save triggers one Claude call whose structured output fans out into up to 8 tables in parallel, plus an independent, best-effort Bedrock embedding call that never blocks the save.
+1. **Journal-driven extraction** — a journal save triggers a Claude call whose structured output fans out into up to 8 tables in parallel, plus two further independent, best-effort calls that never block the save: a day-review Claude call (productivity score, wins, suggestions, run after extraction so it reflects this entry's own just-written logs) and a Bedrock embedding call (run in parallel with extraction, not after it).
 2. **Direct CRUD** — every other page (Tasks, Medications, Budget, etc.) reads/writes its own table(s) directly, no AI involved.
-3. **Assistant tool-calling chat** — a chat/voice message triggers a Claude tool-use loop that calls back into flow 2's own API routes (same JWT, same business logic) rather than touching DynamoDB directly, plus reads from `AssistantConversationsTable`/`UserMemoryTable` and Bedrock-backed journal search.
-4. **Scheduled push delivery** — 5 EventBridge-triggered Lambdas scan subscriptions and push-notify on independent cadences.
+3. **Assistant tool-calling chat** — a chat/voice message triggers a Claude tool-use loop with 40 tools, almost all of which call back into flow 2's own API routes (same JWT, same business logic) rather than touching DynamoDB directly — the two exceptions are `remember_fact`/`update_memory` (write `UserMemoryTable` directly) and `get_weather` (the system's one non-AWS, non-Anthropic dependency, Open-Meteo) — plus reads from `AssistantConversationsTable`/`UserMemoryTable` and Bedrock-backed journal search.
+4. **Scheduled push delivery** — 6 EventBridge-triggered Lambdas scan subscriptions and push-notify on independent cadences.
 5. **Auth** — Amplify-mediated sign-up/confirm/sign-in against Cognito, JWT attached to every subsequent API call.
 
 ## Capacity estimation
@@ -266,6 +270,8 @@ the response.
 | insights.ts | 8 parallel table queries aggregated into the context Claude summarizes | getInsights, weeklyInsightsScheduler |
 | timelineFields.ts | Shared validators for the Timeline page's optional fields — `endTime`, `stepMinutes`, `reminderLeadMinutes`, `timezoneOffsetMinutes`, `blockType` — one definition reused everywhere a field appears on more than one entity (routines, tasks, medications) | createRoutineTemplate, updateRoutineTemplate, createTask, updateTask, createMedication, updateMedication |
 | routineReminders.ts | `routineReminderDate` — pure function deciding whether a routine's reminder should fire on a given scheduler run, given its `timeOfDay`, `reminderLeadMinutes`, `daysOfWeek`, `timezoneOffsetMinutes`, and `lastReminderSentDate` | routineReminderScheduler |
+| progressSummary.ts | `summarizeWishes`/`summarizeHabits`/`summarizeBudgets` (the three LLD §15 computations) plus `computeProgressSummary`, an HTTP-forwarding wrapper around the same `GET /progress-summary` route for callers (like `chatAssistant`) with no direct table grants | getProgressSummary, chatAssistant |
+| weather.ts | `geocodeLocation` + a forecast fetch against Open-Meteo (no API key) — the one module in the system that calls an external API outside AWS and Anthropic | chatAssistant (`get_weather` tool only) |
 | pushNotifications.ts | `sendPushNotification` (VAPID-signed, self-prunes dead subscriptions) + `scanAllPushSubscriptions` (paginated scan shared by all 6 schedulers) | 6 scheduler Lambdas, updateWish |
 | medications.ts | `computeEndDate` — start date + duration → active window, used consistently everywhere a medication's active status is checked | Medication CRUD + journal + reminder scheduler |
 | logEntrySchemas.ts | Per-`LogType` field validation for the catch-all `LogEntry.data` bag — the `call` schema's optional `startTime` is what lets a logged call appear on the Timeline page | createLogEntry, updateLogEntry |
@@ -292,7 +298,7 @@ partition key (omitted from the field lists below since it's constant).
 | scheduleTime | string (HH:MM) | [opt — a non-deadline "plan to work on this around" time, distinct from dueTime] |
 | estimatedHours | number | [opt] |
 | priority | "Low"|"Medium"|"High" | [req] |
-| prioritySource | "manual"\|"ai"\|"auto" | [req — "ai" is set at creation whenever a suggestion was requested, covering both an actual Claude call and `suggestTaskPriority`'s own internal deadline short-circuit (LLD §16); "auto" is set later, only by taskReminderScheduler's ongoing re-check (below), never at creation] |
+| prioritySource | "manual"\|"ai"\|"auto" | [req — "ai" is set at creation whenever a suggestion was requested, covering both an actual Claude call and `suggestTaskPriority`'s own internal deadline short-circuit (LLD §15); "auto" is set later, only by taskReminderScheduler's ongoing re-check (below), never at creation] |
 | status | "todo"|"in\_progress"|"done" | [req] |
 | recurrence | TaskRecurrence (nested: frequency, daysOfWeek?, intervalDays?, dayOfMonth?) | [opt] |
 | reminderSentAt | string (ISO) | [opt — dedup guard for the 15-min scheduler] |
@@ -475,9 +481,10 @@ HTTP 401
 {"error":"Unauthorized"}
 ```
 
-Internally: loads the last ~20 turns of history plus every `UserMemoryTable`
-row plus a compact Wishes/Goals summary into the system prompt, then runs a
-manual tool-use loop (max 5 iterations) against `claude-haiku-4-5` using
+Internally: loads the last ~20 exchanges of history (40 turns,
+`HISTORY_TURN_LIMIT`) plus every `UserMemoryTable` row plus a compact
+Wishes/Goals summary into the system prompt, then runs a manual tool-use
+loop (max 8 iterations, `MAX_TOOL_ITERATIONS`) against `claude-haiku-4-5` using
 `client.messages.stream(...)` instead of `.create(...)` — each text delta
 forwards to the client immediately via `.on("text", ...)`, while
 `stream.finalMessage()` still yields the complete structured message for
@@ -566,6 +573,7 @@ sequenceDiagram
     participant L as createJournalEntry
     participant DDB as DynamoDB
     participant CL as Claude API
+    participant BR as Bedrock Titan
 
     U->>FE: Write entry, tap Save
     FE->>L: POST /journal {date, text}
@@ -575,27 +583,39 @@ sequenceDiagram
         L-->>FE: 409 Conflict
     else new entry
         DDB-->>L: OK
-        L->>DDB: Query active medications, routines
-        L->>DDB: Get UserProfile (heightCm)
-        L->>CL: Structured extraction request
-        CL-->>L: JournalExtraction (validated by Zod)
-        alt stepsCount is null and distanceKm is set
-            L->>L: steps = distanceKm*1000 / (heightCm*0.415/100)
+        par applyJournalExtraction (best-effort) || embedJournalEntry (best-effort)
+            L->>DDB: Query active medications, routines
+            L->>DDB: Get UserProfile (heightCm)
+            L->>CL: Structured extraction request
+            CL-->>L: JournalExtraction (validated by Zod)
+            alt stepsCount is null and distanceKm is set
+                L->>L: steps = distanceKm*1000 / (heightCm*0.415/100)
+            end
+            L->>DDB: Update JournalEntry.aiExtracted
+            L->>DDB: Clear this date's previous AI-sourced habit/log/expense rows (re-edit case)
+            par fan out (Promise.all)
+                L->>DDB: Upsert HabitLogs (water/exercise/steps)
+                L->>DDB: Upsert LogEntries (food/sleep/weight/mood/call/cycle)
+                L->>DDB: Upsert MedicationLogs (matched names only)
+                L->>DDB: Upsert RoutineLogs (matched steps only)
+                L->>DDB: Create Expenses
+            end
+        and
+            L->>BR: Embed entry text
+            BR-->>L: embedding vector
+            L->>DDB: Update JournalEntry.embedding
         end
-        par fan out (Promise.all)
-            L->>DDB: Upsert HabitLogs (water/exercise/steps)
-            L->>DDB: Upsert LogEntries (food/sleep/weight/mood/call/cycle)
-            L->>DDB: Upsert MedicationLogs (matched names only)
-            L->>DDB: Upsert RoutineLogs (matched steps only)
-            L->>DDB: Create Expenses
-        end
-        L->>DDB: Update JournalEntry.aiExtracted
-        L-->>FE: 201 {entry with aiExtracted}
+        Note over L,CL: Runs after extraction, not in the par above — its day-stats<br/>read must reflect this entry's own just-written AI logs
+        L->>DDB: Query today's tasks/habits/medications/routines (fetchDayStats)
+        L->>CL: Day-review request (text + compact stats line)
+        CL-->>L: DayReview {productivityScore, timeWastedMinutes, wins, suggestions}
+        L->>DDB: Update JournalEntry.dayReview
+        L-->>FE: 201 {entry with aiExtracted + dayReview}
     end
     FE-->>U: Entry saved, Extraction Ledger updates
 ```
 
-A manually-entered value is never in this diagram's write path — the fan-out only writes fields the extraction actually found, and never overwrites a value the user set by hand elsewhere (enforced by conditional writes in `writeAiHabitLog`: `ConditionExpression: attribute_not_exists OR source = ai-journal`).
+Three independent best-effort operations run off one journal save — extraction, embedding, and day review — each wrapped so its own failure never blocks the entry itself from saving or blocks either of the other two (separate try/catch per operation, not one combined step); only the entry's own conditional `PutCommand` is on the save's critical path. A manually-entered value is never in the fan-out's write path — it only writes fields the extraction actually found, and never overwrites a value the user set by hand elsewhere (enforced by conditional writes in `writeAiHabitLog`: `ConditionExpression: attribute_not_exists OR source = ai-journal`).
 
 ### Task creation with AI priority + deadline guardrail
 
@@ -661,12 +681,16 @@ sequenceDiagram
     FE-->>U: Reply shown (markdown) + spoken (window.speechSynthesis)
 ```
 
-The loop caps at 5 iterations (`MAX_TOOL_ITERATIONS`); every tool but
-`remember_fact` goes through the existing HTTP API rather than touching
-DynamoDB directly, and `get_progress_summary` additionally fans out to
-`/wishes`, `/habits`, `/budgets`, and `/expenses` before computing its
-numbers in code — not shown above since it's one tool call among the 15
-available, not a separate flow.
+The loop caps at 8 iterations (`MAX_TOOL_ITERATIONS`); every tool but
+`remember_fact` and `update_memory` goes through the existing HTTP API
+rather than touching DynamoDB directly — `get_weather` is the one
+exception that forwards somewhere other than this app's own API, see
+Architecture §7 — and `get_progress_summary` calls the shared
+`common/progressSummary.ts` module (also used by the plain `GET
+/progress-summary` route, LLD §13), which itself fans out to `/wishes`,
+`/habits`, `/budgets`, and `/expenses` before computing its numbers in
+code — not shown above since it's one tool call among the 40 available,
+not a separate flow.
 
 ### Authentication
 
@@ -734,6 +758,16 @@ steps = round(distanceKm * 1000 / strideMeters)
 
 ### Cycle phase estimation
 
+**Runs entirely client-side** (`frontend/src/lib/cyclePhase.ts`) — the
+Cycle page computes and displays this itself from the log entries it
+already has; no Lambda runs this formula. The backend's own cycle logic
+(`cycleReminderScheduler`, next) is a separate, smaller computation —
+average cycle length and the next predicted date only, no phase or
+fertile window — reimplemented independently in the Lambda (TypeScript
+in a frontend bundle and TypeScript in a Lambda share no module,
+so it's duplicated on purpose, not imported) and kept in sync by hand;
+the scheduler's own comment points back at the frontend file it mirrors.
+
 ```
 avgCycleDays = round(mean(gaps between consecutive period_start dates))
 ovulationDay  = max(avgCycleDays - 14, avgPeriodDays + 1)   // luteal phase ~fixed 14 days
@@ -749,18 +783,43 @@ phase =
   else                               -> Luteal
 ```
 
+#### Next-period prediction (the subset the backend actually runs)
+
+```
+avgCycleDays = round(mean(gaps between consecutive period_start dates))   // null if fewer than 2 starts logged
+nextPredicted = lastPeriodStart + avgCycleDays days
+
+// cycleReminderScheduler (rate 6 hours): fires once, the first run where
+// 0 <= daysUntil(today, nextPredicted) <= 1, guarded by a cycleReminderForDate
+// field stored on the most recent period_start LogEntry so it never repeats
+// for the same predicted date even across multiple runs inside that window
+```
+
 ### Medication adherence %
+
+**Runs entirely client-side** (`frontend/src/pages/Medications.tsx`'s
+`computeAdherence`) — no Lambda computes this; the frontend already has
+every medication and log it needs from the page's own data load.
 
 ```
 activeStart = max(medication.startDate, windowStart)
 activeEnd   = min(medication.endDate, windowEnd)     // endDate = startDate + durationDays
-takenDates  = set of dates with a "taken" log for this medication
+if activeStart > activeEnd: return null              // window doesn't overlap the active range at all
 
-for each date from activeStart to activeEnd:
-    activeDays += 1
-    if date in takenDates: takenDays += 1
+scheduledDays = 0; takenDays = 0; skippedDays = 0
+for each date from activeStart to activeEnd where medication.daysOfWeek is empty or includes that date's weekday:
+    status = log status for that date, if any
+    if status == "skipped":
+        skippedDays += 1                              // excluded from the denominator entirely —
+                                                        // a skip is a deliberate decision, not a miss
+    else:
+        scheduledDays += 1
+        if status == "taken": takenDays += 1
 
-adherence = round(takenDays / activeDays * 100)   // null if activeDays == 0
+if scheduledDays == 0 and skippedDays == 0: return null          // nothing scheduled in this window at all
+if scheduledDays == 0: return "allSkipped" (skippedDays)          // every scheduled day was explicitly skipped
+if scheduledDays < 3: return "new" (skippedDays)                  // too few scheduled days yet for a meaningful %
+return "ok", percent = round(takenDays / scheduledDays * 100), skippedDays
 ```
 
 ### Reminder lead time (shared by Task, Medication, and Routine schedulers)
@@ -817,10 +876,18 @@ if estimatedHours is set and hoursUntilDue(dueAtUtc, now) <= estimatedHours:
 
 ### Assistant progress summary (get_progress_summary tool)
 
-Three independent computations, all run in `chatAssistant` code — Claude
-only narrates the returned numbers, it never computes them. Same
-"don't trust the model with arithmetic" rule as the distance→steps and
-task-priority guardrail above.
+Three independent computations — Claude only narrates the returned
+numbers, it never computes them, same "don't trust the model with
+arithmetic" rule as the distance→steps and task-priority guardrail
+above. All three live in the shared `common/progressSummary.ts` module
+(§11), not inline in `chatAssistant`: the plain `GET /progress-summary`
+route (`getProgressSummary`) calls them directly against DynamoDB, while
+`chatAssistant` — which runs behind a Function URL with no direct table
+grants — reaches the same functions through its own
+`computeProgressSummary` wrapper, which re-calls that same HTTP route
+with the caller's forwarded JWT instead (the thin-adapter pattern again,
+one level further in: even this tool's "direct computation" is a thin
+adapter underneath).
 
 ```
 // 1. Wish falling-behind — identical thresholds to wishReminderScheduler's
@@ -890,7 +957,7 @@ function request(path, options):
 | --- | --- | --- |
 | Lambda cold-start 503 | useApi (frontend) | Retried up to 2×, 300ms then 900ms backoff — confirmed via CloudWatch that 503 here is always pre-execution throttling, never a partially-run request, so retry is always safe |
 | Duplicate journal entry for a date | createJournalEntry | Conditional put fails → 409 with a message pointing at the edit flow instead |
-| Claude extraction throws | journal.ts / getInsights | Caught, logged, swallowed — the journal entry itself still saves; extraction is explicitly best-effort and must never block the primary write |
+| Claude extraction, day review, or Bedrock embedding throws | journal.ts / getInsights | Each of the three caught and swallowed independently (separate try/catch per operation, not one shared block) — the journal entry itself still saves regardless of which one failed; all three are explicitly best-effort and must never block the primary write or each other |
 | Push delivery to a dead subscription | pushNotifications.ts | 404/410 from the push service triggers an immediate delete of that subscription row — no retry, no dead-letter queue |
 | Cross-user data access attempt | Structural, not a runtime check | Impossible by construction — every query's partition key is the caller's own `sub`, so another user's key never enters the query |
 | Future-dated journal entry | Frontend (date picker max) + backend (lax UTC-tomorrow check) | Backend check is intentionally lax (allows local "today" that's already UTC-tomorrow for users east of UTC) — frontend is the primary guard for the common case |
@@ -900,7 +967,7 @@ function request(path, options):
 
 #### Ownership via partition key
 
-`userId` from the verified JWT is the partition key on every one of the 17 tables. Cross-user access isn't rejected by a check — the key required to read another user's row structurally never appears in any query built from a request's own auth context.
+`userId` from the verified JWT is the partition key on every one of the 19 tables. Cross-user access isn't rejected by a check — the key required to read another user's row structurally never appears in any query built from a request's own auth context.
 
 #### Server-stamped timestamps
 
@@ -908,19 +975,19 @@ Any "sent at" / "completed at" field is computed server-side from a client-suppl
 
 #### Timezone-safe scheduling
 
-Anything a scheduler needs to fire at a specific local time (task due-at, medication time-of-day) is computed client-side as a UTC instant at creation time (`dueAtUtc`, or `timeOfDay` paired with `timezoneOffsetMinutes`), so a Lambda running in UTC never has to guess a user's timezone.
+Anything a scheduler needs to fire at a specific local time (task due-at, medication time-of-day, and — since this session — routine time-of-day, each with its own optional `reminderLeadMinutes`) is computed client-side as a UTC instant at creation time (`dueAtUtc`, or `timeOfDay` paired with `timezoneOffsetMinutes`), so a Lambda running in UTC never has to guess a user's timezone.
 
 #### Compute-on-read over compute-on-write
 
-Habit-linked wish progress and cycle-phase estimates are never stored — they're derived fresh from the underlying logs on every read. This trades a small amount of read-time computation for the structural guarantee that the displayed number can never go stale relative to the logs it's derived from.
+Habit-linked wish progress is never stored — `listWishes`/`getProgressSummary` derive it fresh from the underlying habit logs on every read, so the displayed number can never go stale relative to the logs it's drawn from. Cycle-phase estimation follows the same philosophy one layer further out: it's computed on render, client-side (LLD §15), rather than on read in a Lambda at all — the Cycle page already has every log entry it needs from its own data load, so there's no read path to put the computation in.
 
 #### Best-effort AI, mandatory core write
 
-Every AI call (extraction, insights, journal embedding) is wrapped so its failure never blocks the primary user action it's attached to. Journal entries save even if Claude or Bedrock is down; the AI enrichment is additive, never load-bearing. Extraction and embedding are additionally independent of *each other* — a Bedrock failure can't block the structured extraction or vice versa, since they run as separate try/catch blocks rather than one combined step.
+Every AI call this app makes — journal extraction, day review, insights, meal-plan suggestion, Timeline's suggest/reflect — is wrapped so its failure never blocks the primary user action it's attached to, each returning an empty/null result on error rather than a 500. Journal entries save even if Claude or Bedrock is down; the AI enrichment is additive, never load-bearing. A single journal save's three AI/embedding calls (extraction, day review, embedding) are additionally independent of *each other* — one failing can't block another, since each runs in its own try/catch rather than one combined step.
 
 #### Thin adapter over the existing API
 
-Both the Alexa skill handler and the Assistant's `chatAssistant` front a different interface (voice, chat) onto the app, and both resist the temptation to touch DynamoDB directly for anything the existing HTTP API already does — they call the *same* routes the web frontend calls, forwarding the caller's own JWT, so "how a task gets created" (or a habit logged, or a journal entry saved) lives in exactly one code path no matter which surface triggered it. The only writes either makes directly to a table are ones with no existing route to forward to (`remember_fact` → `UserMemoryTable`).
+The Alexa skill handler and the Assistant's `chatAssistant` (40 tools) each front a different interface (voice, chat) onto the app, and both resist the temptation to touch DynamoDB directly for anything the existing HTTP API already does — nearly every tool calls the *same* routes the web frontend calls, forwarding the caller's own JWT, so "how a task gets created" (or a habit logged, or a journal entry saved) lives in exactly one code path no matter which surface triggered it. `chatAssistant` has two kinds of exception: writes with no existing route to forward to go straight to `UserMemoryTable` (`remember_fact`, `update_memory`), and `get_weather` forwards to Open-Meteo instead of this app's own API, since there's no app data behind the question at all.
 
 #### Manual always wins
 

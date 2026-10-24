@@ -74,7 +74,7 @@ flowchart TB
     end
 
     subgraph Data["Data & identity"]
-      DDB[("DynamoDB — 17 tables")]
+      DDB[("DynamoDB — 19 tables")]
       COGNITO["Cognito User Pool"]
       SSM["SSM Parameter Store<br/>(API keys, VAPID keys)"]
       S3W["S3 — wish image uploads"]
@@ -84,6 +84,7 @@ flowchart TB
       CLAUDE["Claude API<br/>(claude-haiku-4-5)"]
       BEDROCK["Bedrock Titan Embeddings"]
       PUSH["Web Push<br/>(browser push services)"]
+      METEO["Open-Meteo<br/>(weather + geocoding, no API key)"]
     end
 
     EB["EventBridge<br/>(rate-based schedules)"]
@@ -102,6 +103,7 @@ flowchart TB
     ASSIST --> DDB
     ASSIST --> CLAUDE
     ASSIST --> SSM
+    ASSIST --> METEO
     ASSIST -. calls back into .-> APIGW
     PWA -. sign up / sign in .-> COGNITO
     APIGW -. verifies JWT .-> COGNITO
@@ -402,15 +404,24 @@ otherwise unchanged.
 
 A manual agentic loop, not the SDK's beta Tool Runner — this Lambda already
 had a working `callApi()` HTTP-forwarding pattern from the Alexa handler,
-and a hand-rolled `while` loop over `stop_reason === "tool_use"` needed no
-beta dependency to reuse it. 15 tools cover the day-to-day surface
-(habits, logs, routine/medication ticks, tasks, schedule, journal, meal
-plan); `search_journal` and `remember_fact` back RAG and memory below;
-`get_progress_summary` backs goals-anchored coaching. Conversation turns
+and a hand-rolled `while` loop over `stop_reason === "tool_use"` (capped
+at 8 iterations, `MAX_TOOL_ITERATIONS`) needed no beta dependency to
+reuse it. 40 tools cover nearly the entire app surface — every module
+this document describes except Cycle and Calendar, which have no
+Assistant tool — almost all of them thin HTTP forwards to the existing
+API: `search_journal` and `remember_fact`/`update_memory`/`forget_fact`
+back RAG and memory below; `get_progress_summary` and
+`get_daily_checkin_status` back goals-anchored coaching, both sharing
+`common/progressSummary.ts` with the plain `GET /progress-summary` route
+rather than duplicating the computation; `get_weather` is the one tool
+with no app-data route behind it at all — it calls Open-Meteo directly
+(`common/weather.ts`, geocoding + a 3-day forecast, no API key; see the
+diagram above). Conversation turns
 persist to `AssistantConversationsTable` keyed by
-`{conversationId}#{epochMs}`, and the last ~20 exchanges replay on every
-request for continuity — the API is stateless, same as every other Claude
-call in this app. Three plain-CRUD Lambdas (`listAssistantConversations`,
+`{conversationId}#{epochMs}`, and the last ~20 exchanges (40 turns,
+`HISTORY_TURN_LIMIT`) replay on every request for continuity — the API is
+stateless, same as every other Claude call in this app. Three plain-CRUD
+Lambdas (`listAssistantConversations`,
 `getAssistantConversation`, `deleteAssistantConversation`) sit behind the
 regular API Gateway route, not the Function URL, since listing/reopening/
 deleting a past conversation doesn't need streaming — grouped by
