@@ -532,10 +532,16 @@ export default function Timeline() {
   }
 
   // Duration learning: Start/Finished write the ISO instants the comparison is based on; the
-  // estimate itself is only ever changed by an explicit tap on "Update to Xm?".
+  // estimate itself is only ever changed by an explicit tap on "Update to Xm?". Shares the
+  // same optimistic + rollback-on-failure shape as every other mutation here. Undo is only
+  // offered when every touched field actually had a prior value — same rule moveRoutine and
+  // setTaskTime already follow — since a PATCH that sends only undefined fields is rejected
+  // by the server as "no updatable fields provided" rather than clearing them.
   async function patchRoutine(routine: RoutineTemplate, patch: Record<string, unknown>, successMessage?: string) {
     if (!data) return;
     const snapshot = data;
+    const previous = Object.fromEntries(Object.keys(patch).map((key) => [key, (routine as unknown as Record<string, unknown>)[key]]));
+    const canUndo = Object.values(previous).every((v) => v !== undefined);
     setData({ ...data, routines: data.routines.map((r) => (r.routineId === routine.routineId ? { ...r, ...patch } : r)) });
     try {
       const saved = await request<RoutineTemplate>(`/routines/${routine.routineId}`, { method: "PATCH", body: JSON.stringify(patch) });
@@ -545,7 +551,16 @@ export default function Timeline() {
       showToast("Something went wrong — that change wasn't saved");
       return;
     }
-    if (successMessage) showToast(successMessage);
+    if (!successMessage) return;
+    showToast(successMessage, {
+      undo: canUndo
+        ? () => {
+            request<RoutineTemplate>(`/routines/${routine.routineId}`, { method: "PATCH", body: JSON.stringify(previous) })
+              .then((reverted) => setData((prev) => prev && { ...prev, routines: prev.routines.map((r) => (r.routineId === reverted.routineId ? reverted : r)) }))
+              .catch(() => {});
+          }
+        : undefined,
+    });
   }
 
   function startRoutine(routine: RoutineTemplate) {
